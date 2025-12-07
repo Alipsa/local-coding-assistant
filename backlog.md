@@ -1,15 +1,6 @@
 # Local Coding Assistant Backlog
 
-Goal: deliver a local-only CLI coding assistant (Spring Shell + Embabel) that uses Ollama models to edit, review, search, and interact with git repositories. Current state: a Groovy `CodingAssistantAgent` produces/reviews code snippets and proxies simple file edits and web search; REST controllers exist, but no CLI workflow or git/context tooling. 
-
-## 0) Setup and prerequisites
-- All code should be written in Groovy 5.0.3 with @CompileStatic where possible.
-- Use Embabel 0.3.0+ and Spring Boot 3.5.x
-- The default LLM is `qwen3-coder:30b` served by Ollama (local models only, no cloud).
-- Use JVM 21.
-- Indent with 2 spaces.
-- Follow existing code style and conventions (checkstyle, PMD, Spotless).
-- Write unit tests for all new functionality (use Spock 2.3).
+Goal: deliver a local-only CLI coding assistant (Spring Shell + Embabel) that uses Ollama models to edit, review, search, and interact with git repositories. Current state: a Groovy `CodingAssistantAgent` produces/reviews code snippets and proxies simple file edits and web search; REST controllers exist, but no CLI workflow or git/context tooling.
 
 ## 1) Agent hardening and prompts
 - [ ] Refine `se.alipsa.lca.agent.CodingAssistantAgent` personas/prompts toward repo-aware coding assistance (beyond short snippets).
