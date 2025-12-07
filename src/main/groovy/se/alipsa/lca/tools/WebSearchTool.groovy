@@ -1,11 +1,11 @@
-package se.alipsa.lca.agent
+package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import com.microsoft.playwright.*
 import org.springframework.stereotype.Component
 
 @Component
-class WebSearchAgent {
+class WebSearchTool {
 
     @Canonical
     static class SearchResult {

@@ -16,19 +16,17 @@
 package se.alipsa.lca;
 
 import com.embabel.agent.config.annotation.EnableAgents;
-import com.embabel.agent.config.annotation.LoggingThemes;
+import com.embabel.agent.config.annotation.LoggingThemes
+import groovy.transform.CompileStatic;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-
-import org.springframework.web.client.RestTemplate;
-import org.springframework.context.annotation.Bean;
-
 @SpringBootApplication
 @EnableAgents(loggingTheme = LoggingThemes.STAR_WARS)
+@CompileStatic
 class LocalCodingAssistantApplication {
 
-    public static void main(String[] args) {
-        SpringApplication.run(LocalCodingAssistantApplication.class, args);
+    static void main(String[] args) {
+        SpringApplication.run(LocalCodingAssistantApplication.class, args)
     }
 }

@@ -3,24 +3,25 @@ package se.alipsa.lca.agent
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import se.alipsa.lca.tools.FileEditingTool
+
 import static org.junit.jupiter.api.Assertions.*
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 
 import org.junit.jupiter.api.io.TempDir
 
-class FileEditingAgentTest {
+class FileEditingTest {
 
-    private FileEditingAgent fileEditingAgent
+    private FileEditingTool fileEditingAgent
     @TempDir
     Path tempDir
     private Path tempFile
 
     @BeforeEach
     void setUp() {
-        fileEditingAgent = new FileEditingAgent(tempDir)
+        fileEditingAgent = new FileEditingTool(tempDir)
         tempFile = tempDir.resolve("test-file.txt")
     }
 

@@ -16,6 +16,8 @@ import groovy.transform.Canonical
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.lang.NonNull
+import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.WebSearchTool
 
 import java.time.Instant
 import java.time.ZoneId
@@ -76,14 +78,14 @@ class CodingAssistantAgent {
 
     private final int snippetWordCount
     private final int reviewWordCount
-    private final FileEditingAgent fileEditingAgent
-    private final WebSearchAgent webSearchAgent
+    private final FileEditingTool fileEditingAgent
+    private final WebSearchTool webSearchAgent
 
     CodingAssistantAgent(
-            @Value('${snippetWordCount:200}') int snippetWordCount,
-            @Value('${reviewWordCount:150}') int reviewWordCount,
-            FileEditingAgent fileEditingAgent,
-            WebSearchAgent webSearchAgent
+        @Value('${snippetWordCount:200}') int snippetWordCount,
+        @Value('${reviewWordCount:150}') int reviewWordCount,
+        FileEditingTool fileEditingAgent,
+        WebSearchTool webSearchAgent
     ) {
         this.snippetWordCount = snippetWordCount
         this.reviewWordCount = reviewWordCount
@@ -155,8 +157,8 @@ class CodingAssistantAgent {
     }
 
     @Action(description = "Search the web for a given query")
-    @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchAgent.SearchResult.class)
-    List<WebSearchAgent.SearchResult> search(String query) {
+    @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
+    List<WebSearchTool.SearchResult> search(String query) {
         return webSearchAgent.search(query)
     }
 }

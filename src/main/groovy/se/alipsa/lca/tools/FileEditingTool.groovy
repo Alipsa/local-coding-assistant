@@ -1,4 +1,4 @@
-package se.alipsa.lca.agent
+package se.alipsa.lca.tools
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -9,16 +9,16 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 @Component
-class FileEditingAgent {
+class FileEditingTool {
 
-    private static final Logger log = LoggerFactory.getLogger(FileEditingAgent.class)
+    private static final Logger log = LoggerFactory.getLogger(FileEditingTool.class)
     private final Path projectRoot
 
-    FileEditingAgent() {
+  FileEditingTool() {
         this(Paths.get(".").toAbsolutePath())
     }
 
-    FileEditingAgent(Path projectRoot) {
+  FileEditingTool(Path projectRoot) {
         this.projectRoot = projectRoot.toAbsolutePath()
     }
 

@@ -3,10 +3,11 @@ package se.alipsa.lca.agent
 import com.microsoft.playwright.*;
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import se.alipsa.lca.tools.WebSearchTool
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 
-class WebSearchAgentTest {
+class WebSearchTest {
 
     @Test
     void testSearch() {
@@ -31,7 +32,7 @@ class WebSearchAgentTest {
         try (var mockedStatic = Mockito.mockStatic(Playwright.class)) {
             mockedStatic.when(Playwright::create).thenReturn(mockPlaywright)
 
-            def agent = new WebSearchAgent()
+            def agent = new WebSearchTool()
             def results = agent.search("test query")
 
             assertEquals(1, results.size())
