@@ -1,89 +1,32 @@
-<img align="left" src="https://github.com/embabel/embabel-agent/blob/main/embabel-agent-api/images/315px-Meister_der_Weltenchronik_001.jpg?raw=true" width="180">
-
-![Build](https://github.com/embabel/java-agent-template/actions/workflows/maven.yml/badge.svg)
-
+![Build](https://github.com/Alipsa/local-coding-assistant/actions/workflows/maven.yml/badge.svg)
 ![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Spring](https://img.shields.io/badge/spring-%236DB33F.svg?style=for-the-badge&logo=spring&logoColor=white)
-![Apache Tomcat](https://img.shields.io/badge/apache%20tomcat-%23F8DC75.svg?style=for-the-badge&logo=apache-tomcat&logoColor=black)
-![Apache Maven](https://img.shields.io/badge/Apache%20Maven-C71A36?style=for-the-badge&logo=Apache%20Maven&logoColor=white)
-![ChatGPT](https://img.shields.io/badge/chatGPT-74aa9c?style=for-the-badge&logo=openai&logoColor=white)
-![JSON](https://img.shields.io/badge/JSON-000?logo=json&logoColor=fff)
-![GitHub Actions](https://img.shields.io/badge/github%20actions-%232671E5.svg?style=for-the-badge&logo=githubactions&logoColor=white)
-![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
-![IntelliJ IDEA](https://img.shields.io/badge/IntelliJIDEA-000000.svg?style=for-the-badge&logo=intellij-idea&logoColor=white)
 
-&nbsp;&nbsp;&nbsp;&nbsp;
+# Local Coding Assistant
 
-&nbsp;&nbsp;&nbsp;&nbsp;
+Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codes, Gemini CLI, and Claude Code—without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
 
-# Generated Agent Project
+## What this project is today
+- Spring Boot entry point with Embabel agents enabled (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
+- Ollama-first configuration using `deepseek-coder` (see `src/main/resources/application.properties`).
+- Helper scripts for launching the shell (`scripts/shell.sh`) and installing a DeepSeek model locally (`deepseek.sh`).
+- Documentation stubs for Ollama setup (`docs/llm-docs.md`) and A2A interop (`docs/a2a.md`).
 
-Starting point for your own agent development using the [Embabel framework](https://github.com/embabel/embabel-agent).
+## Getting started
+1. Install Java 21 and ensure the Ollama daemon is running.
+2. Pull a code-capable model. `./deepseek.sh` will install an appropriate `deepseek-coder` variant based on your RAM, or run `ollama pull deepseek-coder:6.7b`.
+3. Start the interactive shell: `./scripts/shell.sh`. The script sets `AGENT_APPLICATION` and launches Spring Shell with Embabel agents loaded.
+4. Begin adding agents and tools under `src/main/java/se/alipsa/lca` to shape the coding workflows (editing, reviewing, searching, git operations).
 
-Add your magic here!
+## Configuration
+- Update `spring.ai.ollama.base-url` and `embabel.models.default-llm` in `src/main/resources/application.properties` to point at your Ollama host and preferred model.
+- For agent-to-agent (A2A) interoperability, follow `docs/a2a.md`.
 
-Illustrates:
+## Roadmap focus
+- Rich editing and review loops driven from the CLI.
+- Code search and repository-aware context with git operations.
+- Opinionated prompts and workflows tuned for local development sessions.
 
-- An injected demo showing how any Spring component can be injected with an Embabel `Ai` instance to enable it to
-  perform LLM operations.
-- A simple agent
-- Unit tests for an agent verifying prompts and hyperparameters
+## License
 
-> For the Kotlin equivalent, see
-> our [Kotlin agent template](https://github.com/embabel/kotlin-agent-template).
-
-# Running
-
-Run the shell script to start Embabel under Spring Shell:
-
-```bash
-./scripts/shell.sh
-```
-
-There is a single example
-agent, [WriteAndReviewAgent](./src/main/java/com/embabel/template/agent/WriteAndReviewAgent.java).
-It uses one LLM with a high temperature and creative persona to write a story based on your input,
-then another LLM with a low temperature and different persona to review the story.
-
-When the Embabel shell comes up, invoke the story agent like this:
-
-```
-x "Tell me a story about...[your topic]"
-```
-
-Try the following other shell commands:
-
-- `demo`: Runs the same agent, invoked programmatically, instead of dynamically based on user input.
-  See [DemoCommands.java](./src/main/java/com/embabel/template/DemoShell.java) for the
-  implementation.
-- `animal`:  Runs a simple demo using an Embabel injected `Ai` instance to call an LLM.
-  See [InjectedDemo](./src/main/java/com/embabel/template/injected/InjectedDemo.java).
-
-## Suggested Next Steps
-
-To get a feel for working with Embabel, try the following:
-
-- Modify the prompts in `WriteAndReviewAgent` and `InjectedDemo`.
-- Experiment with different models and hyperparameters by modifying `withLlm` calls.
-- Integrate your own services, injecting them with Spring. All Embabel `@Agent` classes are Spring beans.
-- Run the tests with `mvn test` and modify them to experiment with prompt verification.
-
-To see tool support, check out the more
-complex [Embabel Agent API Examples](https://github.com/embabel/embabel-agent-examples) repository.
-
-## Model support
-
-Embabel integrates with any LLM supported by Spring AI.
-
-See [LLM integration guide](docs/llm-docs.md) (work in progress).
-
-Also see [Spring AI models](https://docs.spring.io/spring-ai/reference/api/index.html).
-
-## A2A support
-
-Embabel integrates with Google A2a. See [A2A integration](docs/a2a.md).
-
-## Contributors
-
-[![Embabel contributors](https://contrib.rocks/image?repo=embabel/java-agent-template)](https://github.com/embabel/java-agent-template/graphs/contributors)
-
+Apache License, Version 2.0. See `LICENSE` for details.

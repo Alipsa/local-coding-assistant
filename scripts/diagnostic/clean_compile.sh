@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# We only compile rather than run tests to avoid the need for an Open AI API key
+# We only compile rather than run tests to keep the check fast and offline
 echo "Compiling in a Docker container to make sure dependencies can be downloaded"
 
 # Navigate to project root (two levels up from /scripts/diagnostic)

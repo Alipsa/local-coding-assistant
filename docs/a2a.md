@@ -1,16 +1,13 @@
 # A2A Support
 
 Embabel integrates with the [A2A](https://github.com/google-a2a/A2A) protocol, allowing you to connect to other
-A2A-enabled agents and
-services.
+A2A-enabled agents and services. This is optional and your agents still use Ollama-only models; skip this section if you want to stay completely offline.
 
 > Embabel agents can be exposed to A2A with zero developer effort.
 
 Check out the `a2a` branch of this repository to try A2A support.
 
-You'll need the following environment variable:
-
-- `GOOGLE_STUDIO_API_KEY`: Your Google Studio API key, which is used for Gemini.
+To try the reference Google A2A web UI you'll need a Google Studio API key (used by that UI for Gemini). This does not change the fact that your agent itself runs on Ollama; omit this if you don't need the UI.
 
 Start the Google A2A web interface using Docker compose:
 

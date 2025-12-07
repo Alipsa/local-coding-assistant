@@ -113,40 +113,6 @@
         </plugins>
     </build>
 
-    <profiles>
-        <profile>
-            <id>openai-models</id>
-            <activation>
-                <property>
-                    <name>env.OPENAI_API_KEY</name>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>com.embabel.agent</groupId>
-                    <artifactId>embabel-agent-starter-openai</artifactId>
-                    <version>${embabel-agent.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-        <profile>
-            <id>anthropic-models</id>
-            <activation>
-                <property>
-                    <name>env.ANTHROPIC_API_KEY</name>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>com.embabel.agent</groupId>
-                    <artifactId>embabel-agent-starter-anthropic</artifactId>
-                     <version>${embabel-agent.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles>
-
-
     <repositories>
         <repository>
             <id>maven-central</id>
