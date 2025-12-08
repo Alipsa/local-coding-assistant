@@ -1,14 +1,13 @@
-![Build](https://github.com/Alipsa/local-coding-assistant/actions/workflows/maven.yml/badge.svg)
 ![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Spring](https://img.shields.io/badge/spring-%236DB33F.svg?style=for-the-badge&logo=spring&logoColor=white)
 
 # Local Coding Assistant
 
-Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codes, Gemini CLI, and Claude Code—without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
+Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
 
 ## What this project is today
 - Spring Boot entry point with Embabel agents enabled (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
-- Ollama-first configuration using `deepseek-coder` (see `src/main/resources/application.properties`).
+- Ollama-first configuration using `qwen3-coder:30b` (see `src/main/resources/application.properties`).
 - Helper scripts for launching the shell (`scripts/shell.sh`) and installing a DeepSeek model locally (`deepseek.sh`).
 - Documentation stubs for Ollama setup (`docs/llm-docs.md`) and A2A interop (`docs/a2a.md`).
 
