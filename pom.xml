@@ -18,8 +18,12 @@
 
   <properties>
     <java.version>21</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
     <embabel-agent.version>0.3.0</embabel-agent.version>
     <groovy.version>5.0.3</groovy.version>
+    <playwright.version>1.57.0</playwright.version>
     <spock.version>2.4-M7-groovy-5.0</spock.version>
   </properties>
 
@@ -86,7 +90,7 @@
     <dependency>
       <groupId>com.microsoft.playwright</groupId>
       <artifactId>playwright</artifactId>
-      <version>1.56.0</version>
+      <version>${playwright.version}</version>
     </dependency>
 
   </dependencies>
@@ -94,13 +98,79 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>versions-maven-plugin</artifactId>
+        <version>2.20.1</version>
+        <configuration>
+          <ignoredVersions>
+            <!-- rules file are not read for plugin updates so add explicitly here -->
+            <ignoredVersion>(?i).*[._+-](alpha|b|beta|rc|m|ea|pr).*</ignoredVersion>
+          </ignoredVersions>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <id>enforce-releases-maven-java</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion>
+                  <version>[3.9.9,)</version>
+                  <level>ERROR</level>
+                  <message>Please use maven version 3.9.9 or higher</message>
+                </requireMavenVersion>
+                <requireJavaVersion>
+                  <version>[${java.version},)</version>
+                  <level>ERROR</level>
+                  <message>Please use Java &gt;= ${java.version}</message>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
+          <execution>
+            <id>enforce-bytecode</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <enforceBytecodeVersion>
+                  <!-- Cap dependencies at JDK 21 -->
+                  <maxJdkVersion>${java.version}</maxJdkVersion>
+                  <!-- Optional: ignore test scope -->
+                  <ignoredScopes>
+                    <ignoredScope>test</ignoredScope>
+                  </ignoredScopes>
+                </enforceBytecodeVersion>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>extra-enforcer-rules</artifactId>
+            <version>1.11.0</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+      <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
       <plugin>
         <groupId>org.codehaus.gmavenplus</groupId>
         <artifactId>gmavenplus-plugin</artifactId>
-        <version>3.0.0</version>
+        <version>4.2.1</version>
         <executions>
           <execution>
             <goals>
@@ -109,6 +179,9 @@
             </goals>
           </execution>
         </executions>
+        <configuration>
+          <targetBytecode>${java.version}</targetBytecode>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -130,6 +203,19 @@
             -Xshare:off
           </argLine>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.4.0</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

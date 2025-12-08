@@ -1,4 +1,0 @@
-- Add checkstyle and pmd
-- add spotless
-- restrict java version to 21
-- update dependencies to latest stable

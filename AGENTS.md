@@ -3,5 +3,5 @@
 - The default LLM is `qwen3-coder:30b` served by Ollama (local models only, no cloud).
 - Use JVM 21.
 - Indent with 2 spaces. Max line length is 120 characters.
-- Follow existing code style and conventions (checkstyle, PMD, Spotless).
+- Follow existing code style and conventions.
 - Write unit tests for all new functionality (use Spock 2.3).
