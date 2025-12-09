@@ -132,18 +132,21 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
       .withLlm(reviewLlmOptions)
       .withPromptContributor(Personas.REVIEWER)
       .generateText(reviewPrompt)
+    String formattedReview = enforceReviewFormat(review)
 
-    new ReviewedCodeSnippet(codeSnippet, review, Personas.REVIEWER)
+    new ReviewedCodeSnippet(codeSnippet, formattedReview, Personas.REVIEWER)
   }
 
   @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai) {
     Objects.requireNonNull(ai, "Ai must not be null")
     String craftPrompt = buildCraftCodePrompt(userInput)
-    ai
+    CodeSnippet snippet = ai
       .withLlm(craftLlmOptions)
       .withPromptContributor(Personas.CODER)
       .createObject(craftPrompt, CodeSnippet)
+    snippet.text = enforceCodeFormat(snippet.text)
+    snippet
   }
 
   @Action(description = "Write content to a file. This will overwrite the file if it exists.")
@@ -211,6 +214,57 @@ ${userInput.getContent()}
 Respond with sections:
 Findings: bullet points starting with High/Medium/Low
 Tests: list the specific tests or scenarios to validate
+""".stripIndent().trim()
+  }
+
+  protected String enforceReviewFormat(String review) {
+    String limitedReview = enforceWordLimit(review, reviewWordCount)
+    boolean hasFindings = limitedReview =~ /(?im)^Findings:/
+    boolean hasTests = limitedReview =~ /(?im)^Tests:/
+    if (hasFindings && hasTests) {
+      return limitedReview
+    }
+    StringBuilder builder = new StringBuilder()
+    if (!hasFindings) {
+      builder.append("Findings:\n- ").append(limitedReview.trim()).append('\n')
+    } else {
+      builder.append(limitedReview.trim()).append('\n')
+    }
+    if (!hasTests) {
+      builder.append("Tests:\n- Cover happy-path and failure-path behavior with Spock.")
+    }
+    enforceWordLimit(builder.toString().trim(), reviewWordCount)
+  }
+
+  protected String enforceWordLimit(String text, int limit) {
+    if (text == null || limit <= 0) {
+      return ""
+    }
+    String[] words = text.trim().split(/\s+/)
+    if (words.length <= limit) {
+      return text.trim()
+    }
+    String limited = words[0..<limit].join(" ")
+    return limited + "..."
+  }
+
+  protected String enforceCodeFormat(String codeText) {
+    if (codeText == null) {
+      return ""
+    }
+    boolean hasPlan = codeText =~ /(?im)^Plan:/
+    boolean hasImplementation = codeText =~ /(?im)^Implementation:/
+    boolean hasNotes = codeText =~ /(?im)^Notes:/
+    if (hasPlan && hasImplementation && hasNotes) {
+      return codeText
+    }
+    """
+Plan:
+- See implementation below
+Implementation:
+${codeText.trim()}
+Notes:
+- Structured sections added automatically for consistency.
 """.stripIndent().trim()
   }
 }

@@ -59,13 +59,14 @@ class CodingAssistantAgentSpec extends Specification {
     def codeSnippet = new CodingAssistantAgent.CodeSnippet("Implementation: // code")
     ai.withLlm({ it.is(agent.reviewLlmOptions) }) >> ai
     ai.withPromptContributor(_) >> ai
-    ai.generateText(_) >> "review text"
+    ai.generateText(_) >> "High risk of errors in patch handling. Missing tests."
 
     when:
     def review = agent.reviewCode(userInput, codeSnippet, ai)
 
     then:
-    review.review == "review text"
+    review.review.contains("Findings:")
+    review.review.contains("Tests:")
     review.reviewer == Personas.REVIEWER
     1 * ai.generateText({
       it.contains("repository code reviewer") &&
@@ -82,5 +83,42 @@ class CodingAssistantAgentSpec extends Specification {
 
     then:
     thrown(NullPointerException)
+  }
+
+  def "reviewCode enforces word limit"() {
+    given:
+    Ai ai = Mock(Ai)
+    UserInput userInput = new UserInput("Need review")
+    def longReview = (1..400).collect { "word$it" }.join(" ")
+    def snippet = new CodingAssistantAgent.CodeSnippet("Implementation: // code")
+    ai.withLlm({ it.is(agent.reviewLlmOptions) }) >> ai
+    ai.withPromptContributor(_) >> ai
+    ai.generateText(_) >> longReview
+
+    when:
+    def review = agent.reviewCode(userInput, snippet, ai)
+
+    then:
+    review.review.split(/\\s+/).length <= agent.reviewWordCount
+    review.review.contains("Findings:")
+    review.review.contains("Tests:")
+  }
+
+  def "craftCode adds structured sections when missing"() {
+    given:
+    Ai ai = Mock(Ai)
+    UserInput userInput = new UserInput("Implement search command.")
+    def snippet = new CodingAssistantAgent.CodeSnippet("println 'hi'")
+    ai.withLlm({ it.is(agent.craftLlmOptions) }) >> ai
+    ai.withPromptContributor(_) >> ai
+    ai.createObject(_, CodingAssistantAgent.CodeSnippet) >> snippet
+
+    when:
+    def result = agent.craftCode(userInput, ai)
+
+    then:
+    result.text.contains("Plan:")
+    result.text.contains("Implementation:")
+    result.text.contains("Notes:")
   }
 }
