@@ -13,7 +13,7 @@ Goal: deliver a local-only CLI coding assistant (Spring Shell + Embabel) that us
 The Challenge: local ollama models are great at code completion but can be terse or hallucinate APIs in chat mode.
 Enforce Structured Output (JSON or XML tags) for tool usage. Local models struggle to "decide" to call a tool unless the system prompt explicitly forces a specific output format.
 
-- 1.6 [ ] Implement System Prompt Templating. Don't just have one persona. 
+- 1.6 [x] Implement System Prompt Templating. Don't just have one persona. 
   - Coder Mode: Strict, outputs code blocks only. 
   - Architect Mode: Verbose, explains reasoning. 
   - Reviewer Mode: Critical, looks for security flaws.

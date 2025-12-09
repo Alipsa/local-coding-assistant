@@ -28,7 +28,7 @@ class CodingAssistantAgentSpec extends Specification {
     }
     def snippet = new CodingAssistantAgent.CodeSnippet("code")
     ai.withLlm({ it.is(agent.craftLlmOptions) }) >> ai
-    ai.withPromptContributor(_) >> ai
+    ai.withPromptContributor(Personas.CODER) >> ai
     ai.createObject(_, CodingAssistantAgent.CodeSnippet) >> snippet
 
     when:
@@ -43,7 +43,8 @@ class CodingAssistantAgentSpec extends Specification {
       it.contains("Notes:") &&
       it.contains("Indent with 2 spaces") &&
       it.contains("Search and Replace Blocks") &&
-      it.contains("Spock")
+      it.contains("Spock") &&
+      it.contains("Coder Mode")
     }, CodingAssistantAgent.CodeSnippet)
     agent.llmModel == "test-model"
     agent.craftTemperature == 0.65d
@@ -58,7 +59,7 @@ class CodingAssistantAgentSpec extends Specification {
     }
     def codeSnippet = new CodingAssistantAgent.CodeSnippet("Implementation: // code")
     ai.withLlm({ it.is(agent.reviewLlmOptions) }) >> ai
-    ai.withPromptContributor(_) >> ai
+    ai.withPromptContributor(Personas.REVIEWER) >> ai
     ai.generateText(_) >> "High risk of errors in patch handling. Missing tests."
 
     when:
@@ -73,7 +74,8 @@ class CodingAssistantAgentSpec extends Specification {
       it.contains("testing strategy") &&
       it.contains("2-space indentation") &&
       it.contains("Spock coverage") &&
-      it.contains("User request:")
+      it.contains("User request:") &&
+      it.contains("security")
     })
   }
 
@@ -110,7 +112,7 @@ class CodingAssistantAgentSpec extends Specification {
     UserInput userInput = new UserInput("Implement search command.")
     def snippet = new CodingAssistantAgent.CodeSnippet("println 'hi'")
     ai.withLlm({ it.is(agent.craftLlmOptions) }) >> ai
-    ai.withPromptContributor(_) >> ai
+    ai.withPromptContributor(Personas.CODER) >> ai
     ai.createObject(_, CodingAssistantAgent.CodeSnippet) >> snippet
 
     when:
@@ -120,5 +122,26 @@ class CodingAssistantAgentSpec extends Specification {
     result.text.contains("Plan:")
     result.text.contains("Implementation:")
     result.text.contains("Notes:")
+  }
+
+  def "craftCode supports architect mode with reasoning emphasis"() {
+    given:
+    Ai ai = Mock(Ai)
+    UserInput userInput = new UserInput("Design a search context packer.")
+    def snippet = new CodingAssistantAgent.CodeSnippet("Plan:\n- design\nImplementation:\n// code\nNotes:\n- none")
+    ai.withLlm({ it.is(agent.craftLlmOptions) }) >> ai
+    ai.withPromptContributor(Personas.ARCHITECT) >> ai
+    ai.createObject(_, CodingAssistantAgent.CodeSnippet) >> snippet
+
+    when:
+    def result = agent.craftCode(userInput, ai, PersonaMode.ARCHITECT)
+
+    then:
+    result.text.contains("Plan:")
+    1 * ai.createObject({
+      it.contains("Architect Mode") &&
+      it.contains("reasoning") &&
+      it.contains("repository-aware")
+    }, CodingAssistantAgent.CodeSnippet)
   }
 }

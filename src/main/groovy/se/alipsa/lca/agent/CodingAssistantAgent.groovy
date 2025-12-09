@@ -47,6 +47,21 @@ class Personas {
       "Critically inspects local assistant features, expects 2-space indentation, @CompileStatic, and test "
         + "coverage notes."
     )
+
+  static final RoleGoalBackstory ARCHITECT = RoleGoalBackstory
+    .withRole("Software Architect")
+    .andGoal("Explain design trade-offs and guide structural changes for the local coding assistant")
+    .andBackstory(
+      "Balances clarity with pragmatism, highlights risks, and keeps designs aligned with Groovy 5 and "
+        + "Spring Boot 3.5 conventions."
+    )
+}
+
+@CompileStatic
+enum PersonaMode {
+  CODER,
+  ARCHITECT,
+  REVIEWER
 }
 
 @Agent(description = "Generate a code snippet or function based on user input and review it")
@@ -139,11 +154,18 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
 
   @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai) {
+    craftCode(userInput, ai, PersonaMode.CODER)
+  }
+
+  @Action
+  CodeSnippet craftCode(UserInput userInput, Ai ai, PersonaMode personaMode) {
     Objects.requireNonNull(ai, "Ai must not be null")
-    String craftPrompt = buildCraftCodePrompt(userInput)
+    Objects.requireNonNull(personaMode, "Persona mode must not be null")
+    def template = personaTemplate(personaMode)
+    String craftPrompt = buildCraftCodePrompt(userInput, personaMode)
     CodeSnippet snippet = ai
       .withLlm(craftLlmOptions)
-      .withPromptContributor(Personas.CODER)
+      .withPromptContributor(template.persona)
       .createObject(craftPrompt, CodeSnippet)
     snippet.text = enforceCodeFormat(snippet.text)
     snippet
@@ -170,7 +192,8 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     webSearchAgent.search(query)
   }
 
-  protected String buildCraftCodePrompt(UserInput userInput) {
+  protected String buildCraftCodePrompt(UserInput userInput, PersonaMode personaMode) {
+    def template = personaTemplate(personaMode)
     """
 You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
 Follow these rules:
@@ -179,6 +202,7 @@ Follow these rules:
 - Map changes to existing files when possible and mention target file paths.
 - Prefer Search and Replace Blocks for multi-file updates; avoid TODO placeholders.
 - Include imports, validation, and error handling; favor testable designs and mention Spock coverage ideas.
+${template.instructions}
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
 
 User request:
@@ -203,6 +227,7 @@ You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
 Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
 Reference likely target files or layers and call out missing Spock coverage.
+Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
 Limit narrative to ${reviewWordCount} words.
 
 Code snippet to review:
@@ -266,5 +291,34 @@ ${codeText.trim()}
 Notes:
 - Structured sections added automatically for consistency.
 """.stripIndent().trim()
+  }
+
+  protected PersonaTemplate personaTemplate(PersonaMode mode) {
+    switch (mode) {
+      case PersonaMode.ARCHITECT:
+        return new PersonaTemplate(
+          Personas.ARCHITECT,
+          "Architect Mode: Describe reasoning and trade-offs before code; include architecture notes."
+        )
+      case PersonaMode.REVIEWER:
+        return new PersonaTemplate(
+          Personas.REVIEWER,
+          "Reviewer Mode: Be critical and flag security issues, unsafe IO, missing validation, and "
+            + "deployment risks."
+        )
+      case PersonaMode.CODER:
+      default:
+        return new PersonaTemplate(
+          Personas.CODER,
+          "Coder Mode: Keep narration minimal; prefer code blocks and concise repository-scoped steps."
+        )
+    }
+  }
+
+  @Canonical
+  @CompileStatic
+  static class PersonaTemplate {
+    RoleGoalBackstory persona
+    String instructions
   }
 }
