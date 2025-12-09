@@ -19,6 +19,9 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 
 ## Configuration
 - Update `spring.ai.ollama.base-url` and `embabel.models.default-llm` in `src/main/resources/application.properties` to point at your Ollama host and preferred model.
+- Tune agent behavior via:
+  - `assistant.llm.model`, `assistant.llm.temperature.craft`, `assistant.llm.temperature.review`
+  - `snippetWordCount`, `reviewWordCount`
 - For agent-to-agent (A2A) interoperability, follow `docs/a2a.md`.
 
 ## Roadmap focus
