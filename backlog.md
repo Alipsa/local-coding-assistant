@@ -7,7 +7,7 @@ Goal: deliver a local-only CLI coding assistant (Spring Shell + Embabel) that us
 - 1.2 [x] Ensure actions use injected `Ai` (controller currently passes null) and propagate model/temperature options from config.
 - 1.3 [x] Add guardrails for word counts and result formatting (code + review sections) with tests.
 - 1.4 [x] Document/validate parameters via properties (`snippetWordCount`, `reviewWordCount`, default model).
-- 1.5 [ ] Fix the REST controller’s null Ai handling and update the REST tests to cover full flows.
+- 1.5 [x] Fix the REST controller’s null Ai handling and update the REST tests to cover full flows.
 
 ### The "Persona" Problem
 The Challenge: local ollama models are great at code completion but can be terse or hallucinate APIs in chat mode.
