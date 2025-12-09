@@ -22,6 +22,7 @@ import se.alipsa.lca.tools.WebSearchTool
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Objects
 
 @CompileStatic
 class Personas {
@@ -91,17 +92,30 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
 
   private final int snippetWordCount
   private final int reviewWordCount
+  protected final String llmModel
+  protected final double craftTemperature
+  protected final double reviewTemperature
+  protected final LlmOptions craftLlmOptions
+  protected final LlmOptions reviewLlmOptions
   private final FileEditingTool fileEditingAgent
   private final WebSearchTool webSearchAgent
 
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
     @Value('${reviewWordCount:150}') int reviewWordCount,
+    @Value('${assistant.llm.model:${embabel.models.default-llm:qwen3-coder:30b}}') String llmModel,
+    @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
+    @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent
   ) {
     this.snippetWordCount = snippetWordCount
     this.reviewWordCount = reviewWordCount
+    this.llmModel = llmModel
+    this.craftTemperature = craftTemperature
+    this.reviewTemperature = reviewTemperature
+    this.craftLlmOptions = LlmOptions.withModel(llmModel).withTemperature(craftTemperature)
+    this.reviewLlmOptions = LlmOptions.withModel(llmModel).withTemperature(reviewTemperature)
     this.fileEditingAgent = fileEditingAgent
     this.webSearchAgent = webSearchAgent
   }
@@ -112,9 +126,10 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   )
   @Action
   ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
+    Objects.requireNonNull(ai, "Ai must not be null")
     String reviewPrompt = buildReviewPrompt(userInput, codeSnippet)
     String review = ai
-      .withAutoLlm()
+      .withLlm(reviewLlmOptions)
       .withPromptContributor(Personas.REVIEWER)
       .generateText(reviewPrompt)
 
@@ -123,9 +138,10 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
 
   @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai) {
+    Objects.requireNonNull(ai, "Ai must not be null")
     String craftPrompt = buildCraftCodePrompt(userInput)
     ai
-      .withLlm(LlmOptions.withAutoLlm().withTemperature(.7))
+      .withLlm(craftLlmOptions)
       .withPromptContributor(Personas.CODER)
       .createObject(craftPrompt, CodeSnippet)
   }

@@ -10,7 +10,15 @@ class CodingAssistantAgentSpec extends Specification {
 
   FileEditingTool fileEditingTool = Stub(FileEditingTool)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
-  CodingAssistantAgent agent = new CodingAssistantAgent(220, 180, fileEditingTool, webSearchTool)
+  CodingAssistantAgent agent = new CodingAssistantAgent(
+    220,
+    180,
+    "test-model",
+    0.65d,
+    0.25d,
+    fileEditingTool,
+    webSearchTool
+  )
 
   def "craftCode builds a repository-aware plan and output format"() {
     given:
@@ -19,7 +27,7 @@ class CodingAssistantAgentSpec extends Specification {
       getContent() >> "Add a /search command that accepts file globs and returns context chunks."
     }
     def snippet = new CodingAssistantAgent.CodeSnippet("code")
-    ai.withLlm(_) >> ai
+    ai.withLlm({ it.is(agent.craftLlmOptions) }) >> ai
     ai.withPromptContributor(_) >> ai
     ai.createObject(_, CodingAssistantAgent.CodeSnippet) >> snippet
 
@@ -37,6 +45,9 @@ class CodingAssistantAgentSpec extends Specification {
       it.contains("Search and Replace Blocks") &&
       it.contains("Spock")
     }, CodingAssistantAgent.CodeSnippet)
+    agent.llmModel == "test-model"
+    agent.craftTemperature == 0.65d
+    agent.reviewTemperature == 0.25d
   }
 
   def "reviewCode enforces repository fit and testing considerations"() {
@@ -46,7 +57,7 @@ class CodingAssistantAgentSpec extends Specification {
       getContent() >> "User wants to expand file editing support to patches."
     }
     def codeSnippet = new CodingAssistantAgent.CodeSnippet("Implementation: // code")
-    ai.withAutoLlm() >> ai
+    ai.withLlm({ it.is(agent.reviewLlmOptions) }) >> ai
     ai.withPromptContributor(_) >> ai
     ai.generateText(_) >> "review text"
 
@@ -63,5 +74,13 @@ class CodingAssistantAgentSpec extends Specification {
       it.contains("Spock coverage") &&
       it.contains("User request:")
     })
+  }
+
+  def "craftCode rejects null Ai"() {
+    when:
+    agent.craftCode(new UserInput("hi"), null)
+
+    then:
+    thrown(NullPointerException)
   }
 }
