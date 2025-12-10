@@ -21,8 +21,16 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 - Update `spring.ai.ollama.base-url` and `embabel.models.default-llm` in `src/main/resources/application.properties` to point at your Ollama host and preferred model.
 - Tune agent behavior via:
   - `assistant.llm.model`, `assistant.llm.temperature.craft`, `assistant.llm.temperature.review`
+  - `assistant.llm.max-tokens`, `assistant.system-prompt`
   - `snippetWordCount`, `reviewWordCount`
 - For agent-to-agent (A2A) interoperability, follow `docs/a2a.md`.
+
+## Spring Shell commands
+- `chat` (`/chat`): Send prompts; supports personas (CODER/ARCHITECT/REVIEWER), session-scoped model/temperature/max tokens, and optional system prompt overrides.
+- `review` (`/review`): Review code with the configured review temperature/model and structured Findings/Tests output.
+- `search` (`/search`): Use the agent’s web search tool; limit results with `--limit`.
+- `paste` (`/paste`): Paste multiline input (end with `/end`) and optionally forward it to `chat`.
+- `edit` (`/edit`): Open `$EDITOR` with seed text to draft prompts; optionally send the saved text to `chat`.
 
 ## Roadmap focus
 - Rich editing and review loops driven from the CLI.

@@ -29,6 +29,8 @@ embabel.models.default-llm=qwen3-coder:30b
 assistant.llm.model=${embabel.models.default-llm:qwen3-coder:30b}
 assistant.llm.temperature.craft=0.7      # higher for creative code generation
 assistant.llm.temperature.review=0.35    # lower for concise, deterministic reviews
+assistant.llm.max-tokens=0               # optional ceiling; 0 means unset
+assistant.system-prompt=                 # optional extra system guidance for all prompts
 snippetWordCount=200                     # narrative guidance limit for crafted code prompts
 reviewWordCount=150                      # narrative limit for reviews; code blocks may exceed this
 ```
