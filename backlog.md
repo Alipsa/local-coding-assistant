@@ -93,7 +93,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 10.2 [ ] Document all commands, options, and expected workflows in `README.md` and `docs/`.
 - 10.3 [ ] Provide quickstart examples showing edit/review/search/git flows end-to-end.
 
-## 11) Optional A2A interoperability
+## 11) A2A (Agent-to-Agent Interoperability) interoperability
 - 11.1 [ ] Add a profile/command to expose the agent over A2A while keeping inference on Ollama.
 - 11.2 [ ] Document the A2A usage caveats for users who want remote UI access but local models.
 
@@ -104,3 +104,57 @@ Why: When a user asks "Where is the authentication logic?", the agent cannot see
 ## 13) Token Counting Utility
 Why: You will hit ContextLengthExceeded errors frequently.
 - 13.1 [ ] Integrate a Java implementation of a BPE tokenizer (compatible with Llama/DeepSeek) to count tokens locally in Java before sending requests to Ollama.
+
+## 14) Rest integration
+Make sure the REST interface can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
+overlap between CLI, A2A, and REST functionality. 
+
+## 15) Security Hardening
+
+Security is a critical concern for a tool that reads, writes, and executes code. The following measures aim to protect the user's system, ensure data privacy, and promote the generation of secure code.
+
+### 15.1 Operational Safeguards & Sandboxing
+
+Prevent the agent from performing destructive or unintended actions on the local system.
+
+- **15.1.1 [ ] Interactive Confirmation for Destructive Operations:** Implement a strict confirmation gate (`[y/N]`) for any command that modifies the file system (`rm`, `mv`), applies git changes (`git apply`, `git push`), or executes arbitrary scripts. This expands on items `7.5` and `8.4`.
+- **15.1.2 [ ] Filesystem Access Control:** Strictly limit file I/O to the project directory. Implement and enforce an `.aiexclude` file (similar to `.gitignore`) to prevent the agent from accessing sensitive files like `.env`, `credentials`, `*.pem`, or IDE configuration files.
+- **15.1.3 [ ] Command Execution Sandboxing:** When executing code or shell commands (`/run`), do so within a sandboxed environment (e.g., a Docker container) to isolate the process from the host system. The sandbox should have no network access by default unless explicitly requested.
+- **15.1.4 [ ] Dependency Vulnerability Scanning:** When the agent suggests adding a new dependency (e.g., in `pom.xml` or `build.gradle`), automatically scan it for known vulnerabilities using tools like OWASP Dependency-Check or the `gradle-dependency-check` plugin. Warn the user if vulnerabilities are found.
+
+### 15.2 Secure Coding & Review
+
+Enhance the agent's ability to write and review code with security in mind.
+
+- **15.2.1 [ ] Dedicated Security Persona:** Create a specialized "Security Reviewer" persona. This prompt will instruct the LLM to analyze code specifically for common vulnerabilities (e.g., OWASP Top 10), such as injection flaws, hardcoded secrets, insecure dependencies, and improper error handling.
+- **15.2.2 [ ] Integrate Static Analysis (SAST):** Augment the `/review` command to run a lightweight, fast SAST tool (e.g., Semgrep with a default ruleset) in addition to the LLM-based review. The agent can then summarize the SAST findings, providing a more reliable analysis than an LLM alone.
+- **15.2.3 [ ] Secret Detection:** Before committing code with `commit-suggest`, automatically scan the diff for hardcoded secrets (API keys, passwords, tokens). If a potential secret is found, warn the user and prevent the commit.
+
+### 15.3 Application & API Security
+
+Secure the LCA application itself, particularly its REST interface.
+
+- **15.3.1 [ ] Secure the REST API:** The REST API should be disabled by default. If enabled, secure it using Spring Security.
+    - Implement API Key authentication for machine-to-machine communication.
+    - For user-facing scenarios, consider standard protocols like OAuth2/OIDC.
+- **15.3.2 [ ] Enforce HTTPS:** Require TLS for all REST API communication. Provide guidance on generating self-signed certificates for local development.
+- **15.3.3 [ ] Input Validation:** Apply rigorous input validation on all CLI arguments and API request payloads to prevent command injection and other parsing-related vulnerabilities.
+- **15.3.4 [ ] User Management (Optional Service):** Re-evaluate the need for built-in user/role management. This is only necessary if the application is intended to be run as a shared, multi-tenant service. For a local-first CLI, OS-level user permissions are sufficient. If implemented, use Spring Security's `JdbcUserDetailsManager` with a robust password hashing scheme (e.g., bcrypt).
+
+### 15.4 Data Privacy
+
+Uphold the "local-first" promise and protect user data.
+
+- **15.4.1 [ ] Guarantee Local-Only Operation:** Explicitly document and guarantee that no code, prompts, or project data is ever sent to a third-party cloud service. All processing happens locally via Ollama.
+- **15.4.2 [ ] No Telemetry by Default:** Do not collect or transmit any usage data or telemetry without explicit, opt-in consent from the user.
+- **15.4.3 [ ] Log Sanitization:** Review all logging statements to ensure they do not accidentally log sensitive content from files, prompts, or agent responses (e.g., API keys, personal information).
+
+### 15.5 A2A (Agent-to-Agent) Security
+
+When exposing the LCA for agent-to-agent communication, additional security layers are required to prevent unauthorized access and abuse.
+
+- **15.5.1 [ ] A2A Disabled by Default:** Ensure the A2A endpoint is disabled by default and requires explicit user configuration to activate, inheriting the same principle as the general REST API (`15.3.1`).
+- **15.5.2 [ ] Mutual TLS (mTLS) Authentication:** For server-to-server A2A communication, mandate mTLS. Both the client (calling agent) and the server (LCA) must present valid, trusted certificates to establish a connection, providing stronger, identity-based authentication than API keys alone.
+- **15.5.3 [ ] Scoped Access Control:** Implement a scope-based authorization model for remote agents. Define granular permissions (e.g., `file:read`, `file:write`, `git:read`, `command:execute`) and require connecting agents to be granted specific scopes. A remote agent must operate under the principle of least privilege.
+- **15.5.4 [ ] Rate Limiting and Throttling:** Protect the A2A endpoint from denial-of-service attacks or runaway clients by implementing strict rate limiting on incoming requests.
+- **15.5.5 [ ] Audit Trail:** Maintain a detailed audit log of all operations initiated through the A2A interface, including the identity of the calling agent (from its certificate), the requested operation, and the outcome.
