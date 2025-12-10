@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 @Component
 @CompileStatic
@@ -42,24 +43,23 @@ class SessionState {
     Integer maxTokens,
     String systemPrompt
   ) {
-    SessionSettings current = sessions.computeIfAbsent(
-      sessionId ?: "default"
-    ) { new SessionSettings(it, null, null, null, null, null) }
-
-    SessionSettings updated = new SessionSettings(
-      sessionId ?: current.sessionId,
-      model != null ? model : current.model,
-      craftTemperature != null ? craftTemperature : current.craftTemperature,
-      reviewTemperature != null ? reviewTemperature : current.reviewTemperature,
-      maxTokens != null ? maxTokens : current.maxTokens,
-      systemPrompt != null ? systemPrompt : current.systemPrompt
-    )
-    sessions.put(updated.sessionId, updated)
-    updated
+    String key = sessionId ?: "default"
+    sessions.compute(key) { _, existing ->
+      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null)
+      new SessionSettings(
+        key,
+        model != null ? model : current.model,
+        craftTemperature != null ? craftTemperature : current.craftTemperature,
+        reviewTemperature != null ? reviewTemperature : current.reviewTemperature,
+        maxTokens != null ? maxTokens : current.maxTokens,
+        systemPrompt != null ? systemPrompt : current.systemPrompt
+      )
+    }
   }
 
   SessionSettings getOrCreate(String sessionId) {
-    sessions.computeIfAbsent(sessionId ?: "default") {
+    String key = sessionId ?: "default"
+    sessions.computeIfAbsent(key) {
       new SessionSettings(it, null, null, null, null, null)
     }
   }
@@ -81,7 +81,7 @@ class SessionState {
 
   void appendHistory(String sessionId, String... entries) {
     String key = sessionId ?: "default"
-    List<String> sessionHistory = history.computeIfAbsent(key) { new ArrayList<>() }
+    List<String> sessionHistory = history.computeIfAbsent(key) { new CopyOnWriteArrayList<>() }
     entries.each { sessionHistory.add(it) }
   }
 
@@ -95,7 +95,8 @@ class SessionState {
     double fallbackTemperature,
     Integer maxTokens
   ) {
-    LlmOptions options = model ? LlmOptions.withModel(model) : LlmOptions.withDefaultLlm()
+    String resolvedModel = model ?: defaultModel
+    LlmOptions options = resolvedModel ? LlmOptions.withModel(resolvedModel) : LlmOptions.withDefaultLlm()
     options = options.withTemperature(temperature != null ? temperature : fallbackTemperature)
     Integer resolvedMaxTokens = (maxTokens != null && maxTokens > 0) ? maxTokens : defaultMaxTokens
     if (resolvedMaxTokens != null && resolvedMaxTokens > 0) {

@@ -142,17 +142,22 @@ class ShellCommands {
     chat(body, session, persona, null, null, null, null, null)
   }
 
+  private static final int MAX_PASTE_CHARS = 500_000
+
   private static String readFromStdIn(String endMarker) {
     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
     println "Paste your content. End with a line containing only '${endMarker}'."
-    List<String> lines = []
+    StringBuilder builder = new StringBuilder()
     String line
     while ((line = reader.readLine()) != null) {
       if (line == endMarker) {
         break
       }
-      lines.add(line)
+      if (builder.length() + line.length() + System.lineSeparator().length() > MAX_PASTE_CHARS) {
+        throw new IllegalArgumentException("Paste content exceeds ${MAX_PASTE_CHARS} characters.")
+      }
+      builder.append(line).append(System.lineSeparator())
     }
-    lines.join(System.lineSeparator())
+    builder.toString().stripTrailing()
   }
 }

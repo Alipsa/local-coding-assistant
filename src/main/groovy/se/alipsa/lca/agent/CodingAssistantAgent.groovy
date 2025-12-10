@@ -222,6 +222,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     String systemPromptOverride
   ) {
     def template = personaTemplate(personaMode)
+    String extraSystem = systemPromptOverride?.trim()
     """
 You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
 Follow these rules:
@@ -231,7 +232,7 @@ Follow these rules:
 - Prefer Search and Replace Blocks for multi-file updates; avoid TODO placeholders.
 - Include imports, validation, and error handling; favor testable designs and mention Spock coverage ideas.
 ${template.instructions}
-${systemPromptOverride ? "Additional system guidance: ${systemPromptOverride}\n" : ""}
+${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
 
 User request:
@@ -255,13 +256,14 @@ Notes:
     CodeSnippet codeSnippet,
     String systemPromptOverride
   ) {
+    String extraSystem = systemPromptOverride?.trim()
     """
 You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
 Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
 Reference likely target files or layers and call out missing Spock coverage.
 Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
-${systemPromptOverride ? "Additional system guidance: ${systemPromptOverride}\n" : ""}
+${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Limit narrative to ${reviewWordCount} words.
 
 Code snippet to review:

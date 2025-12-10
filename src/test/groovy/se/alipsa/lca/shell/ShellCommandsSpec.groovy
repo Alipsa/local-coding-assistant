@@ -6,11 +6,12 @@ import com.embabel.common.ai.model.LlmOptions
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.tools.WebSearchTool
 import spock.lang.Specification
 
 class ShellCommandsSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.6d, 0.3d, 0, "")
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "")
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   EditorLauncher editorLauncher = Stub() {
@@ -90,6 +91,22 @@ class ShellCommandsSpec extends Specification {
       _ as LlmOptions,
       ""
     )
+  }
+
+  def "search formats results"() {
+    given:
+    def results = [
+      new WebSearchTool.SearchResult("T1", "http://example.com", "S1"),
+      new WebSearchTool.SearchResult("T2", "http://example.org", "S2")
+    ]
+    agent.search(_) >> results
+
+    when:
+    def out = commands.search("query", 1)
+
+    then:
+    out.contains("T1 - http://example.com")
+    out.contains("S1")
   }
 
   def "edit returns edited text when send is false"() {
