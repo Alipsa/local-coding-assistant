@@ -7,12 +7,12 @@ import com.embabel.agent.api.annotation.Export
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.domain.library.HasContent
-import com.embabel.agent.prompt.persona.Persona
 import com.embabel.agent.prompt.persona.RoleGoalBackstory
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.core.types.Timestamped
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import groovy.transform.Canonical
+import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.lang.NonNull
@@ -22,143 +22,303 @@ import se.alipsa.lca.tools.WebSearchTool
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Objects
 
+@CompileStatic
 class Personas {
-    static final RoleGoalBackstory CODER = RoleGoalBackstory
-            .withRole("Expert Software Engineer")
-            .andGoal("Write high-quality, efficient, and well-documented code snippets or functions")
-            .andBackstory("Has 20 years of experience in multiple programming languages, specializing in problem-solving and clean code architecture");
+  static final RoleGoalBackstory CODER = RoleGoalBackstory
+    .withRole("Repository-Aware Software Engineer")
+    .andGoal(
+      "Deliver production-ready Groovy/Spring Boot code that aligns with the local coding assistant "
+        + "project structure and tests"
+    )
+    .andBackstory(
+      "Builds local-only development tooling, maps changes to concrete files, and keeps outputs structured "
+        + "for downstream tools."
+    )
 
-    static final Persona REVIEWER = new Persona(
-            "Code Review Expert",
-            "Senior Staff Engineer",
-            "Thorough and constructive",
-            "Ensure code quality, maintainability, and adherence to best practices"
-    );
+  static final RoleGoalBackstory REVIEWER = RoleGoalBackstory
+    .withRole("Repository Code Reviewer")
+    .andGoal(
+      "Identify correctness, maintainability, and integration risks in proposed changes before they land in "
+        + "the codebase"
+    )
+    .andBackstory(
+      "Critically inspects local assistant features, expects 2-space indentation, @CompileStatic, and test "
+        + "coverage notes."
+    )
+
+  static final RoleGoalBackstory ARCHITECT = RoleGoalBackstory
+    .withRole("Software Architect")
+    .andGoal("Explain design trade-offs and guide structural changes for the local coding assistant")
+    .andBackstory(
+      "Balances clarity with pragmatism, highlights risks, and keeps designs aligned with Groovy 5 and "
+        + "Spring Boot 3.5 conventions."
+    )
 }
 
+@CompileStatic
+enum PersonaMode {
+  CODER,
+  ARCHITECT,
+  REVIEWER
+}
 
 @Agent(description = "Generate a code snippet or function based on user input and review it")
 @Profile("!test")
+@CompileStatic
 class CodingAssistantAgent {
 
-    @Canonical
-    static class CodeSnippet {
-        String text
+  @Canonical
+  @CompileStatic
+  static class CodeSnippet {
+    String text
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ReviewedCodeSnippet implements HasContent, Timestamped {
+    CodeSnippet codeSnippet
+    String review
+    RoleGoalBackstory reviewer
+
+    @Override
+    @NonNull
+    Instant getTimestamp() {
+      Instant.now()
     }
 
-    @Canonical
-    static class ReviewedCodeSnippet implements HasContent, Timestamped {
-        CodeSnippet codeSnippet
-        String review
-        Persona reviewer
+    @Override
+    @NonNull
+    String getContent() {
+      """
+# Code Snippet
+${codeSnippet.text}
 
-        @Override
-        @NonNull
-        Instant getTimestamp() {
-            Instant.now()
-        }
+# Review
+${review}
 
-        @Override
-        @NonNull
-        String getContent() {
-            """
-                            # Code Snippet
-                            ${codeSnippet.text}
-                            
-                            # Review
-                            ${review}
-                            
-                            # Reviewer
-                            ${reviewer.getName()}, ${getTimestamp().atZone(ZoneId.systemDefault())
-                                .format(DateTimeFormatter.ofPattern("EEEE, MMMM dd, yyyy"))}
-                            """.trim()
-        }
+# Reviewer
+${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("EEEE, MMMM dd, yyyy"))}
+""".stripIndent().trim()
     }
+  }
 
-    private final int snippetWordCount
-    private final int reviewWordCount
-    private final FileEditingTool fileEditingAgent
-    private final WebSearchTool webSearchAgent
+  private final int snippetWordCount
+  private final int reviewWordCount
+  protected final String llmModel
+  protected final double craftTemperature
+  protected final double reviewTemperature
+  protected final LlmOptions craftLlmOptions
+  protected final LlmOptions reviewLlmOptions
+  private final FileEditingTool fileEditingAgent
+  private final WebSearchTool webSearchAgent
 
-    CodingAssistantAgent(
-        @Value('${snippetWordCount:200}') int snippetWordCount,
-        @Value('${reviewWordCount:150}') int reviewWordCount,
-        FileEditingTool fileEditingAgent,
-        WebSearchTool webSearchAgent
-    ) {
-        this.snippetWordCount = snippetWordCount
-        this.reviewWordCount = reviewWordCount
-        this.fileEditingAgent = fileEditingAgent
-        this.webSearchAgent = webSearchAgent
+  CodingAssistantAgent(
+    @Value('${snippetWordCount:200}') int snippetWordCount,
+    @Value('${reviewWordCount:150}') int reviewWordCount,
+    @Value('${assistant.llm.model:qwen3-coder:30b}') String llmModel,
+    @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
+    @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
+    FileEditingTool fileEditingAgent,
+    WebSearchTool webSearchAgent
+  ) {
+    this.snippetWordCount = snippetWordCount
+    this.reviewWordCount = reviewWordCount
+    this.llmModel = llmModel
+    this.craftTemperature = craftTemperature
+    this.reviewTemperature = reviewTemperature
+    this.craftLlmOptions = LlmOptions.withModel(llmModel).withTemperature(craftTemperature)
+    this.reviewLlmOptions = LlmOptions.withModel(llmModel).withTemperature(reviewTemperature)
+    this.fileEditingAgent = fileEditingAgent
+    this.webSearchAgent = webSearchAgent
+  }
+
+  @AchievesGoal(
+    description = "The code snippet has been crafted and reviewed by a senior engineer",
+    export = @Export(remote = true, name = "writeAndReviewCode")
+  )
+  @Action
+  ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
+    Objects.requireNonNull(ai, "Ai must not be null")
+    String reviewPrompt = buildReviewPrompt(userInput, codeSnippet)
+    String review = ai
+      .withLlm(reviewLlmOptions)
+      .withPromptContributor(Personas.REVIEWER)
+      .generateText(reviewPrompt)
+    String formattedReview = enforceReviewFormat(review)
+
+    new ReviewedCodeSnippet(codeSnippet, formattedReview, Personas.REVIEWER)
+  }
+
+  @Action
+  CodeSnippet craftCode(UserInput userInput, Ai ai) {
+    craftCode(userInput, ai, PersonaMode.CODER)
+  }
+
+  @Action
+  CodeSnippet craftCode(UserInput userInput, Ai ai, PersonaMode personaMode) {
+    Objects.requireNonNull(ai, "Ai must not be null")
+    Objects.requireNonNull(personaMode, "Persona mode must not be null")
+    def template = personaTemplate(personaMode)
+    String craftPrompt = buildCraftCodePrompt(userInput, personaMode)
+    CodeSnippet snippet = ai
+      .withLlm(craftLlmOptions)
+      .withPromptContributor(template.persona)
+      .createObject(craftPrompt, CodeSnippet)
+    snippet.text = enforceCodeFormat(snippet.text)
+    snippet
+  }
+
+  @Action(description = "Write content to a file. This will overwrite the file if it exists.")
+  String writeFile(String filePath, String content) {
+    fileEditingAgent.writeFile(filePath, content)
+  }
+
+  @Action(description = "Replace content in a file.")
+  String replace(String filePath, String oldString, String newString) {
+    fileEditingAgent.replace(filePath, oldString, newString)
+  }
+
+  @Action(description = "Delete a file.")
+  String deleteFile(String filePath) {
+    fileEditingAgent.deleteFile(filePath)
+  }
+
+  @Action(description = "Search the web for a given query")
+  @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
+  List<WebSearchTool.SearchResult> search(String query) {
+    webSearchAgent.search(query)
+  }
+
+  protected String buildCraftCodePrompt(UserInput userInput, PersonaMode personaMode) {
+    def template = personaTemplate(personaMode)
+    """
+You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
+Follow these rules:
+- Indent with 2 spaces and keep lines under 120 characters.
+- Use Groovy 5.0.3 with @CompileStatic when possible; avoid deprecated APIs.
+- Map changes to existing files when possible and mention target file paths.
+- Prefer Search and Replace Blocks for multi-file updates; avoid TODO placeholders.
+- Include imports, validation, and error handling; favor testable designs and mention Spock coverage ideas.
+${template.instructions}
+Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
+
+User request:
+${userInput.getContent()}
+
+Respond with:
+Plan:
+- short bullet list of steps rooted in the repository
+Implementation:
+```groovy
+// target-file-or-class
+// implementation
+```
+Notes:
+- risks, required configuration, and follow-up tasks
+""".stripIndent().trim()
+  }
+
+  protected String buildReviewPrompt(UserInput userInput, CodeSnippet codeSnippet) {
+    """
+You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
+Assess the proposal for correctness, repository fit, error handling, and testing strategy.
+Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
+Reference likely target files or layers and call out missing Spock coverage.
+Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
+Limit narrative to ${reviewWordCount} words.
+
+Code snippet to review:
+${codeSnippet.text}
+
+User request:
+${userInput.getContent()}
+
+Respond with sections:
+Findings: bullet points starting with High/Medium/Low
+Tests: list the specific tests or scenarios to validate
+""".stripIndent().trim()
+  }
+
+  protected String enforceReviewFormat(String review) {
+    String limitedReview = enforceWordLimit(review, reviewWordCount)
+    boolean hasFindings = limitedReview =~ /(?im)^Findings:/
+    boolean hasTests = limitedReview =~ /(?im)^Tests:/
+    if (hasFindings && hasTests) {
+      return limitedReview
     }
+    StringBuilder builder = new StringBuilder()
+    if (!hasFindings) {
+      builder.append("Findings:\n- ").append(limitedReview.trim()).append('\n')
+    } else {
+      builder.append(limitedReview.trim()).append('\n')
+    }
+    if (!hasTests) {
+      builder.append("Tests:\n- Cover happy-path and failure-path behavior with Spock.")
+    }
+    enforceWordLimit(builder.toString().trim(), reviewWordCount)
+  }
 
-    @AchievesGoal(
-            description = "The code snippet has been crafted and reviewed by a senior engineer",
-            export = @Export(remote = true, name = "writeAndReviewCode")
-    )
-    @Action
-    ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
-        def review = ai
-                .withAutoLlm()
-                .withPromptContributor(Personas.REVIEWER)
-                .generateText("""
-                                You will be given a code snippet to review.
-                                Review it in ${reviewWordCount} words or less.
-                                Consider whether or not the code is correct, efficient, and well-documented.
-                                Also consider whether the code is appropriate given the original user input.
-                                
-                                # Code Snippet
-                                ${codeSnippet.text}
-                                
-                                # User input that inspired the code
-                                ${userInput.getContent()}
-                                """.trim());
+  protected String enforceWordLimit(String text, int limit) {
+    if (text == null || limit <= 0) {
+      return ""
+    }
+    String[] words = text.trim().split(/\s+/)
+    if (words.length <= limit) {
+      return text.trim()
+    }
+    String limited = words[0..<limit].join(" ")
+    return limited + "..."
+  }
 
-        new ReviewedCodeSnippet(
-                codeSnippet,
-                review,
-                Personas.REVIEWER
+  protected String enforceCodeFormat(String codeText) {
+    if (codeText == null) {
+      return ""
+    }
+    boolean hasPlan = codeText =~ /(?im)^Plan:/
+    boolean hasImplementation = codeText =~ /(?im)^Implementation:/
+    boolean hasNotes = codeText =~ /(?im)^Notes:/
+    if (hasPlan && hasImplementation && hasNotes) {
+      return codeText
+    }
+    """
+Plan:
+- See implementation below
+Implementation:
+${codeText.trim()}
+Notes:
+- Structured sections added automatically for consistency.
+""".stripIndent().trim()
+  }
+
+  protected PersonaTemplate personaTemplate(PersonaMode mode) {
+    switch (mode) {
+      case PersonaMode.ARCHITECT:
+        return new PersonaTemplate(
+          Personas.ARCHITECT,
+          "Architect Mode: Describe reasoning and trade-offs before code; include architecture notes."
+        )
+      case PersonaMode.REVIEWER:
+        return new PersonaTemplate(
+          Personas.REVIEWER,
+          "Reviewer Mode: Be critical and flag security issues, unsafe IO, missing validation, and "
+            + "deployment risks."
+        )
+      case PersonaMode.CODER:
+      default:
+        return new PersonaTemplate(
+          Personas.CODER,
+          "Coder Mode: Keep narration minimal; prefer code blocks and concise repository-scoped steps."
         )
     }
+  }
 
-    @Action
-    CodeSnippet craftCode(UserInput userInput, Ai ai) {
-        ai
-                // Higher temperature for more creative output
-                .withLlm(LlmOptions
-                        .withAutoLlm() // You can also choose a specific model or role here
-                        .withTemperature(.7)
-                )
-                .withPromptContributor(Personas.CODER)
-                .createObject("""
-                                Craft a code snippet or function in ${snippetWordCount} words or less.
-                                The code should be efficient, correct, and well-documented.
-                                Use the user's input as inspiration.
-                                
-                                # User input
-                                ${userInput.getContent()}
-                                """.trim(), CodeSnippet)
-    }
-
-    @Action(description = "Write content to a file. This will overwrite the file if it exists.")
-    String writeFile(String filePath, String content) {
-        return fileEditingAgent.writeFile(filePath, content)
-    }
-
-    @Action(description = "Replace content in a file.")
-    String replace(String filePath, String oldString, String newString) {
-        return fileEditingAgent.replace(filePath, oldString, newString)
-    }
-
-    @Action(description = "Delete a file.")
-    String deleteFile(String filePath) {
-        return fileEditingAgent.deleteFile(filePath)
-    }
-
-    @Action(description = "Search the web for a given query")
-    @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
-    List<WebSearchTool.SearchResult> search(String query) {
-        return webSearchAgent.search(query)
-    }
+  @Canonical
+  @CompileStatic
+  static class PersonaTemplate {
+    RoleGoalBackstory persona
+    String instructions
+  }
 }
