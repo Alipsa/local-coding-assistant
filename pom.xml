@@ -191,6 +191,7 @@
             <goals>
               <goal>compile</goal>
               <goal>compileTests</goal>
+              <goal>groovydoc-jar</goal>
             </goals>
           </execution>
         </executions>
@@ -227,22 +228,6 @@
         <executions>
           <execution>
             <id>attach-sources</id>
-            <goals>
-              <goal>jar</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <version>3.12.0</version>
-        <configuration>
-          <legacyMode>true</legacyMode>
-        </configuration>
-        <executions>
-          <execution>
-            <id>attach-javadocs</id>
             <goals>
               <goal>jar</goal>
             </goals>
