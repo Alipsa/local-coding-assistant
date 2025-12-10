@@ -16,7 +16,7 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 ## Coding Conventions
 
 ### General Guidelines
-- Use `@CompileStatic` annotation on Groovy classes where possible for better performance and type safety
+- Use `@CompileStatic` annotation for Groovy classes where possible for better performance and type safety
 - Indent with 2 spaces (no tabs)
 - Maximum line length is 120 characters
 - Follow existing code style and conventions in the codebase
