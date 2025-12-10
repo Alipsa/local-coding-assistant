@@ -13,7 +13,7 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 
 ## Getting started
 1. Install Java 21 and ensure the Ollama daemon is running.
-2. Pull a code-capable model. `./deepseek.sh` will install an appropriate `deepseek-coder` variant based on your RAM, or run `ollama pull deepseek-coder:6.7b`.
+2. Pull a code-capable model. `./models.sh` will install the appropriate models.
 3. Start the interactive shell: `./scripts/shell.sh`. The script sets `AGENT_APPLICATION` and launches Spring Shell with Embabel agents loaded.
 4. Begin adding agents and tools under `src/main/java/se/alipsa/lca` to shape the coding workflows (editing, reviewing, searching, git operations).
 
@@ -39,4 +39,4 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 
 ## License
 
-Apache License, Version 2.0. See `LICENSE` for details.
+MIT License. See `LICENSE` for details.
