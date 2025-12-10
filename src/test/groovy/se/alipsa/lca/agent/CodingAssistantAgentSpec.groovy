@@ -101,7 +101,7 @@ class CodingAssistantAgentSpec extends Specification {
     def review = agent.reviewCode(userInput, snippet, ai)
 
     then:
-    review.review.split(/\\s+/).length <= agent.reviewWordCount
+    review.review.split(/\s+/).length <= agent.reviewWordCount
     review.review.contains("Findings:")
     review.review.contains("Tests:")
   }
