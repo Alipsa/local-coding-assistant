@@ -5,13 +5,13 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 
 ## Technology Stack
 - **Language**: Groovy 5.0.3
-- **Framework**: Spring Boot 3.5.x
+- **Framework**: Spring Boot 3.5.7
 - **Agent Runtime**: Embabel 0.3.0+
 - **LLM Backend**: Ollama (local models only, no cloud)
 - **Default Model**: `qwen3-coder:30b`
 - **JVM**: Java 21
 - **Build Tool**: Maven
-- **Testing Framework**: Spock 2.3
+- **Testing Framework**: Spock 2.4-M7-groovy-5.0
 
 ## Coding Conventions
 
@@ -27,7 +27,7 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 - Resources and prompts: `src/main/resources/`
 
 ## Testing Guidelines
-- Write unit tests for all new functionality using Spock 2.3
+- Write unit tests for all new functionality using Spock 2.4-M7-groovy-5.0
 - Test files should be in Groovy (`.groovy` extension)
 - Name test files with the `Spec` suffix (e.g., `CodingAssistantAgentSpec.groovy`)
 - Follow the existing test patterns in the codebase
