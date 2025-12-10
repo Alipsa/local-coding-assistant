@@ -118,7 +118,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
     @Value('${reviewWordCount:150}') int reviewWordCount,
-    @Value('${assistant.llm.model:${embabel.models.default-llm:qwen3-coder:30b}}') String llmModel,
+    @Value('${assistant.llm.model:qwen3-coder:30b}') String llmModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     FileEditingTool fileEditingAgent,
