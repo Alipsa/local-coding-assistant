@@ -191,7 +191,6 @@
             <goals>
               <goal>compile</goal>
               <goal>compileTests</goal>
-              <goal>groovydoc-jar</goal>
             </goals>
           </execution>
         </executions>
@@ -231,6 +230,72 @@
             <goals>
               <goal>jar</goal>
             </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <!-- Gmaven plus does not handle groovydoc for 5.0.1, so use antrun -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>groovydoc</id>
+            <phase>prepare-package</phase>
+            <configuration>
+              <target name="groovydoc">
+                <!-- Make GroovyDoc task available -->
+                <taskdef name="groovydoc"
+                         classname="org.codehaus.groovy.ant.Groovydoc"
+                         classpathref="maven.plugin.classpath"/>
+
+                <mkdir dir="${project.build.directory}/site/groovydoc"/>
+
+                <!-- Use attributes: sourcepath + classpath -->
+                <groovydoc
+                    destdir="${project.build.directory}/site/groovydoc"
+                    use="true"
+                    private="false"
+                    windowtitle="${project.name} ${project.version} API"
+                    doctitle="${project.name} ${project.version} API"
+                    sourcepath="${project.basedir}/src/main/groovy${path.separator}${project.basedir}/src/main/java"
+                />
+              </target>
+            </configuration>
+            <goals><goal>run</goal></goals>
+          </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <version>${groovy.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-groovydoc</artifactId>
+            <version>${groovy.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-ant</artifactId>
+            <version>${groovy.version}</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <executions>
+          <execution>
+            <id>groovydoc-jar</id>
+            <phase>package</phase>
+            <goals><goal>jar</goal></goals>
+            <configuration>
+              <classifier>javadoc</classifier>
+              <classesDirectory>${project.build.directory}/site/groovydoc</classesDirectory>
+            </configuration>
           </execution>
         </executions>
       </plugin>
