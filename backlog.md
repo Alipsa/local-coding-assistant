@@ -67,40 +67,40 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 6.4 [ ] Make web search outputs usable by the agent (structured snippets) and add tests for parsing/formatting.
 
 ## 7) Git-aware operations
- - 7.1 [ ] Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.
- - 7.2 [ ] Support staging selected hunks/files after an edit command (with confirmation).
- - 7.3 [ ] Include a `commit-suggest` helper that drafts commit messages from staged diffs.
- - 7.4 [ ] Add lightweight tests for git command wrappers (mocked repo).
- - 7.5 [ ] Add a "Safety Valve".
-   - The agent should never be allowed to git push without explicit user confirmation (Y/n).
-   - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
+- 7.1 [ ] Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.
+- 7.2 [ ] Support staging selected hunks/files after an edit command (with confirmation).
+- 7.3 [ ] Include a `commit-suggest` helper that drafts commit messages from staged diffs.
+- 7.4 [ ] Add lightweight tests for git command wrappers (mocked repo).
+- 7.5 [ ] Add a "Safety Valve".
+  - The agent should never be allowed to git push without explicit user confirmation (Y/n).
+  - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
    
 ## 8) Command execution and diagnostics
- - 8.1 [ ] Provide a `run` command to execute project scripts/tests with captured logs and exit codes.
- - 8.2 [ ] Allow the agent to request runs (with a confirmation gate) and feed summarized output back into the conversation.
- - 8.3 [ ] Add timeouts and output truncation to avoid runaway executions.
- - 8.4 [ ] If the current directory is not a git repo
-   - commands like `status`, `diff`, and `commit-suggest` should gracefully inform the user that git operations are unavailable.
-   - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N]
+- 8.1 [ ] Provide a `run` command to execute project scripts/tests with captured logs and exit codes.
+- 8.2 [ ] Allow the agent to request runs (with a confirmation gate) and feed summarized output back into the conversation.
+- 8.3 [ ] Add timeouts and output truncation to avoid runaway executions.
+- 8.4 [ ] If the current directory is not a git repo
+  - commands like `status`, `diff`, and `commit-suggest` should gracefully inform the user that git operations are unavailable.
+  - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N]
 
 ## 9) Model and runtime controls
- - 9.1 [ ] Expose a `model` command to list available Ollama models and switch the active one at runtime.
- - 9.2 [ ] Add a health check that verifies connectivity to `spring.ai.ollama.base-url` before starting a session.
- - 9.3 [ ] Support automatic fallbacks to a smaller model if the default is unavailable.
+- 9.1 [ ] Expose a `model` command to list available Ollama models and switch the active one at runtime.
+- 9.2 [ ] Add a health check that verifies connectivity to `spring.ai.ollama.base-url` before starting a session.
+- 9.3 [ ] Support automatic fallbacks to a smaller model if the default is unavailable.
 
 ## 10) UX polish and docs
- - 10.1 [ ] Add streaming progress indicators and clear sectioned output for edits/reviews/search.
- - 10.2 [ ] Document all commands, options, and expected workflows in `README.md` and `docs/`.
- - 10.3 [ ] Provide quickstart examples showing edit/review/search/git flows end-to-end.
+- 10.1 [ ] Add streaming progress indicators and clear sectioned output for edits/reviews/search.
+- 10.2 [ ] Document all commands, options, and expected workflows in `README.md` and `docs/`.
+- 10.3 [ ] Provide quickstart examples showing edit/review/search/git flows end-to-end.
 
 ## 11) Optional A2A interoperability
- - 11.1 [ ] Add a profile/command to expose the agent over A2A while keeping inference on Ollama.
- - 11.2 [ ] Document the A2A usage caveats for users who want remote UI access but local models.
+- 11.1 [ ] Add a profile/command to expose the agent over A2A while keeping inference on Ollama.
+- 11.2 [ ] Document the A2A usage caveats for users who want remote UI access but local models.
 
 ## 12) The "Tree" Representation
 Why: When a user asks "Where is the authentication logic?", the agent cannot see the file structure unless you provide it.
- - 12.1 [ ] Create a tool that dumps the directory structure (respecting .gitignore) into the context so the agent can "see" the project layout.
+- 12.1 [ ] Create a tool that dumps the directory structure (respecting .gitignore) into the context so the agent can "see" the project layout.
 
 ## 13) Token Counting Utility
 Why: You will hit ContextLengthExceeded errors frequently.
- - 13.1 [ ] Integrate a Java implementation of a BPE tokenizer (compatible with Llama/DeepSeek) to count tokens locally in Java before sending requests to Ollama.
+- 13.1 [ ] Integrate a Java implementation of a BPE tokenizer (compatible with Llama/DeepSeek) to count tokens locally in Java before sending requests to Ollama.
