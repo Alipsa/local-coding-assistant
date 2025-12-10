@@ -19,11 +19,11 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - Reviewer Mode: Critical, looks for security flaws.
 
 ## 2) Spring Shell CLI bridge
-- 2.1 [ ] Add Spring Shell commands that wrap the agent (e.g., `/chat`, `/review`, `/edit`, `/search`) and stream responses.
-- 2.2 [ ] Support multiline input, conversation/session state, and optional system prompt overrides.
-- 2.3 [ ] Provide CLI flags for model/temperature/max tokens and persist last-used options per session.
-- 2.4 [ ] Add smoke tests for command wiring and basic flows.
-- 2.5 [ ] Implement a "slash command" for input. The Challenge: Pasting multiline code into a CLI is painful. 
+- 2.1 [x] Add Spring Shell commands that wrap the agent (e.g., `/chat`, `/review`, `/edit`, `/search`) and stream responses.
+- 2.2 [x] Support multiline input, conversation/session state, and optional system prompt overrides.
+- 2.3 [x] Provide CLI flags for model/temperature/max tokens and persist last-used options per session.
+- 2.4 [x] Add smoke tests for command wiring and basic flows.
+- 2.5 [x] Implement a "slash command" for input. The Challenge: Pasting multiline code into a CLI is painful. 
   - /paste: Enters a mode specifically for pasting large buffers without triggering execution on newlines. 
   - /edit: Opens the user's default $EDITOR (vim/nano/code), lets them type the prompt there, and sends it to the agent upon save/close. This is infinitely better than typing prompts in the shell.
 
@@ -285,4 +285,3 @@ Uphold the "local-first" promise and protect user data.
   - Logs explicitly avoid storing secrets or sensitive content.
   - Where detailed logs are needed (e.g., debug mode), warn the user that logs may
     contain code and should be handled accordingly.
-

@@ -141,10 +141,22 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   )
   @Action
   ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
+    reviewCode(userInput, codeSnippet, ai, null, null)
+  }
+
+  @Action
+  ReviewedCodeSnippet reviewCode(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    Ai ai,
+    LlmOptions llmOverride,
+    String systemPromptOverride
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
-    String reviewPrompt = buildReviewPrompt(userInput, codeSnippet)
+    LlmOptions options = llmOverride ?: reviewLlmOptions
+    String reviewPrompt = buildReviewPrompt(userInput, codeSnippet, systemPromptOverride)
     String review = ai
-      .withLlm(reviewLlmOptions)
+      .withLlm(options)
       .withPromptContributor(Personas.REVIEWER)
       .generateText(reviewPrompt)
     String formattedReview = enforceReviewFormat(review)
@@ -159,12 +171,24 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
 
   @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai, PersonaMode personaMode) {
+    craftCode(userInput, ai, personaMode, null, null)
+  }
+
+  @Action
+  CodeSnippet craftCode(
+    UserInput userInput,
+    Ai ai,
+    PersonaMode personaMode,
+    LlmOptions llmOverride,
+    String systemPromptOverride
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     Objects.requireNonNull(personaMode, "Persona mode must not be null")
     def template = personaTemplate(personaMode)
-    String craftPrompt = buildCraftCodePrompt(userInput, personaMode)
+    LlmOptions options = llmOverride ?: craftLlmOptions
+    String craftPrompt = buildCraftCodePrompt(userInput, personaMode, systemPromptOverride)
     CodeSnippet snippet = ai
-      .withLlm(craftLlmOptions)
+      .withLlm(options)
       .withPromptContributor(template.persona)
       .createObject(craftPrompt, CodeSnippet)
     snippet.text = enforceCodeFormat(snippet.text)
@@ -192,8 +216,13 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     webSearchAgent.search(query)
   }
 
-  protected String buildCraftCodePrompt(UserInput userInput, PersonaMode personaMode) {
+  protected String buildCraftCodePrompt(
+    UserInput userInput,
+    PersonaMode personaMode,
+    String systemPromptOverride
+  ) {
     def template = personaTemplate(personaMode)
+    String extraSystem = systemPromptOverride?.trim()
     """
 You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
 Follow these rules:
@@ -203,6 +232,7 @@ Follow these rules:
 - Prefer Search and Replace Blocks for multi-file updates; avoid TODO placeholders.
 - Include imports, validation, and error handling; favor testable designs and mention Spock coverage ideas.
 ${template.instructions}
+${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
 
 User request:
@@ -221,13 +251,19 @@ Notes:
 """.stripIndent().trim()
   }
 
-  protected String buildReviewPrompt(UserInput userInput, CodeSnippet codeSnippet) {
+  protected String buildReviewPrompt(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    String systemPromptOverride
+  ) {
+    String extraSystem = systemPromptOverride?.trim()
     """
 You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
 Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
 Reference likely target files or layers and call out missing Spock coverage.
 Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
+${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Limit narrative to ${reviewWordCount} words.
 
 Code snippet to review:
