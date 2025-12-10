@@ -1,7 +1,9 @@
 # Copilot Instructions for Local Coding Assistant
 
 ## Project Overview
-Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
+Local-first coding assistant that runs on your machine and talks only to Ollama-served models. 
+The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. 
+Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
 
 ## Technology Stack
 - **Language**: Groovy 5.0.3

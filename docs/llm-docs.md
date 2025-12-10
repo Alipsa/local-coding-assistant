@@ -8,9 +8,10 @@ The Local Coding Assistant is limited to Ollama models so everything runs locall
 
 ## Model selection
 - Default model is `qwen3-coder:30b` configured in `src/main/resources/application.properties`.
-- Use `./deepseek.sh` to install a suitable DeepSeek model based on available RAM, or pull one manually:
+  - Fallback model for simpler tasks is `gpt-oss:20b`
+- Use `./models.sh` to install the suitable models based on available RAM, or pull them manually:
   ```bash
-  ollama pull deepseek-coder:6.7b
+  ollama pull qwen3-coder:30b && ollama pull gpt-oss:20b
   ```
 - Point to a different model by updating `embabel.models.default-llm` (and `embabel.models.llms.*` if you define roles).
 
