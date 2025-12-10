@@ -38,7 +38,7 @@ src/main/
 ├── groovy/se/alipsa/lca/        # Main application code
 │   ├── agent/                   # Agent implementations
 │   ├── api/                     # API controllers
-│   └── LocalCodingAssistantApplication.java  # Spring Boot entry point
+│   └── LocalCodingAssistantApplication.groovy  # Spring Boot entry point
 ├── resources/
 │   ├── application.properties   # Configuration (Ollama URL, default model)
 │   └── prompts/                 # Agent prompts and templates
