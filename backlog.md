@@ -93,9 +93,11 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 10.2 [ ] Document all commands, options, and expected workflows in `README.md` and `docs/`.
 - 10.3 [ ] Provide quickstart examples showing edit/review/search/git flows end-to-end.
 
-## 11) A2A (Agent-to-Agent Interoperability) interoperability
-- 11.1 [ ] Add a profile/command to expose the agent over A2A while keeping inference on Ollama.
-- 11.2 [ ] Document the A2A usage caveats for users who want remote UI access but local models.
+## 11) Remove A2A (Agent-to-Agent Interoperability)
+
+- 11.1 [ ] A2A is not needed for this application and should be removed to reduce complexity.
+  Remove all A2A-related code, documentation, and configuration from the project
+  to streamline the codebase and focus on single-agent functionality.
 
 ## 12) The "Tree" Representation
 Why: When a user asks "Where is the authentication logic?", the agent cannot see the file structure unless you provide it.
@@ -105,55 +107,182 @@ Why: When a user asks "Where is the authentication logic?", the agent cannot see
 Why: You will hit ContextLengthExceeded errors frequently.
 - 13.1 [ ] Integrate a Java implementation of a BPE tokenizer (compatible with Llama/DeepSeek) to count tokens locally in Java before sending requests to Ollama.
 
-## 14) Rest integration
+## 14) REST integration
 Make sure the REST interface can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
-overlap between CLI, A2A, and REST functionality. 
+overlap between CLI and REST functionality. 
 
 ## 15) Security Hardening
 
-Security is a critical concern for a tool that reads, writes, and executes code. The following measures aim to protect the user's system, ensure data privacy, and promote the generation of secure code.
+Security is a critical concern for a tool that reads, writes, and executes code.
+The measures below aim to:
 
-### 15.1 Operational Safeguards & Sandboxing
+- Prevent destructive or unintended changes to the system.
+- Protect project data and secrets.
+- Promote the generation of secure code.
+- Avoid accidentally exposing a powerful local tool over the network.
+
+### 15.1 Operational Safeguards
 
 Prevent the agent from performing destructive or unintended actions on the local system.
 
-- **15.1.1 [ ] Interactive Confirmation for Destructive Operations:** Implement a strict confirmation gate (`[y/N]`) for any command that modifies the file system (`rm`, `mv`), applies git changes (`git apply`, `git push`), or executes arbitrary scripts. This expands on items `7.5` and `8.4`.
-- **15.1.2 [ ] Filesystem Access Control:** Strictly limit file I/O to the project directory. Implement and enforce an `.aiexclude` file (similar to `.gitignore`) to prevent the agent from accessing sensitive files like `.env`, `credentials`, `*.pem`, or IDE configuration files.
-- **15.1.3 [ ] Command Execution Sandboxing:** When executing code or shell commands (`/run`), do so within a sandboxed environment (e.g., a Docker container) to isolate the process from the host system. The sandbox should have no network access by default unless explicitly requested.
-- **15.1.4 [ ] Dependency Vulnerability Scanning:** When the agent suggests adding a new dependency (e.g., in `pom.xml` or `build.gradle`), automatically scan it for known vulnerabilities using tools like OWASP Dependency-Check or the `gradle-dependency-check` plugin. Warn the user if vulnerabilities are found.
+- **15.1.1 [ ] Interactive Confirmation for Destructive Operations**  
+  Implement a strict confirmation gate (`[y/N]`) for any command that:
+  - Modifies the file system in a destructive way (`rm`, `mv`, `cp -r`, etc.),
+  - Applies git changes (`git apply`, `git commit`, `git push`),
+  - Executes arbitrary scripts or project commands (`/run`, `mvn`, `gradle`, `npm`, etc.).
+
+  This builds on items `7.5` and `8.4`: the agent can *propose* actions, but the user must confirm them.
+
+- **15.1.2 [ ] Filesystem Access Control**  
+  Strictly limit file I/O to the current project root (or a configured workspace root).  
+  Add support for an `.aiexclude` file (similar to `.gitignore`) to prevent the agent from
+  reading or touching sensitive files such as:
+  - `.env`, `*.pem`, `id_rsa`, `credentials.*`
+  - `~/.ssh`, keychains, OS config directories
+  - IDE config files or any path explicitly excluded by the user.
+
+- **15.1.3 [ ] Command Execution Safety**  
+  For the `/run` and other execution-related commands:
+  - Start by enforcing:
+    - Explicit confirmation before execution.
+    - A configurable allowlist/denylist of commands.
+    - Timeouts and output truncation (see `8.3`).
+
+- **15.1.4 [ ] Dependency Vulnerability Scanning (Later / Optional)**  
+  When the agent suggests adding a new dependency (e.g., to `pom.xml` or `build.gradle`),
+  integrate with a vulnerability scanner (e.g., OWASP Dependency-Check or a Gradle plugin)
+  to check for known issues. If vulnerabilities are detected, show a clear warning and
+  include them in the review output. This is a nice-to-have enhancement rather than a
+  requirement for a first usable version.
 
 ### 15.2 Secure Coding & Review
 
-Enhance the agent's ability to write and review code with security in mind.
+Improve the agent’s ability to write and review code with security in mind.
 
-- **15.2.1 [ ] Dedicated Security Persona:** Create a specialized "Security Reviewer" persona. This prompt will instruct the LLM to analyze code specifically for common vulnerabilities (e.g., OWASP Top 10), such as injection flaws, hardcoded secrets, insecure dependencies, and improper error handling.
-- **15.2.2 [ ] Integrate Static Analysis (SAST):** Augment the `/review` command to run a lightweight, fast SAST tool (e.g., Semgrep with a default ruleset) in addition to the LLM-based review. The agent can then summarize the SAST findings, providing a more reliable analysis than an LLM alone.
-- **15.2.3 [ ] Secret Detection:** Before committing code with `commit-suggest`, automatically scan the diff for hardcoded secrets (API keys, passwords, tokens). If a potential secret is found, warn the user and prevent the commit.
+- **15.2.1 [ ] Dedicated Security Persona**  
+  Add a specialized "Security Reviewer" persona/prompt that focuses on:
+  - Common vulnerabilities (OWASP Top 10 style): injection, insecure deserialization,
+    hardcoded secrets, insecure crypto, etc.
+  - Misconfigurations in frameworks and libraries (e.g., default credentials, wide-open CORS).
+  - Inadequate error handling or logging of sensitive data.
+
+  The CLI should expose this mode via a flag (e.g., `review --security`).
+
+- **15.2.2 [ ] Integrate Static Analysis (SAST) [Optional / pluggable]**  
+  Enhance the `/review` command with an optional static analysis step (e.g., Semgrep with
+  a default ruleset):
+  - Run the SAST tool on the files/diffs under review.
+  - Parse and summarize findings (rules, severity, locations).
+  - Present them together with the LLM-based review for better coverage.
+
+- **15.2.3 [ ] Secret Detection Before Commit**  
+  Before running `commit-suggest` or any commit helper:
+  - Scan the staged diff for likely secrets (API keys, tokens, passwords).
+  - If a potential secret is detected:
+    - Warn the user clearly.
+    - Require an explicit override to proceed.
+    - Recommend removing or rotating the secret as appropriate.
 
 ### 15.3 Application & API Security
 
-#### A2A (Agent-to-Agent) Security
-When exposing the LCA for agent-to-agent communication, additional security layers are required to prevent unauthorized access and abuse.
-- **15.3.1 [ ] A2A Disabled by Default:** Ensure the A2A endpoint is disabled by default and requires explicit user configuration to activate, inheriting the same principle as the general REST API (`15.3.1`).
-- **15.3.2 [ ] Mutual TLS (mTLS) Authentication:** For server-to-server A2A communication, mandate mTLS. Both the client (calling agent) and the server (LCA) must present valid, trusted certificates to establish a connection, providing stronger, identity-based authentication than API keys alone.
-- **15.3.3 [ ] Scoped Access Control:** Implement a scope-based authorization model for remote agents. Define granular permissions (e.g., `file:read`, `file:write`, `git:read`, `command:execute`) and require connecting agents to be granted specific scopes. A remote agent must operate under the principle of least privilege.
-- **15.3.4 [ ] Rate Limiting and Throttling:** Protect the A2A endpoint from denial-of-service attacks or runaway clients by implementing strict rate limiting on incoming requests.
-- **15.3.5 [ ] Audit Trail:** Maintain a detailed audit log of all operations initiated through the A2A interface, including the identity of the calling agent (from its certificate), the requested operation, and the outcome.
+#### 15.3.1 Local vs Remote Access Modes
 
-#### REST security.
+Define clear modes for how the REST API is exposed:
 
-- **15.3.6 [ ] Secure the REST API:** The REST API should be disabled by default. If enabled, secure it using Spring Security.
-    - Implement API Key authentication for machine-to-machine communication.
-    - For user-facing scenarios, consider standard protocols like OAuth2/OIDC.
-- **15.3.7 [ ] Enforce HTTPS:** Require TLS for all REST API communication. Provide guidance on generating self-signed certificates for local development.
-- **15.3.8 [ ] Input Validation:** Apply rigorous input validation on all CLI arguments and API request payloads to prevent command injection and other parsing-related vulnerabilities.
-- **15.3.9 [ ] User Management:** Evaluate the need for built-in user/role management. For the CLI user, OS-level user permissions are sufficient but AAA should be considered for REST and A2A. If implemented, use Spring Security's `JdbcUserDetailsManager` with a robust password hashing scheme (e.g., bcrypt).
+- **Local-only REST Mode (default)**
+  - REST is disabled by default.
+  - When enabled without extra configuration:
+    - Bind only to `127.0.0.1`.
+    - No separate API authentication; OS user identity is assumed.
+    - Capabilities mirror those of the CLI (including confirmation gates from 15.1.1).
+  - This treats REST calls from the local machine as equivalent to CLI usage.
+
+- **Remote REST Mode (opt-in)**
+  - Expose the API on `0.0.0.0` or a specific network interface.
+  - Require explicit configuration to enable.
+  - Must enforce HTTPS and authentication (see 15.3.2–15.3.4).
+  - Intended for:
+    - Remote UIs.
+    - Any scenario where calls originate off the host machine.
+
+#### 15.3.2 Authentication & Authorization (REST)
+
+- **15.3.2.1 [ ] API Key Authentication**  
+  For machine-to-machine usage (e.g., remote tools or scripts), support simple API key
+  authentication with:
+  - Keys stored in a configuration file or environment variable.
+  - The ability to generate/revoke keys.
+
+- **15.3.2.2 [ ] OAuth2/OIDC (Optional)**  
+  For interactive, user-facing remote UIs, consider integrating OAuth2/OIDC via Spring Security
+  so that:
+  - Users authenticate through a standard identity provider.
+  - Roles/authorities can be mapped to fine-grained permissions.
+
+- **15.3.2.3 [ ] Scope-Based Authorization**  
+  Implement a scope or permission model that can be applied both to API keys and OIDC users:
+  - Example scopes:
+    - `file:read`, `file:write`
+    - `git:read`, `git:write`
+    - `command:execute`
+  - Enforce the principle of least privilege for remote callers.
+
+#### 15.3.3 Transport Security (TLS)
+
+- **15.3.3.1 [ ] Enforce HTTPS for Remote Mode**
+  - Require TLS for all REST traffic when running in remote mode.
+  - Provide documentation and helper scripts for generating self-signed certificates
+    for local dev and testing.
+
+#### 15.3.4 Protection Against Abuse
+
+- **15.3.4.1 [ ] Rate Limiting & Throttling**  
+  Implement rate limiting for remote requests to prevent accidental or malicious
+  denial-of-service scenarios.
+
+- **15.3.4.2 [ ] Audit Logging for Remote Operations**  
+  Maintain an audit log for all operations invoked via remote REST:
+  - Caller identity (API key or authenticated user).
+  - Operation type (file read/write, git, run).
+  - Timestamps and outcome (success/failure).
+
+#### 15.3.5 Input Validation
+
+- **15.3.5.1 [ ] Validate CLI & API Inputs**  
+  Apply rigorous validation and sanitization to:
+  - CLI arguments (paths, command names, flags).
+  - REST request payloads and query parameters.
+  - Any input that could be used to build shell commands or file paths.
+
+  The goal is to avoid command injection, path traversal, and similar issues.
+
+- **15.3.5.2 [ ] User Management Considerations**  
+  For local CLI and local-only REST, OS-level user permissions are sufficient.  
+  For remote REST:
+  - Rely on Spring Security’s user/role model if user-level auth is needed.
+  - Use robust password hashing (e.g., bcrypt) and standard security practices
+    if you implement username/password logins.
 
 ### 15.4 Data Privacy
 
 Uphold the "local-first" promise and protect user data.
 
-- **15.4.1 [ ] Guarantee Local-Only Operation:** Explicitly document and guarantee that no code, prompts, or project data is ever sent to a third-party cloud service. All processing happens locally via Ollama.
-- **15.4.2 [ ] No Telemetry by Default:** Do not collect or transmit any usage data or telemetry without explicit, opt-in consent from the user.
-- **15.4.3 [ ] Log Sanitization:** Review all logging statements to ensure they do not accidentally log sensitive content from files, prompts, or agent responses (e.g., API keys, personal information).
+- **15.4.1 [ ] Guarantee Local-Only Operation**  
+  Explicitly document and test that:
+  - No code, prompts, project data, or metadata is sent to third-party cloud services.
+  - All inference happens via locally-running Ollama models or other local runtimes.
+
+- **15.4.2 [ ] No Telemetry by Default**  
+  Do not collect or transmit any usage data or telemetry without explicit user opt-in.  
+  If telemetry is ever added:
+  - Make it disabled by default.
+  - Document exactly what is collected.
+  - Provide a clear configuration toggle.
+
+- **15.4.3 [ ] Log Sanitization**  
+  Review logging across the project to ensure that:
+  - Logs do not include large code blocks, prompt bodies, or agent responses by default.
+  - Logs explicitly avoid storing secrets or sensitive content.
+  - Where detailed logs are needed (e.g., debug mode), warn the user that logs may
+    contain code and should be handled accordingly.
 
