@@ -81,7 +81,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 8.3 [ ] Add timeouts and output truncation to avoid runaway executions.
 - 8.4 [ ] If the current directory is not a git repo
   - commands like `status`, `diff`, and `commit-suggest` should gracefully inform the user that git operations are unavailable.
-  - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N]
+  - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N/a]
 
 ## 9) Model and runtime controls
 - 9.1 [ ] Expose a `model` command to list available Ollama models and switch the active one at runtime.
@@ -132,14 +132,22 @@ Enhance the agent's ability to write and review code with security in mind.
 
 ### 15.3 Application & API Security
 
-Secure the LCA application itself, particularly its REST interface.
+#### A2A (Agent-to-Agent) Security
+When exposing the LCA for agent-to-agent communication, additional security layers are required to prevent unauthorized access and abuse.
+- **15.3.1 [ ] A2A Disabled by Default:** Ensure the A2A endpoint is disabled by default and requires explicit user configuration to activate, inheriting the same principle as the general REST API (`15.3.1`).
+- **15.3.2 [ ] Mutual TLS (mTLS) Authentication:** For server-to-server A2A communication, mandate mTLS. Both the client (calling agent) and the server (LCA) must present valid, trusted certificates to establish a connection, providing stronger, identity-based authentication than API keys alone.
+- **15.3.3 [ ] Scoped Access Control:** Implement a scope-based authorization model for remote agents. Define granular permissions (e.g., `file:read`, `file:write`, `git:read`, `command:execute`) and require connecting agents to be granted specific scopes. A remote agent must operate under the principle of least privilege.
+- **15.3.4 [ ] Rate Limiting and Throttling:** Protect the A2A endpoint from denial-of-service attacks or runaway clients by implementing strict rate limiting on incoming requests.
+- **15.3.5 [ ] Audit Trail:** Maintain a detailed audit log of all operations initiated through the A2A interface, including the identity of the calling agent (from its certificate), the requested operation, and the outcome.
 
-- **15.3.1 [ ] Secure the REST API:** The REST API should be disabled by default. If enabled, secure it using Spring Security.
+#### REST security.
+
+- **15.3.6 [ ] Secure the REST API:** The REST API should be disabled by default. If enabled, secure it using Spring Security.
     - Implement API Key authentication for machine-to-machine communication.
     - For user-facing scenarios, consider standard protocols like OAuth2/OIDC.
-- **15.3.2 [ ] Enforce HTTPS:** Require TLS for all REST API communication. Provide guidance on generating self-signed certificates for local development.
-- **15.3.3 [ ] Input Validation:** Apply rigorous input validation on all CLI arguments and API request payloads to prevent command injection and other parsing-related vulnerabilities.
-- **15.3.4 [ ] User Management (Optional Service):** Re-evaluate the need for built-in user/role management. This is only necessary if the application is intended to be run as a shared, multi-tenant service. For a local-first CLI, OS-level user permissions are sufficient. If implemented, use Spring Security's `JdbcUserDetailsManager` with a robust password hashing scheme (e.g., bcrypt).
+- **15.3.7 [ ] Enforce HTTPS:** Require TLS for all REST API communication. Provide guidance on generating self-signed certificates for local development.
+- **15.3.8 [ ] Input Validation:** Apply rigorous input validation on all CLI arguments and API request payloads to prevent command injection and other parsing-related vulnerabilities.
+- **15.3.9 [ ] User Management:** Evaluate the need for built-in user/role management. For the CLI user, OS-level user permissions are sufficient but AAA should be considered for REST and A2A. If implemented, use Spring Security's `JdbcUserDetailsManager` with a robust password hashing scheme (e.g., bcrypt).
 
 ### 15.4 Data Privacy
 
@@ -149,12 +157,3 @@ Uphold the "local-first" promise and protect user data.
 - **15.4.2 [ ] No Telemetry by Default:** Do not collect or transmit any usage data or telemetry without explicit, opt-in consent from the user.
 - **15.4.3 [ ] Log Sanitization:** Review all logging statements to ensure they do not accidentally log sensitive content from files, prompts, or agent responses (e.g., API keys, personal information).
 
-### 15.5 A2A (Agent-to-Agent) Security
-
-When exposing the LCA for agent-to-agent communication, additional security layers are required to prevent unauthorized access and abuse.
-
-- **15.5.1 [ ] A2A Disabled by Default:** Ensure the A2A endpoint is disabled by default and requires explicit user configuration to activate, inheriting the same principle as the general REST API (`15.3.1`).
-- **15.5.2 [ ] Mutual TLS (mTLS) Authentication:** For server-to-server A2A communication, mandate mTLS. Both the client (calling agent) and the server (LCA) must present valid, trusted certificates to establish a connection, providing stronger, identity-based authentication than API keys alone.
-- **15.5.3 [ ] Scoped Access Control:** Implement a scope-based authorization model for remote agents. Define granular permissions (e.g., `file:read`, `file:write`, `git:read`, `command:execute`) and require connecting agents to be granted specific scopes. A remote agent must operate under the principle of least privilege.
-- **15.5.4 [ ] Rate Limiting and Throttling:** Protect the A2A endpoint from denial-of-service attacks or runaway clients by implementing strict rate limiting on incoming requests.
-- **15.5.5 [ ] Audit Trail:** Maintain a detailed audit log of all operations initiated through the A2A interface, including the identity of the calling agent (from its certificate), the requested operation, and the outcome.
