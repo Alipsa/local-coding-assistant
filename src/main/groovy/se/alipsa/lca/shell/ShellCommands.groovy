@@ -172,7 +172,8 @@ class ShellCommands {
         return previewText
       }
       println(previewText)
-      if (!confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")) {
+      ConfirmChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
+      if (choice == ConfirmChoice.NO) {
         return "Patch application canceled."
       }
     }
@@ -281,10 +282,25 @@ class ShellCommands {
     builder.toString()
   }
 
-  protected boolean confirmAction(String prompt) {
+  @CompileStatic
+  protected ConfirmChoice confirmAction(String prompt) {
     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
-    print("${prompt.trim()} [y/N]: ")
+    print("${prompt.trim()} [y/N/a]: ")
     String response = reader.readLine()
-    response != null && response.trim().equalsIgnoreCase("y")
+    String normalized = response != null ? response.trim().toLowerCase() : ""
+    if ("a" == normalized) {
+      return ConfirmChoice.ALL
+    }
+    if ("y" == normalized) {
+      return ConfirmChoice.YES
+    }
+    ConfirmChoice.NO
+  }
+
+  @CompileStatic
+  protected static enum ConfirmChoice {
+    YES,
+    NO,
+    ALL
   }
 }

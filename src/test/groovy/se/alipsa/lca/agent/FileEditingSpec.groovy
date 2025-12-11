@@ -61,6 +61,15 @@ class FileEditingSpec extends Specification {
     ex.message == "File path must be within the project directory"
   }
 
+  def "replace rejects missing file"() {
+    when:
+    fileEditingAgent.replace("missing.txt", "a", "b")
+
+    then:
+    def ex = thrown(IllegalArgumentException)
+    ex.message == "File missing.txt does not exist"
+  }
+
   def "applies unified patch and creates backup"() {
     given:
     Files.writeString(tempFile, "one\n-two\n")

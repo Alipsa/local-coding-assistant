@@ -58,7 +58,10 @@ class FileEditingTool {
   String replace(String filePath, String oldString, String newString) {
     try {
       Path path = resolvePath(filePath)
-      String content = Files.exists(path) ? Files.readString(path) : ""
+      if (!Files.exists(path)) {
+        throw new IllegalArgumentException("File $filePath does not exist")
+      }
+      String content = Files.readString(path)
       String newContent = content.replace(oldString, newString)
       Files.writeString(path, newContent)
       return "Successfully replaced content in $filePath"
@@ -81,7 +84,7 @@ class FileEditingTool {
 
   PatchResult applyPatch(String patchText, boolean dryRun) {
     if (patchText == null || patchText.trim().isEmpty()) {
-      return new PatchResult(false, true, true, List.of(), List.of("No patch content provided."))
+      return new PatchResult(false, dryRun, true, List.of(), List.of("No patch content provided."))
     }
     List<PatchFile> patchFiles = parseUnifiedDiff(patchText)
     if (patchFiles.isEmpty()) {
@@ -248,7 +251,18 @@ class FileEditingTool {
     if (backups.isEmpty()) {
       return new EditResult(false, dryRun, null, "No backups found for $filePath", filePath)
     }
-    backups.sort { Path a, Path b -> b.getFileName().toString() <=> a.getFileName().toString() }
+    backups.sort { Path a, Path b ->
+      try {
+        def timeA = Files.getLastModifiedTime(a).toMillis()
+        def timeB = Files.getLastModifiedTime(b).toMillis()
+        if (timeA == timeB) {
+          return b.getFileName().toString() <=> a.getFileName().toString()
+        }
+        return timeB <=> timeA
+      } catch (IOException ignored) {
+        return b.getFileName().toString() <=> a.getFileName().toString()
+      }
+    }
     Path latest = backups.get(0)
     String backupContent = Files.readString(latest)
     if (!dryRun) {
@@ -511,7 +525,11 @@ class FileEditingTool {
     if (content == null || content.isEmpty()) {
       return new ArrayList<>()
     }
-    return Arrays.asList(content.split("\\R", -1))
+    List<String> lines = new ArrayList<>(Arrays.asList(content.split("\\R", -1)))
+    if (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+      lines.remove(lines.size() - 1)
+    }
+    lines
   }
 
   private static String joinLines(List<String> lines, String newline) {
