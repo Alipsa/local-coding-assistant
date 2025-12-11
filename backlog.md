@@ -34,10 +34,10 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 3.4 [x] Cover patch application logic with unit tests on sample files.
 
 ## 4) Code review and suggestions
-- 4.1 [ ] Add a `review` command that feeds selected files/diffs into the agent with severity-tagged output.
-- 4.2 [ ] Include file/line references and recommendations; allow staged-only or path-filtered reviews.
-- 4.3 [ ] Persist review summaries to a log file for later recall.
-- 4.4 [ ] Add tests for review formatting and inputs.
+- 4.1 [x] Add a `review` command that feeds selected files/diffs into the agent with severity-tagged output.
+- 4.2 [x] Include file/line references and recommendations; allow staged-only or path-filtered reviews.
+- 4.3 [x] Persist review summaries to a log file for later recall.
+- 4.4 [x] Add tests for review formatting and inputs.
 - 4.5 [ ] Avoid unified diffs for generation. Instead, use Search and Replace Blocks.
   - The Challenge: LLMs are notoriously bad at line numbers. If the agent says "Replace line 40-45", and the file changed since the context was loaded, you corrupt the file. Instead, ask the model to output:
    ```
@@ -48,7 +48,8 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
     >>>>
   ```
   - Your FileEditingTool locates the unique original code block string and replaces it. This is far more robust than line numbers for local models.
-- 4.6 [ ] Ensure the output is parsable. 
+- 4.5 [x] Avoid unified diffs for generation. Instead, use Search and Replace Blocks.
+- 4.6 [x] Ensure the output is parsable. 
   - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colors for High/Medium/Low severity).  
 
 ## 5) Code search and context building
@@ -475,4 +476,3 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
       * CI/automation scenarios.
     * Explanation of exit codes and confirmation behavior.
     * Safety cautions when combining `--yes` with destructive commands.
-

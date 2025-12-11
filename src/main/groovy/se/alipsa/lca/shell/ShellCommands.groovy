@@ -3,13 +3,21 @@ package se.alipsa.lca.shell
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.common.ai.model.LlmOptions
+import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.review.ReviewFinding
+import se.alipsa.lca.review.ReviewParser
+import se.alipsa.lca.review.ReviewSeverity
+import se.alipsa.lca.review.ReviewSummary
 import se.alipsa.lca.shell.SessionState.SessionSettings
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
@@ -17,18 +25,24 @@ import se.alipsa.lca.tools.WebSearchTool
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.IOException
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 
 @ShellComponent
 @CompileStatic
 class ShellCommands {
 
+  private static final Logger log = LoggerFactory.getLogger(ShellCommands)
   private final CodingAssistantAgent codingAssistantAgent
   private final Ai ai
   private final SessionState sessionState
   private final EditorLauncher editorLauncher
   private final FileEditingTool fileEditingTool
+  private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
   ShellCommands(
@@ -36,13 +50,15 @@ class ShellCommands {
     Ai ai,
     SessionState sessionState,
     EditorLauncher editorLauncher,
-    FileEditingTool fileEditingTool
+    FileEditingTool fileEditingTool,
+    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
     this.sessionState = sessionState
     this.editorLauncher = editorLauncher
     this.fileEditingTool = fileEditingTool
+    this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
   @ShellMethod(key = ["chat", "/chat"], value = "Send a prompt to the coding assistant.")
@@ -79,26 +95,78 @@ class ShellCommands {
 
   @ShellMethod(key = ["review", "/review"], value = "Ask the assistant to review code.")
   String review(
-    @ShellOption(help = "Code to review") String code,
+    @ShellOption(defaultValue = "", help = "Code to review; optional when providing paths or staged diff") String code,
     @ShellOption(help = "Review context or request") String prompt,
     @ShellOption(defaultValue = "default", help = "Session id") String session,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      arity = -1,
+      help = "File paths to include in the review context"
+    ) List<String> paths,
+    @ShellOption(defaultValue = "false", help = "Include staged git diff") boolean staged,
+    @ShellOption(defaultValue = "LOW", help = "Minimum severity to display/log: LOW, MEDIUM, HIGH") ReviewSeverity minSeverity,
+    @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
+    @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
   ) {
+    ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     SessionSettings settings = sessionState.update(session, model, null, reviewTemperature, maxTokens, systemPrompt)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
+    String reviewPayload = buildReviewPayload(code, paths, staged)
     def result = codingAssistantAgent.reviewCode(
       new UserInput(prompt),
-      new CodeSnippet(code),
+      new CodeSnippet(reviewPayload),
       ai,
       reviewOptions,
       system
     )
-    sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${result.review}")
-    result.review
+    ReviewSummary summary = ReviewParser.parse(result.review)
+    String rendered = renderReview(summary, severityThreshold, !noColor)
+    sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${rendered}")
+    if (logReview) {
+      writeReviewLog(prompt, summary, paths, staged, severityThreshold)
+    }
+    rendered
+  }
+
+  @ShellMethod(key = ["reviewlog", "/reviewlog"], value = "Show recent reviews from the log with filters.")
+  String reviewLog(
+    @ShellOption(defaultValue = "LOW", help = "Minimum severity to show") ReviewSeverity minSeverity,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Path substring filter") String pathFilter,
+    @ShellOption(defaultValue = "5", help = "Maximum entries to show") int limit,
+    @ShellOption(defaultValue = "1", help = "Page number (1-based)") int page,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Show entries since ISO timestamp, e.g. 2025-02-12T10:00:00Z") String since,
+    @ShellOption(defaultValue = "false", help = "Disable ANSI colors") boolean noColor
+  ) {
+    if (!Files.exists(reviewLogPath)) {
+      return "No reviews logged yet."
+    }
+    Instant sinceInstant = parseInstant(since)
+    List<LogEntry> entries = loadLogEntries(pathFilter, minSeverity, sinceInstant)
+    if (entries.isEmpty()) {
+      return "No matching review entries."
+    }
+    int pageSize = Math.max(1, limit)
+    int startIndex = Math.max(0, (Math.max(1, page) - 1) * pageSize)
+    if (startIndex >= entries.size()) {
+      return "No matching review entries."
+    }
+    entries = entries.subList(startIndex, Math.min(entries.size(), startIndex + pageSize))
+    entries.collect { LogEntry entry ->
+      StringBuilder builder = new StringBuilder()
+      builder.append("Prompt: ").append(entry.prompt).append("\n")
+      builder.append("Paths: ").append(entry.paths ?: "none").append("\n")
+      builder.append("Staged: ").append(entry.staged).append("\n")
+      if (entry.timestamp != null) {
+        builder.append("Timestamp: ").append(entry.timestamp).append("\n")
+      }
+      builder.append(renderReview(entry.summary, minSeverity, !noColor))
+      builder.toString()
+    }.join("\n\n---\n\n")
   }
 
   @ShellMethod(key = ["search", "/search"], value = "Run web search through the agent tool.")
@@ -188,6 +256,41 @@ class ShellCommands {
   }
 
   @ShellMethod(
+    key = ["applyBlocks", "/applyBlocks"],
+    value = "Apply Search-and-Replace blocks to a file (<<<<SEARCH ... ==== ... >>>>)."
+  )
+  String applyBlocks(
+    @ShellOption(help = "Target file path relative to project root") String filePath,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Blocks text; ignored when blocks-file is set") String blocks,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "File containing blocks") String blocksFile,
+    @ShellOption(defaultValue = "true", help = "Preview changes without writing") boolean dryRun,
+    @ShellOption(defaultValue = "true", help = "Ask for confirmation before writing changes") boolean confirm
+  ) {
+    String body = resolvePatchBody(blocks, blocksFile)
+    if (dryRun) {
+      return formatSearchReplaceResult(fileEditingTool.applySearchReplaceBlocks(filePath, body, true))
+    }
+    boolean shouldConfirm = confirm && !applyAllConfirmed
+    if (shouldConfirm) {
+      FileEditingTool.SearchReplaceResult preview = fileEditingTool.applySearchReplaceBlocks(filePath, body, true)
+      String previewText = formatSearchReplaceResult(preview)
+      if (preview.hasConflicts) {
+        return previewText
+      }
+      println(previewText)
+      ConfirmChoice choice = confirmAction("Apply blocks to ${filePath}?")
+      if (choice == ConfirmChoice.NO) {
+        return "Block application canceled."
+      }
+      if (choice == ConfirmChoice.ALL) {
+        applyAllConfirmed = true
+      }
+    }
+    FileEditingTool.SearchReplaceResult result = fileEditingTool.applySearchReplaceBlocks(filePath, body, false)
+    formatSearchReplaceResult(result)
+  }
+
+  @ShellMethod(
     key = ["revert", "/revert"],
     value = "Restore a file using the most recent patch backup."
   )
@@ -240,6 +343,230 @@ class ShellCommands {
     builder.toString().stripTrailing()
   }
 
+  private String buildReviewPayload(String code, List<String> paths, boolean staged) {
+    StringBuilder builder = new StringBuilder()
+    if (code != null && code.trim()) {
+      builder.append("User-provided code:\n```\n").append(code.trim()).append("\n```\n\n")
+    }
+    if (paths != null) {
+      paths.each { String path ->
+        if (path == null || path.trim().isEmpty()) {
+          return
+        }
+        try {
+          String content = fileEditingTool.readFile(path.trim())
+          builder.append("File: ").append(path.trim()).append("\n```\n")
+            .append(content).append("\n```\n\n")
+        } catch (IllegalArgumentException ex) {
+          builder.append("File: ").append(path.trim()).append(" (error: ").append(ex.message).append(")\n\n")
+        }
+      }
+    }
+    if (staged) {
+      String diff = stagedDiff()
+      if (diff) {
+        builder.append("Staged diff:\n```\n").append(diff).append("\n```\n")
+      }
+    }
+    String payload = builder.toString().trim()
+    payload ? payload : "No additional context provided."
+  }
+
+  private String stagedDiff() {
+    try {
+      ProcessBuilder pb = new ProcessBuilder("git", "diff", "--cached")
+      pb.directory(fileEditingTool.projectRoot.toFile())
+      pb.redirectErrorStream(true)
+      Process process = pb.start()
+      String output = new String(process.getInputStream().readAllBytes())
+      int exit = process.waitFor()
+      if (exit != 0 || output.trim().isEmpty()) {
+        return ""
+      }
+      return output
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
+      return ""
+    }
+  }
+
+  private static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
+    StringBuilder builder = new StringBuilder("Findings:")
+    List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+    if (filtered.isEmpty()) {
+      builder.append("\n- None")
+    } else {
+      List<ReviewFinding> sorted = new ArrayList<>(filtered)
+      sorted.sort { ReviewFinding a, ReviewFinding b -> b.severity.ordinal() <=> a.severity.ordinal() }
+      sorted.each { ReviewFinding finding ->
+        String location = finding.file ?: "general"
+        if (finding.line != null) {
+          location += ":${finding.line}"
+        }
+        String severity = capitalize(finding.severity.name().toLowerCase())
+        builder.append("\n- [").append(colorize ? colorSeverity(severity) : severity)
+          .append("] ").append(location).append(" - ").append(finding.comment)
+      }
+    }
+    builder.append("\nTests:")
+    if (summary.tests.isEmpty()) {
+      builder.append("\n- None provided")
+    } else {
+      summary.tests.each { builder.append("\n- ").append(it) }
+    }
+    builder.toString().stripTrailing()
+  }
+
+  private static String capitalize(String value) {
+    if (value == null || value.isEmpty()) {
+      return value
+    }
+    if (value.length() == 1) {
+      return value.toUpperCase()
+    }
+    return value.substring(0, 1).toUpperCase() + value.substring(1)
+  }
+
+  private static String colorSeverity(String severity) {
+    switch (severity.toUpperCase()) {
+      case "HIGH":
+        return "\u001B[31m${severity}\u001B[0m"
+      case "MEDIUM":
+        return "\u001B[33m${severity}\u001B[0m"
+      default:
+        return severity
+    }
+  }
+
+  private List<LogEntry> loadLogEntries(String pathFilter, ReviewSeverity minSeverity, Instant since) {
+    String content = Files.readString(reviewLogPath)
+    if (!content.trim()) {
+      return List.of()
+    }
+    List<LogEntry> entries = new ArrayList<>()
+    content.split("=== Review ===").each { String raw ->
+      String trimmed = raw.trim()
+      if (!trimmed) {
+        return
+      }
+      String prompt = extractField(trimmed, "Prompt:")
+      String paths = extractField(trimmed, "Paths:")
+      String staged = extractField(trimmed, "Staged:")
+      String timestamp = extractField(trimmed, "Timestamp:")
+      String body = extractBody(trimmed)
+      ReviewSummary summary = ReviewParser.parse(body)
+      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+      if (filtered.isEmpty()) {
+        return
+      }
+      Instant parsedTs = null
+      if (timestamp) {
+        try {
+          parsedTs = OffsetDateTime.parse(timestamp).toInstant()
+        } catch (DateTimeParseException ignored) {
+          parsedTs = null
+        }
+      }
+      if (since != null && parsedTs != null && parsedTs.isBefore(since)) {
+        return
+      }
+      if (pathFilter != null && pathFilter.trim()) {
+        String filter = pathFilter.trim()
+        if (paths == null || !paths.contains(filter)) {
+          return
+        }
+      }
+      entries.add(new LogEntry(prompt, paths, Boolean.parseBoolean(staged), parsedTs, new ReviewSummary(filtered, summary.tests, summary.raw)))
+    }
+    entries.sort { LogEntry a, LogEntry b ->
+      if (a.timestamp == null && b.timestamp == null) return 0
+      if (a.timestamp == null) return 1
+      if (b.timestamp == null) return -1
+      return b.timestamp <=> a.timestamp
+    }
+    entries
+  }
+
+  private static String extractField(String entry, String label) {
+    entry.readLines().find { it.startsWith(label) }?.substring(label.length())?.trim()
+  }
+
+  private static String extractBody(String entry) {
+    int idx = entry.indexOf("---")
+    if (idx < 0) {
+      return entry
+    }
+    int second = entry.indexOf("---", idx + 3)
+    if (second < 0) {
+      return entry.substring(idx + 3).trim()
+    }
+    entry.substring(idx + 3, second).trim()
+  }
+
+  private static Instant parseInstant(String value) {
+    if (value == null || value.trim().isEmpty()) {
+      return null
+    }
+    try {
+      return OffsetDateTime.parse(value.trim()).toInstant()
+    } catch (DateTimeParseException ignored) {
+      throw new IllegalArgumentException("Invalid timestamp format; use ISO-8601 like 2025-02-12T10:00:00Z")
+    }
+  }
+
+  @CompileStatic
+  protected Instant nowInstant() {
+    Instant.now()
+  }
+
+  @Canonical
+  @CompileStatic
+  private static class LogEntry {
+    String prompt
+    String paths
+    boolean staged
+    Instant timestamp
+    ReviewSummary summary
+  }
+
+  private void writeReviewLog(
+    String prompt,
+    ReviewSummary summary,
+    List<String> paths,
+    boolean staged,
+    ReviewSeverity minSeverity
+  ) {
+    try {
+      Path parent = reviewLogPath.getParent()
+      if (parent != null) {
+        Files.createDirectories(parent)
+      }
+      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+      String entry = """
+=== Review ===
+Prompt: ${prompt}
+Paths: ${paths ? paths.join(", ") : "none"}
+Staged: ${staged}
+Timestamp: ${nowInstant()}
+Findings: ${filtered.size()} (min ${minSeverity})
+Tests: ${summary.tests.size()}
+---
+${renderReview(summary, minSeverity, false)}
+---
+"""
+      Files.writeString(
+        reviewLogPath,
+        entry,
+        java.nio.file.StandardOpenOption.CREATE,
+        java.nio.file.StandardOpenOption.APPEND
+      )
+    } catch (IOException e) {
+      log.warn("Failed to write review log to {}", reviewLogPath, e)
+    }
+  }
+
   private String resolvePatchBody(String patch, String patchFile) {
     if (patchFile != null && patchFile.trim()) {
       Path candidate = fileEditingTool.projectRoot.resolve(patchFile).normalize()
@@ -289,6 +616,20 @@ class ShellCommands {
       builder.append(" (backup: ").append(result.backupPath).append(")")
     }
     builder.toString()
+  }
+
+  private static String formatSearchReplaceResult(FileEditingTool.SearchReplaceResult result) {
+    StringBuilder builder = new StringBuilder()
+    builder.append(result.dryRun ? "Dry run" : "Applied blocks")
+    builder.append(result.hasConflicts ? " (conflicts detected)" : "")
+    result.blocks.each { FileEditingTool.BlockResult block ->
+      builder.append("\n- block ").append(block.index).append(": ").append(block.message)
+    }
+    result.messages.each { builder.append("\n").append(it) }
+    if (result.backupPath) {
+      builder.append("\nBackup: ").append(result.backupPath)
+    }
+    builder.toString().stripTrailing()
   }
 
   @CompileStatic
