@@ -210,6 +210,45 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     fileEditingAgent.deleteFile(filePath)
   }
 
+  @Action(description = "Apply a unified diff patch with backup and conflict detection.")
+  FileEditingTool.PatchResult applyPatch(String patchText, boolean dryRun) {
+    fileEditingAgent.applyPatch(patchText, dryRun)
+  }
+
+  @Action(description = "Replace a specific line range in a file.")
+  FileEditingTool.EditResult replaceRange(
+    String filePath,
+    int startLine,
+    int endLine,
+    String newContent,
+    boolean dryRun
+  ) {
+    fileEditingAgent.replaceRange(filePath, startLine, endLine, newContent, dryRun)
+  }
+
+  @Action(description = "Show file context around a line range or symbol to guide edits.")
+  FileEditingTool.TargetedEditContext fileContext(
+    String filePath,
+    Integer startLine,
+    Integer endLine,
+    Integer padding,
+    String symbol
+  ) {
+    int pad = padding != null ? padding.intValue() : 2
+    if (symbol != null && symbol.trim()) {
+      return fileEditingAgent.contextBySymbol(filePath, symbol, pad)
+    }
+    if (startLine == null || endLine == null) {
+      throw new IllegalArgumentException("Start and end lines are required when symbol is not provided")
+    }
+    fileEditingAgent.contextByRange(filePath, startLine, endLine, pad)
+  }
+
+  @Action(description = "Restore a file from the most recent patch backup.")
+  FileEditingTool.EditResult revertFromBackup(String filePath, boolean dryRun) {
+    fileEditingAgent.revertLatestBackup(filePath, dryRun)
+  }
+
   @Action(description = "Search the web for a given query")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query) {
