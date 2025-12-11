@@ -16,6 +16,7 @@ import se.alipsa.lca.tools.WebSearchTool
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -28,6 +29,7 @@ class ShellCommands {
   private final SessionState sessionState
   private final EditorLauncher editorLauncher
   private final FileEditingTool fileEditingTool
+  private volatile boolean applyAllConfirmed = false
 
   ShellCommands(
     CodingAssistantAgent codingAssistantAgent,
@@ -165,7 +167,8 @@ class ShellCommands {
     if (dryRun) {
       return formatPatchResult(fileEditingTool.applyPatch(body, true))
     }
-    if (confirm) {
+    boolean shouldConfirm = confirm && !applyAllConfirmed
+    if (shouldConfirm) {
       FileEditingTool.PatchResult preview = fileEditingTool.applyPatch(body, true)
       String previewText = formatPatchResult(preview)
       if (preview.hasConflicts) {
@@ -175,6 +178,9 @@ class ShellCommands {
       ConfirmChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
       if (choice == ConfirmChoice.NO) {
         return "Patch application canceled."
+      }
+      if (choice == ConfirmChoice.ALL) {
+        applyAllConfirmed = true
       }
     }
     FileEditingTool.PatchResult result = fileEditingTool.applyPatch(body, false)
@@ -237,13 +243,16 @@ class ShellCommands {
   private String resolvePatchBody(String patch, String patchFile) {
     if (patchFile != null && patchFile.trim()) {
       Path candidate = fileEditingTool.projectRoot.resolve(patchFile).normalize()
-      if (!candidate.startsWith(fileEditingTool.projectRoot)) {
-        throw new IllegalArgumentException("Patch file must be inside the project root")
+      try {
+        Path realRoot = fileEditingTool.projectRoot.toRealPath()
+        Path realCandidate = candidate.toRealPath()
+        if (!realCandidate.startsWith(realRoot)) {
+          throw new IllegalArgumentException("Patch file must be inside the project root")
+        }
+        return Files.readString(realCandidate)
+      } catch (IOException e) {
+        throw new IllegalArgumentException("Patch file not found or unreadable: $patchFile", e)
       }
-      if (!Files.exists(candidate)) {
-        throw new IllegalArgumentException("Patch file not found: $patchFile")
-      }
-      return Files.readString(candidate)
     }
     if (patch == null || patch.trim().isEmpty()) {
       throw new IllegalArgumentException("Provide either patch text or a patch file path")

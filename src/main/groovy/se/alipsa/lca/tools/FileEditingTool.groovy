@@ -28,6 +28,7 @@ class FileEditingTool {
   private static final int PREVIEW_LIMIT = 800
 
   private final Path projectRoot
+  private final Path realProjectRoot
 
   FileEditingTool() {
     this(Paths.get(".").toAbsolutePath())
@@ -35,6 +36,11 @@ class FileEditingTool {
 
   FileEditingTool(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize()
+    try {
+      this.realProjectRoot = this.projectRoot.toRealPath()
+    } catch (IOException e) {
+      throw new IllegalStateException("Failed to resolve project root path", e)
+    }
   }
 
   Path getProjectRoot() {
@@ -176,9 +182,10 @@ class FileEditingTool {
       throw new IllegalArgumentException("File $filePath does not exist")
     }
     List<String> lines = readLines(path)
+    Pattern pattern = Pattern.compile("\\b${Pattern.quote(symbol)}\\b")
     int index = -1
     for (int i = 0; i < lines.size(); i++) {
-      if (lines.get(i).contains(symbol)) {
+      if (pattern.matcher(lines.get(i)).find()) {
         index = i
         break
       }
@@ -221,7 +228,7 @@ class FileEditingTool {
     }
     String originalText = Files.readString(path)
     Path backup = createBackup(path, originalText)
-    writeLines(path, updated, resolveLineSeparator(originalText))
+    writeLines(path, updated, resolveLineSeparator(originalText), hasTrailingNewline(originalText))
     new EditResult(
       true,
       false,
@@ -352,6 +359,7 @@ class FileEditingTool {
     boolean newFile = "/dev/null" == patchFile.oldPath
     boolean originalExists = Files.exists(targetPath)
     String originalText = originalExists ? Files.readString(targetPath) : ""
+    boolean hadTrailingNewline = hasTrailingNewline(originalText)
     List<String> originalLines = splitToLines(originalText)
     HunkApplication application = applyHunks(originalLines, patchFile.hunks)
     FilePatchComputation computation = new FilePatchComputation()
@@ -363,7 +371,11 @@ class FileEditingTool {
     computation.additions = application.additions
     computation.deletions = application.deletions
     computation.originalText = originalText
-    computation.updatedText = joinLines(application.updatedLines, resolveLineSeparator(originalText))
+    computation.updatedText = joinLines(
+      application.updatedLines,
+      resolveLineSeparator(originalText),
+      hadTrailingNewline
+    )
     computation.newline = resolveLineSeparator(originalText)
     computation.originalExists = originalExists
     computation
@@ -518,6 +530,21 @@ class FileEditingTool {
     if (!resolvedPath.startsWith(projectRoot)) {
       throw new IllegalArgumentException("File path must be within the project directory")
     }
+    Path existing = resolvedPath
+    while (existing != null && !Files.exists(existing)) {
+      existing = existing.getParent()
+    }
+    if (existing == null) {
+      throw new IllegalArgumentException("File path must be within the project directory")
+    }
+    try {
+      Path realAncestor = existing.toRealPath()
+      if (!realAncestor.startsWith(realProjectRoot)) {
+        throw new IllegalArgumentException("File path must be within the project directory")
+      }
+    } catch (IOException e) {
+      throw new IllegalArgumentException("Unable to resolve file path safely", e)
+    }
     resolvedPath
   }
 
@@ -532,11 +559,12 @@ class FileEditingTool {
     lines
   }
 
-  private static String joinLines(List<String> lines, String newline) {
+  private static String joinLines(List<String> lines, String newline, boolean appendTerminalNewline) {
     if (lines.isEmpty()) {
-      return ""
+      return appendTerminalNewline ? newline : ""
     }
-    return String.join(newline, lines)
+    String joined = String.join(newline, lines)
+    appendTerminalNewline ? joined + newline : joined
   }
 
   private static String resolveLineSeparator(String text) {
@@ -551,11 +579,18 @@ class FileEditingTool {
     splitToLines(content)
   }
 
-  private void writeLines(Path path, List<String> lines, String newline) {
+  private void writeLines(Path path, List<String> lines, String newline, boolean appendTerminalNewline) {
     if (path.getParent() != null) {
       Files.createDirectories(path.getParent())
     }
-    Files.writeString(path, joinLines(lines, newline))
+    Files.writeString(path, joinLines(lines, newline, appendTerminalNewline))
+  }
+
+  private static boolean hasTrailingNewline(String text) {
+    if (text == null || text.isEmpty()) {
+      return false
+    }
+    return text.endsWith("\r\n") || text.endsWith("\n")
   }
 
   private Path createBackup(Path targetPath, String content) {

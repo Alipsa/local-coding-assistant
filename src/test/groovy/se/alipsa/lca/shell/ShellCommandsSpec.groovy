@@ -186,4 +186,28 @@ class ShellCommandsSpec extends Specification {
     result.contains("src/App.groovy:5-5")
     result.contains("line")
   }
+
+  def "applyPatch honors confirm all choice"() {
+    given:
+    def patchResult = new FileEditingTool.PatchResult(true, false, false, List.of(), List.of())
+    fileEditingTool.applyPatch(_, true) >> patchResult
+    fileEditingTool.applyPatch(_, false) >> patchResult
+    int confirmations = 0
+    ShellCommands confirming = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        confirmations++
+        ConfirmChoice.ALL
+      }
+    }
+
+    when:
+    confirming.applyPatch("patch body", null, false, true)
+    confirmations = 0
+    confirming.applyPatch("second patch", null, false, true)
+
+    then:
+    confirmations == 0
+    3 * fileEditingTool.applyPatch(_, _)
+  }
 }
