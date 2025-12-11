@@ -314,13 +314,18 @@ class ShellCommandsSpec extends Specification {
     )
     agent.reviewCode(_, _, ai, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
-    commands.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
-    Thread.sleep(5)
-    commands.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
-    String timestamp = java.time.Instant.now().minusSeconds(1).toString()
+    def instants = [java.time.Instant.parse("2025-01-01T00:00:00Z"), java.time.Instant.parse("2025-01-01T00:00:10Z")].iterator()
+    ShellCommands clocked = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool, tempDir.resolve("reviews.log").toString()) {
+      @Override
+      protected java.time.Instant nowInstant() {
+        instants.hasNext() ? instants.next() : java.time.Instant.now()
+      }
+    }
+    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
 
     when:
-    def out = commands.reviewLog(ReviewSeverity.LOW, null, 1, 2, timestamp, true)
+    def out = clocked.reviewLog(ReviewSeverity.LOW, null, 1, 2, "2025-01-01T00:00:05Z", true)
 
     then:
     out.contains("entry2")

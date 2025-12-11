@@ -5,6 +5,8 @@ import com.embabel.agent.domain.io.UserInput
 import com.embabel.common.ai.model.LlmOptions
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
@@ -34,6 +36,7 @@ import java.nio.file.Paths
 @CompileStatic
 class ShellCommands {
 
+  private static final Logger log = LoggerFactory.getLogger(ShellCommands)
   private final CodingAssistantAgent codingAssistantAgent
   private final Ai ai
   private final SessionState sessionState
@@ -109,6 +112,7 @@ class ShellCommands {
     @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
   ) {
+    ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     SessionSettings settings = sessionState.update(session, model, null, reviewTemperature, maxTokens, systemPrompt)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
@@ -121,10 +125,10 @@ class ShellCommands {
       system
     )
     ReviewSummary summary = ReviewParser.parse(result.review)
-    String rendered = renderReview(summary, minSeverity, !noColor)
+    String rendered = renderReview(summary, severityThreshold, !noColor)
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${rendered}")
     if (logReview) {
-      writeReviewLog(prompt, summary, paths, staged, minSeverity)
+      writeReviewLog(prompt, summary, paths, staged, severityThreshold)
     }
     rendered
   }
@@ -381,6 +385,9 @@ class ShellCommands {
       }
       return output
     } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
       return ""
     }
   }
@@ -392,7 +399,7 @@ class ShellCommands {
       builder.append("\n- None")
     } else {
       List<ReviewFinding> sorted = new ArrayList<>(filtered)
-      sorted.sort { ReviewFinding a, ReviewFinding b -> a.severity.ordinal() <=> b.severity.ordinal() }
+      sorted.sort { ReviewFinding a, ReviewFinding b -> b.severity.ordinal() <=> a.severity.ordinal() }
       sorted.each { ReviewFinding finding ->
         String location = finding.file ?: "general"
         if (finding.line != null) {
@@ -473,6 +480,12 @@ class ShellCommands {
       }
       entries.add(new LogEntry(prompt, paths, Boolean.parseBoolean(staged), parsedTs, new ReviewSummary(filtered, summary.tests, summary.raw)))
     }
+    entries.sort { LogEntry a, LogEntry b ->
+      if (a.timestamp == null && b.timestamp == null) return 0
+      if (a.timestamp == null) return 1
+      if (b.timestamp == null) return -1
+      return b.timestamp <=> a.timestamp
+    }
     entries
   }
 
@@ -503,6 +516,11 @@ class ShellCommands {
     }
   }
 
+  @CompileStatic
+  protected Instant nowInstant() {
+    Instant.now()
+  }
+
   @Canonical
   @CompileStatic
   private static class LogEntry {
@@ -531,7 +549,7 @@ class ShellCommands {
 Prompt: ${prompt}
 Paths: ${paths ? paths.join(", ") : "none"}
 Staged: ${staged}
-Timestamp: ${Instant.now()}
+Timestamp: ${nowInstant()}
 Findings: ${filtered.size()} (min ${minSeverity})
 Tests: ${summary.tests.size()}
 ---
@@ -545,7 +563,7 @@ ${renderReview(summary, minSeverity, false)}
         java.nio.file.StandardOpenOption.APPEND
       )
     } catch (IOException e) {
-      // Logging failure should not break the command
+      log.warn("Failed to write review log to {}", reviewLogPath, e)
     }
   }
 

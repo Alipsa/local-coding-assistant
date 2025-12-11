@@ -41,7 +41,7 @@ class ReviewParser {
 
   private static ReviewFinding parseFinding(String line) {
     // Expected format: [Severity] path:line - comment
-    def matcher = line =~ /^\[(High|Medium|Low)\]\s+([^-\n:]+[^-\n]*?)(?::(\d+))?\s*-\s*(.+)$/
+    def matcher = line =~ /^\[(High|Medium|Low)\]\s+([^:\n]+?)(?::(\d+))?\s*-\s*(.+)$/
     if (!matcher.matches()) {
       return null
     }
