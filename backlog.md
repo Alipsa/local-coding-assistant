@@ -104,15 +104,11 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 Why: When a user asks "Where is the authentication logic?", the agent cannot see the file structure unless you provide it.
 - 12.1 [ ] Create a tool that dumps the directory structure (respecting .gitignore) into the context so the agent can "see" the project layout.
 
-## 13) Token Counting Utility
-Why: You will hit ContextLengthExceeded errors frequently.
-- 13.1 [ ] Integrate a Java implementation of a BPE tokenizer (compatible with Llama/DeepSeek) to count tokens locally in Java before sending requests to Ollama.
-
-## 14) REST integration
+## 13) REST integration
 Make sure the REST interface can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
 overlap between CLI and REST functionality. 
 
-## 15) Security Hardening
+## 14) Security Hardening
 
 Security is a critical concern for a tool that reads, writes, and executes code.
 The measures below aim to:
@@ -122,11 +118,11 @@ The measures below aim to:
 - Promote the generation of secure code.
 - Avoid accidentally exposing a powerful local tool over the network.
 
-### 15.1 Operational Safeguards
+### 14.1 Operational Safeguards
 
 Prevent the agent from performing destructive or unintended actions on the local system.
 
-- **15.1.1 [ ] Interactive Confirmation for Destructive Operations**  
+- **14.1.1 [ ] Interactive Confirmation for Destructive Operations**  
   Implement a strict confirmation gate (`[y/N/a]`) for any command that:
   - Modifies the file system in a destructive way (`rm`, `mv`, `cp -r`, etc.),
   - Applies git changes (`git apply`, `git commit`, `git push`),
@@ -134,7 +130,7 @@ Prevent the agent from performing destructive or unintended actions on the local
 
   This builds on items `7.5` and `8.4`: the agent can *propose* actions, but the user must confirm them.
 
-- **15.1.2 [ ] Filesystem Access Control**  
+- **14.1.2 [ ] Filesystem Access Control**  
   Strictly limit file I/O to the current project root (or a configured workspace root).  
   Add support for an `.aiexclude` file (similar to `.gitignore`) to prevent the agent from
   reading or touching sensitive files such as:
@@ -142,25 +138,25 @@ Prevent the agent from performing destructive or unintended actions on the local
   - `~/.ssh`, keychains, OS config directories
   - IDE config files or any path explicitly excluded by the user.
 
-- **15.1.3 [ ] Command Execution Safety**  
+- **14.1.3 [ ] Command Execution Safety**  
   For the `/run` and other execution-related commands:
   - Start by enforcing:
     - Explicit confirmation before execution.
     - A configurable allowlist/denylist of commands.
     - Timeouts and output truncation (see `8.3`).
 
-- **15.1.4 [ ] Dependency Vulnerability Scanning (Later / Optional)**  
+- **14.1.4 [ ] Dependency Vulnerability Scanning (Later / Optional)**  
   When the agent suggests adding a new dependency (e.g., to `pom.xml` or `build.gradle`),
   integrate with a vulnerability scanner (e.g., OWASP Dependency-Check or a Gradle plugin)
   to check for known issues. If vulnerabilities are detected, show a clear warning and
   include them in the review output. This is a nice-to-have enhancement rather than a
   requirement for a first usable version.
 
-### 15.2 Secure Coding & Review
+### 14.2 Secure Coding & Review
 
 Improve the agent’s ability to write and review code with security in mind.
 
-- **15.2.1 [ ] Dedicated Security Persona**  
+- **14.2.1 [ ] Dedicated Security Persona**  
   Add a specialized "Security Reviewer" persona/prompt that focuses on:
   - Common vulnerabilities (OWASP Top 10 style): injection, insecure deserialization,
     hardcoded secrets, insecure crypto, etc.
@@ -169,14 +165,14 @@ Improve the agent’s ability to write and review code with security in mind.
 
   The CLI should expose this mode via a flag (e.g., `review --security`).
 
-- **15.2.2 [ ] Integrate Static Analysis (SAST) [Optional / pluggable]**  
+- **14.2.2 [ ] Integrate Static Analysis (SAST) [Optional / pluggable]**  
   Enhance the `/review` command with an optional static analysis step (e.g., Semgrep with
   a default ruleset):
   - Run the SAST tool on the files/diffs under review.
   - Parse and summarize findings (rules, severity, locations).
   - Present them together with the LLM-based review for better coverage.
 
-- **15.2.3 [ ] Secret Detection Before Commit**  
+- **14.2.3 [ ] Secret Detection Before Commit**  
   Before running `commit-suggest` or any commit helper:
   - Scan the staged diff for likely secrets (API keys, tokens, passwords).
   - If a potential secret is detected:
@@ -184,9 +180,9 @@ Improve the agent’s ability to write and review code with security in mind.
     - Require an explicit override to proceed.
     - Recommend removing or rotating the secret as appropriate.
 
-### 15.3 Application & API Security
+### 14.3 Application & API Security
 
-#### 15.3.1 Local vs Remote Access Modes
+#### 14.3.1 Local vs Remote Access Modes
 
 Define clear modes for how the REST API is exposed:
 
@@ -195,32 +191,32 @@ Define clear modes for how the REST API is exposed:
   - When enabled without extra configuration:
     - Bind only to `127.0.0.1`.
     - No separate API authentication; OS user identity is assumed.
-    - Capabilities mirror those of the CLI (including confirmation gates from 15.1.1).
+    - Capabilities mirror those of the CLI (including confirmation gates from 14.1.1).
   - This treats REST calls from the local machine as equivalent to CLI usage.
 
 - **Remote REST Mode (opt-in)**
   - Expose the API on `0.0.0.0` or a specific network interface.
   - Require explicit configuration to enable.
-  - Must enforce HTTPS and authentication (see 15.3.2–15.3.4).
+  - Must enforce HTTPS and authentication (see 14.3.2–14.3.4).
   - Intended for:
     - Remote UIs.
     - Any scenario where calls originate off the host machine.
 
-#### 15.3.2 Authentication & Authorization (REST)
+#### 14.3.2 Authentication & Authorization (REST)
 
-- **15.3.2.1 [ ] API Key Authentication**  
+- **14.3.2.1 [ ] API Key Authentication**  
   For machine-to-machine usage (e.g., remote tools or scripts), support simple API key
   authentication with:
   - Keys stored in a configuration file or environment variable.
   - The ability to generate/revoke keys.
 
-- **15.3.2.2 [ ] OAuth2/OIDC (Optional)**  
+- **14.3.2.2 [ ] OAuth2/OIDC (Optional)**  
   For interactive, user-facing remote UIs, consider integrating OAuth2/OIDC via Spring Security
   so that:
   - Users authenticate through a standard identity provider.
   - Roles/authorities can be mapped to fine-grained permissions.
 
-- **15.3.2.3 [ ] Scope-Based Authorization**  
+- **14.3.2.3 [ ] Scope-Based Authorization**  
   Implement a scope or permission model that can be applied both to API keys and OIDC users:
   - Example scopes:
     - `file:read`, `file:write`
@@ -228,28 +224,28 @@ Define clear modes for how the REST API is exposed:
     - `command:execute`
   - Enforce the principle of least privilege for remote callers.
 
-#### 15.3.3 Transport Security (TLS)
+#### 14.3.3 Transport Security (TLS)
 
-- **15.3.3.1 [ ] Enforce HTTPS for Remote Mode**
+- **14.3.3.1 [ ] Enforce HTTPS for Remote Mode**
   - Require TLS for all REST traffic when running in remote mode.
   - Provide documentation and helper scripts for generating self-signed certificates
     for local dev and testing.
 
-#### 15.3.4 Protection Against Abuse
+#### 14.3.4 Protection Against Abuse
 
-- **15.3.4.1 [ ] Rate Limiting & Throttling**  
+- **14.3.4.1 [ ] Rate Limiting & Throttling**  
   Implement rate limiting for remote requests to prevent accidental or malicious
   denial-of-service scenarios.
 
-- **15.3.4.2 [ ] Audit Logging for Remote Operations**  
+- **14.3.4.2 [ ] Audit Logging for Remote Operations**  
   Maintain an audit log for all operations invoked via remote REST:
   - Caller identity (API key or authenticated user).
   - Operation type (file read/write, git, run).
   - Timestamps and outcome (success/failure).
 
-#### 15.3.5 Input Validation
+#### 14.3.5 Input Validation
 
-- **15.3.5.1 [ ] Validate CLI & API Inputs**  
+- **14.3.5.1 [ ] Validate CLI & API Inputs**  
   Apply rigorous validation and sanitization to:
   - CLI arguments (paths, command names, flags).
   - REST request payloads and query parameters.
@@ -257,37 +253,37 @@ Define clear modes for how the REST API is exposed:
 
   The goal is to avoid command injection, path traversal, and similar issues.
 
-- **15.3.5.2 [ ] User Management Considerations**  
+- **14.3.5.2 [ ] User Management Considerations**  
   For local CLI and local-only REST, OS-level user permissions are sufficient.  
   For remote REST:
   - Rely on Spring Security’s user/role model if user-level auth is needed.
   - Use robust password hashing (e.g., bcrypt) and standard security practices
     if you implement username/password logins.
 
-### 15.4 Data Privacy
+### 14.4 Data Privacy
 
 Uphold the "local-first" promise and protect user data.
 
-- **15.4.1 [ ] Guarantee Local-Only Operation**  
+- **14.4.1 [ ] Guarantee Local-Only Operation**  
   Explicitly document and test that:
   - No code, prompts, project data, or metadata is sent to third-party cloud services.
   - All inference happens via locally-running Ollama models or other local runtimes.
 
-- **15.4.2 [ ] No Telemetry by Default**  
+- **14.4.2 [ ] No Telemetry by Default**  
   Do not collect or transmit any usage data or telemetry without explicit user opt-in.  
   If telemetry is ever added:
   - Make it disabled by default.
   - Document exactly what is collected.
   - Provide a clear configuration toggle.
 
-- **15.4.3 [ ] Log Sanitization**  
+- **14.4.3 [ ] Log Sanitization**  
   Review logging across the project to ensure that:
   - Logs do not include large code blocks, prompt bodies, or agent responses by default.
   - Logs explicitly avoid storing secrets or sensitive content.
   - Where detailed logs are needed (e.g., debug mode), warn the user that logs may
     contain code and should be handled accordingly.
 
-## 16) Batch mode / non-interactive execution
+## 15) Batch mode / non-interactive execution
 
 Why: Enable scripted use and CI-style end-to-end tests by running a sequence of commands non-interactively and then exiting. Example:
 
@@ -296,9 +292,9 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
   -c "status; review --paths src/main/java; commit-suggest"
 ```
 
-### 16.1 CLI flag and mode selection
+### 15.1 CLI flag and mode selection
 
-* **16.1.1 [ ] Add a `-c` / `--command` option**
+* **15.1.1 [ ] Add a `-c` / `--command` option**
 
   * Accept a single string containing one or more CLI commands.
   * Presence of `-c/--command` switches the app into *batch mode*:
@@ -307,19 +303,19 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     * Execute the supplied commands.
     * Exit when done.
 
-* **16.1.2 [ ] Add `--batch-file` for script files**
+* **15.1.2 [ ] Add `--batch-file` for script files**
 
   * Accept a path to a file containing one command per line (or semicolon-separated blocks).
   * Treat `--batch-file` as mutually exclusive with `-c/--command`.
   * Consider supporting `--batch-file -` to read from stdin for shell pipelines.
 
-* **16.1.3 [ ] Keep interactive mode as default**
+* **15.1.3 [ ] Keep interactive mode as default**
 
   * If neither `-c` nor `--batch-file` is present, start the existing Spring Shell interactive session as today.
 
-### 16.2 Command parsing and execution semantics
+### 15.2 Command parsing and execution semantics
 
-* **16.2.1 [ ] Command separator rules**
+* **15.2.1 [ ] Command separator rules**
 
   * Support `;` as a command separator in the `-c` string.
 
@@ -327,7 +323,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
   * Trim whitespace around each command.
   * Ignore empty segments (e.g., consecutive `;;` or trailing semicolon).
 
-* **16.2.2 [ ] Quoting and escaping**
+* **15.2.2 [ ] Quoting and escaping**
 
   * Clearly define how quoting works inside `-c`:
 
@@ -335,7 +331,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     * Inside the `-c` string, treat `"` and `'` just as the Spring Shell parser does for normal commands.
   * Document any limitations (e.g., no way to include a literal `;` unless escaped or quoted).
 
-* **16.2.3 [ ] Execution order & failure handling**
+* **15.2.3 [ ] Execution order & failure handling**
 
   * Execute commands sequentially in the order given.
   * On failure:
@@ -346,9 +342,9 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
       * Option B: Continue executing remaining commands but track failures.
   * Implement the chosen policy consistently and document it.
 
-### 16.3 Exit codes and testability
+### 15.3 Exit codes and testability
 
-* **16.3.1 [ ] Exit code contract**
+* **15.3.1 [ ] Exit code contract**
 
   * Define how the process exit code is derived in batch mode:
 
@@ -356,7 +352,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     * Non-zero if any command fails (e.g., use the first failing command’s code or a generic `1`).
   * Make this explicit in the README for CI use.
 
-* **16.3.2 [ ] Per-command status reporting**
+* **15.3.2 [ ] Per-command status reporting**
 
   * Print a short status line before/after each command, e.g.:
 
@@ -368,13 +364,13 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     ```
   * Ensure messages are stable enough that integration tests can parse them reliably (even if they don’t parse full output).
 
-### 16.4 Output formatting for batch mode
+### 15.4 Output formatting for batch mode
 
-* **16.4.1 [ ] Human-readable default output**
+* **15.4.1 [ ] Human-readable default output**
 
   * Keep the normal, nicely formatted output for human usage, including streaming where available.
 
-* **16.4.2 [ ] Optional machine-friendly mode (for tests)**
+* **15.4.2 [ ] Optional machine-friendly mode (for tests)**
 
   * Add a flag like `--batch-json` or `--batch-compact` to:
 
@@ -387,9 +383,9 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
       * Short summary message.
   * This is primarily for end-to-end integration tests that want predictable parsing.
 
-### 16.5 Interaction with confirmations and safety gates
+### 15.5 Interaction with confirmations and safety gates
 
-* **16.5.1 [ ] Respect existing confirmation prompts**
+* **15.5.1 [ ] Respect existing confirmation prompts**
 
   * Batch mode must still honor confirmation gates from:
 
@@ -400,7 +396,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
 
     * If a command requires confirmation and none is provided, the command should fail cleanly rather than silently proceeding.
 
-* **16.5.2 [ ] Non-interactive confirmation override for CI**
+* **15.5.2 [ ] Non-interactive confirmation override for CI**
 
   * Add a flag like `--yes` / `--assume-yes` that:
 
@@ -411,7 +407,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     * `--yes` and
     * A command-specific `--force`/`--allow-push` flag (or similar), to avoid accidental misuse.
 
-### 16.6 Session configuration and environment
+### 15.6 Session configuration and environment
 
 * **16.6.1 [ ] Reuse the same configuration as interactive mode**
 
@@ -420,28 +416,28 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     * Respect the same config files (model, temperature, default paths, workspace root, `.aiexclude`, etc.).
     * Respect the same security limits (workspace root, deny-listed commands).
 
-* **16.6.2 [ ] Working directory semantics**
+* **15.6.2 [ ] Working directory semantics**
 
   * Document that all commands in batch mode execute relative to the process working directory (`$PWD`) where `java -jar` is invoked.
   * If the current directory is not a git repo, commands like `status`/`diff`/`commit-suggest` should behave as specified in 8.4 (graceful “git unavailable” messages).
 
-### 16.7 Error handling and diagnostics
+### 15.7 Error handling and diagnostics
 
-* **16.7.1 [ ] Clear error reporting**
+* **15.7.1 [ ] Clear error reporting**
 
   * If parsing the `-c` string fails (e.g., invalid Spring Shell command), print a clear error and exit non-zero.
   * If `--batch-file` cannot be read, print a clear error and exit non-zero.
 
-* **16.7.2 [ ] Logging considerations**
+* **15.7.2 [ ] Logging considerations**
 
   * Ensure batch mode logging:
 
-    * Does not spam logs with massive prompts/responses by default (respect 15.4.3).
+    * Does not spam logs with massive prompts/responses by default (respect 14.4.3).
     * Is sufficient to debug failures in CI (e.g., log which command failed and why).
 
-### 16.8 Integration and tests
+### 15.8 Integration and tests
 
-* **16.8.1 [ ] Wire batch mode into application startup**
+* **15.8.1 [ ] Wire batch mode into application startup**
 
   * On startup:
 
@@ -449,7 +445,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
     * If `-c` or `--batch-file` is present, execute batch mode logic and exit *before* starting the interactive Spring Shell loop.
     * Otherwise, proceed with interactive mode as today.
 
-* **16.8.2 [ ] End-to-end integration tests**
+* **15.8.2 [ ] End-to-end integration tests**
 
   * Add tests that:
 
@@ -464,7 +460,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
       * Presence of key output markers.
       * Expected file/git side effects in a temporary test repo.
 
-* **16.8.3 [ ] Document batch mode usage**
+* **15.8.3 [ ] Document batch mode usage**
 
   * Update `README.md` and `docs/` with:
 
