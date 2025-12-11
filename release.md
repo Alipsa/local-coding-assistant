@@ -1,5 +1,7 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 0.4.0 - Code review and suggestions, In progress
+
 ## Version 0.3.0 - Editing and patch application, 2025-12-11
 - 3.1 [x] Extend `FileEditingTool` to support diff/patch application with backups and conflict detection.
 - 3.2 [x] Enable targeted edits (line ranges, symbols) and contextual prompts for the agent.

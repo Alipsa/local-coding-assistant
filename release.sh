@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
+set -e
 if [[ $(git status --porcelain) ]]; then
   echo "Git changes detected, commit all changes first before releasing"
   exit
 fi
-mvn -Prelease -B clean site deploy || exit 1
+mvn -Prelease -B clean site deploy
 echo "Release to maven successful!"
 
 echo "Starting GitHub release process..."
 
 # --- Configuration ---
-# Set the maximum number of log entries to include in the release notes
+# Set the maximum number of log entries to include if no previous tag is found
 LOG_LIMIT=10
 
 # --- Function to Check for Required Commands ---
 check_commands() {
-    for cmd in gh mvn; do
+    for cmd in gh mvn git; do
         if ! command -v "$cmd" &> /dev/null; then
             echo "Error: Required command '$cmd' is not installed or not in your PATH." >&2
             exit 1
@@ -28,7 +29,6 @@ check_commands
 echo "1. Reading project version from pom.xml..."
 
 # Use Maven help:evaluate to reliably extract the project version
-# The -q (quiet) and -DforceStdout flags ensure only the version number is printed
 PROJECT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
 
 if [ -z "$PROJECT_VERSION" ]; then
@@ -52,12 +52,33 @@ else
 fi
 
 # 3. Generate Release Notes from Git Log
-echo "3. Generating release notes from the last $LOG_LIMIT commits..."
+echo "3. Determining range for release notes..."
 
-# Get the commit history:
-# --pretty=format:"* %s (%an)" -> Formats each commit as a bullet point with subject and author
-# -n $LOG_LIMIT -> Limits the output to the last $LOG_LIMIT commits
-RELEASE_NOTES=$(git log --pretty=format:"* %s (%an)" -n "$LOG_LIMIT")
+# Find the most recent tag to set the start point for the git log
+# 2> /dev/null suppresses the error message if no tag is found
+LAST_TAG=$(git describe --tags --abbrev=0 2> /dev/null)
+
+if [ -z "$LAST_TAG" ]; then
+    echo "   -> Warning: No previous Git tag found. Including last $LOG_LIMIT non-merge commits."
+    # If no tag is found, limit the history
+    LOG_RANGE="-n $LOG_LIMIT"
+else
+    echo "   -> Found last tag: $LAST_TAG. Including commits from this point onwards."
+    # Set the range to be commits AFTER the last tag up to HEAD
+    LOG_RANGE="${LAST_TAG}..HEAD"
+fi
+
+# Generate the commit log:
+# --no-merges: Excludes all merge commits (the new requirement)
+# --pretty=format:"* %s (%an)": Formats each commit as a bullet point with subject and author
+RELEASE_NOTES=$(git log --no-merges --pretty=format:"* %s (%an)" "$LOG_RANGE")
+
+# Check if RELEASE_NOTES is empty
+if [ -z "$RELEASE_NOTES" ]; then
+    echo "   -> No new non-merge commits found in the range. Using a generic message."
+    RELEASE_NOTES="* No feature or bug fix commits since the last release. Includes internal updates."
+fi
+
 
 # Create a temporary file for the notes (required for gh CLI input)
 NOTES_FILE=$(mktemp)
@@ -70,8 +91,7 @@ echo "   -> Notes saved to temporary file: $NOTES_FILE"
 # 4. Create the Release with gh CLI
 echo "4. Creating GitHub Release..."
 
-# Note: The gh CLI will automatically create the Git tag if it doesn't exist.
-# It uses the target of the HEAD of the current branch by default.
+# The gh CLI command remains the same
 gh release create "$RELEASE_TAG" \
     --title "$RELEASE_TITLE" \
     --notes-file "$NOTES_FILE" \
