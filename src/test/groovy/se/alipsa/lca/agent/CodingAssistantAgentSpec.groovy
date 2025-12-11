@@ -144,4 +144,71 @@ class CodingAssistantAgentSpec extends Specification {
       it.contains("repository-aware")
     }, CodingAssistantAgent.CodeSnippet)
   }
+
+  def "applyPatch delegates to file editing tool"() {
+    given:
+    def patchResult = new FileEditingTool.PatchResult(true, false, false, List.of(), List.of())
+    fileEditingTool.applyPatch("patch body", false) >> patchResult
+
+    when:
+    def result = agent.applyPatch("patch body", false)
+
+    then:
+    result.is(patchResult)
+    1 * fileEditingTool.applyPatch("patch body", false)
+  }
+
+  def "replaceRange delegates with provided parameters"() {
+    given:
+    def editResult = new FileEditingTool.EditResult(true, false, "backup", "msg", "file")
+    fileEditingTool.replaceRange("file.groovy", 1, 3, "new", true) >> editResult
+
+    when:
+    def result = agent.replaceRange("file.groovy", 1, 3, "new", true)
+
+    then:
+    result.is(editResult)
+    1 * fileEditingTool.replaceRange("file.groovy", 1, 3, "new", true)
+  }
+
+  def "fileContext prefers symbol when provided"() {
+    given:
+    def ctx = new FileEditingTool.TargetedEditContext("file", 2, 2, 10, "snippet")
+    fileEditingTool.contextBySymbol("file", "sym", 3) >> ctx
+
+    when:
+    def result = agent.fileContext("file", null, null, 3, "sym")
+
+    then:
+    result.is(ctx)
+    1 * fileEditingTool.contextBySymbol("file", "sym", 3)
+    0 * fileEditingTool.contextByRange(_, _, _, _)
+  }
+
+  def "fileContext uses range when symbol is absent"() {
+    given:
+    def ctx = new FileEditingTool.TargetedEditContext("file", 1, 4, 20, "snippet")
+    fileEditingTool.contextByRange("file", 1, 4, 2) >> ctx
+
+    when:
+    def result = agent.fileContext("file", 1, 4, null, null)
+
+    then:
+    result.is(ctx)
+    1 * fileEditingTool.contextByRange("file", 1, 4, 2)
+    0 * fileEditingTool.contextBySymbol(_, _, _)
+  }
+
+  def "revertFromBackup delegates to file editing tool"() {
+    given:
+    def editResult = new FileEditingTool.EditResult(true, false, "backup", "restored", "file")
+    fileEditingTool.revertLatestBackup("file", false) >> editResult
+
+    when:
+    def result = agent.revertFromBackup("file", false)
+
+    then:
+    result.is(editResult)
+    1 * fileEditingTool.revertLatestBackup("file", false)
+  }
 }

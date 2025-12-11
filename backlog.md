@@ -28,10 +28,10 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - /edit: Opens the user's default $EDITOR (vim/nano/code), lets them type the prompt there, and sends it to the agent upon save/close. This is infinitely better than typing prompts in the shell.
 
 ## 3) Editing and patch application
-- 3.1 [ ] Extend `FileEditingTool` to support diff/patch application with backups and conflict detection.
-- 3.2 [ ] Enable targeted edits (line ranges, symbols) and contextual prompts for the agent.
-- 3.3 [ ] Add dry-run/confirm and revert options in the CLI.
-- 3.4 [ ] Cover patch application logic with unit tests on sample files.
+- 3.1 [x] Extend `FileEditingTool` to support diff/patch application with backups and conflict detection.
+- 3.2 [x] Enable targeted edits (line ranges, symbols) and contextual prompts for the agent.
+- 3.3 [x] Add dry-run/confirm and revert options in the CLI.
+- 3.4 [x] Cover patch application logic with unit tests on sample files.
 
 ## 4) Code review and suggestions
 - 4.1 [ ] Add a `review` command that feeds selected files/diffs into the agent with severity-tagged output.
@@ -72,7 +72,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 7.3 [ ] Include a `commit-suggest` helper that drafts commit messages from staged diffs.
 - 7.4 [ ] Add lightweight tests for git command wrappers (mocked repo).
 - 7.5 [ ] Add a "Safety Valve".
-  - The agent should never be allowed to git push without explicit user confirmation (Y/n).
+  - The agent should not be allowed to git push without explicit user confirmation (Y/n/a).
   - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
    
 ## 8) Command execution and diagnostics
@@ -126,7 +126,7 @@ The measures below aim to:
 Prevent the agent from performing destructive or unintended actions on the local system.
 
 - **15.1.1 [ ] Interactive Confirmation for Destructive Operations**  
-  Implement a strict confirmation gate (`[y/N]`) for any command that:
+  Implement a strict confirmation gate (`[y/N/a]`) for any command that:
   - Modifies the file system in a destructive way (`rm`, `mv`, `cp -r`, etc.),
   - Applies git changes (`git apply`, `git commit`, `git push`),
   - Executes arbitrary scripts or project commands (`/run`, `mvn`, `gradle`, `npm`, etc.).
@@ -285,3 +285,194 @@ Uphold the "local-first" promise and protect user data.
   - Logs explicitly avoid storing secrets or sensitive content.
   - Where detailed logs are needed (e.g., debug mode), warn the user that logs may
     contain code and should be handled accordingly.
+
+## 16) Batch mode / non-interactive execution
+
+Why: Enable scripted use and CI-style end-to-end tests by running a sequence of commands non-interactively and then exiting. Example:
+
+```bash
+java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
+  -c "status; review --paths src/main/java; commit-suggest"
+```
+
+### 16.1 CLI flag and mode selection
+
+* **16.1.1 [ ] Add a `-c` / `--command` option**
+
+  * Accept a single string containing one or more CLI commands.
+  * Presence of `-c/--command` switches the app into *batch mode*:
+
+    * No interactive prompt.
+    * Execute the supplied commands.
+    * Exit when done.
+
+* **16.1.2 [ ] Add `--batch-file` for script files**
+
+  * Accept a path to a file containing one command per line (or semicolon-separated blocks).
+  * Treat `--batch-file` as mutually exclusive with `-c/--command`.
+  * Consider supporting `--batch-file -` to read from stdin for shell pipelines.
+
+* **16.1.3 [ ] Keep interactive mode as default**
+
+  * If neither `-c` nor `--batch-file` is present, start the existing Spring Shell interactive session as today.
+
+### 16.2 Command parsing and execution semantics
+
+* **16.2.1 [ ] Command separator rules**
+
+  * Support `;` as a command separator in the `-c` string.
+
+    * Example: `"status; review --paths src/main/java; run mvn test"`.
+  * Trim whitespace around each command.
+  * Ignore empty segments (e.g., consecutive `;;` or trailing semicolon).
+
+* **16.2.2 [ ] Quoting and escaping**
+
+  * Clearly define how quoting works inside `-c`:
+
+    * Rely on the *shell* to handle outer quotes.
+    * Inside the `-c` string, treat `"` and `'` just as the Spring Shell parser does for normal commands.
+  * Document any limitations (e.g., no way to include a literal `;` unless escaped or quoted).
+
+* **16.2.3 [ ] Execution order & failure handling**
+
+  * Execute commands sequentially in the order given.
+  * On failure:
+
+    * Decide a policy:
+
+      * Option A (safer default): Stop on first failure and exit.
+      * Option B: Continue executing remaining commands but track failures.
+  * Implement the chosen policy consistently and document it.
+
+### 16.3 Exit codes and testability
+
+* **16.3.1 [ ] Exit code contract**
+
+  * Define how the process exit code is derived in batch mode:
+
+    * `0` if all commands succeed.
+    * Non-zero if any command fails (e.g., use the first failing command’s code or a generic `1`).
+  * Make this explicit in the README for CI use.
+
+* **16.3.2 [ ] Per-command status reporting**
+
+  * Print a short status line before/after each command, e.g.:
+
+    ```text
+    > status
+    [OK] status
+    > review --paths src/main/java
+    [ERROR] review --paths src/main/java (see above)
+    ```
+  * Ensure messages are stable enough that integration tests can parse them reliably (even if they don’t parse full output).
+
+### 16.4 Output formatting for batch mode
+
+* **16.4.1 [ ] Human-readable default output**
+
+  * Keep the normal, nicely formatted output for human usage, including streaming where available.
+
+* **16.4.2 [ ] Optional machine-friendly mode (for tests)**
+
+  * Add a flag like `--batch-json` or `--batch-compact` to:
+
+    * Wrap each command’s result in a simple structured envelope (e.g., JSONL or clearly delimited blocks).
+    * Include at minimum:
+
+      * Command string.
+      * Start/end timestamps.
+      * Success/failure.
+      * Short summary message.
+  * This is primarily for end-to-end integration tests that want predictable parsing.
+
+### 16.5 Interaction with confirmations and safety gates
+
+* **16.5.1 [ ] Respect existing confirmation prompts**
+
+  * Batch mode must still honor confirmation gates from:
+
+    * Destructive filesystem operations.
+    * Git operations (`apply`, `commit`, `push`).
+    * Command execution (`run`, `mvn`, `gradle`, `npm`, etc.).
+  * Default behavior in batch mode:
+
+    * If a command requires confirmation and none is provided, the command should fail cleanly rather than silently proceeding.
+
+* **16.5.2 [ ] Non-interactive confirmation override for CI**
+
+  * Add a flag like `--yes` / `--assume-yes` that:
+
+    * Auto-answers “yes” to `[y/N/a]` prompts.
+    * Is **off by default** for safety.
+  * For dangerous operations (e.g. `git push`), consider requiring both:
+
+    * `--yes` and
+    * A command-specific `--force`/`--allow-push` flag (or similar), to avoid accidental misuse.
+
+### 16.6 Session configuration and environment
+
+* **16.6.1 [ ] Reuse the same configuration as interactive mode**
+
+  * Batch mode should:
+
+    * Respect the same config files (model, temperature, default paths, workspace root, `.aiexclude`, etc.).
+    * Respect the same security limits (workspace root, deny-listed commands).
+
+* **16.6.2 [ ] Working directory semantics**
+
+  * Document that all commands in batch mode execute relative to the process working directory (`$PWD`) where `java -jar` is invoked.
+  * If the current directory is not a git repo, commands like `status`/`diff`/`commit-suggest` should behave as specified in 8.4 (graceful “git unavailable” messages).
+
+### 16.7 Error handling and diagnostics
+
+* **16.7.1 [ ] Clear error reporting**
+
+  * If parsing the `-c` string fails (e.g., invalid Spring Shell command), print a clear error and exit non-zero.
+  * If `--batch-file` cannot be read, print a clear error and exit non-zero.
+
+* **16.7.2 [ ] Logging considerations**
+
+  * Ensure batch mode logging:
+
+    * Does not spam logs with massive prompts/responses by default (respect 15.4.3).
+    * Is sufficient to debug failures in CI (e.g., log which command failed and why).
+
+### 16.8 Integration and tests
+
+* **16.8.1 [ ] Wire batch mode into application startup**
+
+  * On startup:
+
+    * Parse CLI args.
+    * If `-c` or `--batch-file` is present, execute batch mode logic and exit *before* starting the interactive Spring Shell loop.
+    * Otherwise, proceed with interactive mode as today.
+
+* **16.8.2 [ ] End-to-end integration tests**
+
+  * Add tests that:
+
+    * Launch the app (e.g., with `spring-boot:run` or via the jar) in batch mode.
+    * Supply simple command sequences like:
+
+      * `"status"`
+      * `"search --query Foo; review --paths src/main/java"`
+    * Assert on:
+
+      * Exit codes.
+      * Presence of key output markers.
+      * Expected file/git side effects in a temporary test repo.
+
+* **16.8.3 [ ] Document batch mode usage**
+
+  * Update `README.md` and `docs/` with:
+
+    * Examples for:
+
+      * Simple one-liner.
+      * Semicolon-separated sequence.
+      * `--batch-file` usage.
+      * CI/automation scenarios.
+    * Explanation of exit codes and confirmation behavior.
+    * Safety cautions when combining `--yes` with destructive commands.
+

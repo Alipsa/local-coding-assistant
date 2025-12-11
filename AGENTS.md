@@ -7,4 +7,4 @@
 - Use JVM 21.
 - Indent with 2 spaces. Max line length is 120 characters.
 - Follow existing code style and conventions.
-- Write unit tests for all new functionality (use Spock 2.3).
+- Write unit tests for all new functionality (use Spock 2.4).

@@ -6,6 +6,7 @@ import com.embabel.common.ai.model.LlmOptions
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
 import spock.lang.Specification
 
@@ -14,10 +15,11 @@ class ShellCommandsSpec extends Specification {
   SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "")
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
+  FileEditingTool fileEditingTool = Stub()
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> "edited text"
   }
-  ShellCommands commands = new ShellCommands(agent, ai, sessionState, editorLauncher)
+  ShellCommands commands = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool)
 
   def "chat uses persona mode and session overrides"() {
     given:
@@ -116,5 +118,96 @@ class ShellCommandsSpec extends Specification {
     then:
     text == "edited text"
     0 * agent._
+  }
+
+  def "applyPatch runs a dry-run when requested"() {
+    given:
+    fileEditingTool.applyPatch(_, true) >> new FileEditingTool.PatchResult(
+      false,
+      true,
+      false,
+      [
+        new FileEditingTool.FilePatchResult(
+          "f.txt",
+          false,
+          false,
+          false,
+          false,
+          true,
+          null,
+          "ok",
+          "preview"
+        )
+      ],
+      List.of()
+    )
+
+    when:
+    def output = commands.applyPatch("patch body", null, true, true)
+
+    then:
+    output.contains("Dry run")
+    output.contains("f.txt")
+    output.contains("preview")
+  }
+
+  def "revert reports backup path"() {
+    given:
+    fileEditingTool.revertLatestBackup("f.txt", false) >> new FileEditingTool.EditResult(
+      true,
+      false,
+      "backups/f.txt.1.bak",
+      "Restored f.txt",
+      "f.txt"
+    )
+
+    when:
+    def message = commands.revert("f.txt", false)
+
+    then:
+    message.contains("Restored f.txt")
+    message.contains("backups/f.txt.1.bak")
+  }
+
+  def "context uses symbol lookup when provided"() {
+    given:
+    fileEditingTool.contextBySymbol("src/App.groovy", "symbol", 2) >> new FileEditingTool.TargetedEditContext(
+      "src/App.groovy",
+      5,
+      5,
+      20,
+      "   5 | line"
+    )
+
+    when:
+    def result = commands.context("src/App.groovy", null, null, "symbol", 2)
+
+    then:
+    result.contains("src/App.groovy:5-5")
+    result.contains("line")
+  }
+
+  def "applyPatch honors confirm all choice"() {
+    given:
+    def patchResult = new FileEditingTool.PatchResult(true, false, false, List.of(), List.of())
+    fileEditingTool.applyPatch(_, true) >> patchResult
+    fileEditingTool.applyPatch(_, false) >> patchResult
+    int confirmations = 0
+    ShellCommands confirming = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        confirmations++
+        ConfirmChoice.ALL
+      }
+    }
+
+    when:
+    confirming.applyPatch("patch body", null, false, true)
+    confirmations = 0
+    confirming.applyPatch("second patch", null, false, true)
+
+    then:
+    confirmations == 0
+    3 * fileEditingTool.applyPatch(_, _)
   }
 }
