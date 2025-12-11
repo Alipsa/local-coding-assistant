@@ -416,7 +416,7 @@ class ShellCommands {
     } else {
       summary.tests.each { builder.append("\n- ").append(it) }
     }
-      builder.toString().stripTrailing()
+    builder.toString().stripTrailing()
   }
 
   private static String capitalize(String value) {
