@@ -1,6 +1,12 @@
 # Release Notes for the local-coding-assistant 
 
-## Version 0.2.0 -Spring Shell CLI bridge, In Progress
+## Version 0.3.0 - Editing and patch application, 2025-12-11
+- 3.1 [x] Extend `FileEditingTool` to support diff/patch application with backups and conflict detection.
+- 3.2 [x] Enable targeted edits (line ranges, symbols) and contextual prompts for the agent.
+- 3.3 [x] Add dry-run/confirm and revert options in the CLI.
+- 3.4 [x] Cover patch application logic with unit tests on sample files.
+
+## Version 0.2.0 -Spring Shell CLI bridge, 2025-12-10
 - 2.1 [x] Add Spring Shell commands that wrap the agent (e.g., `/chat`, `/review`, `/edit`, `/search`) and stream responses.
 - 2.2 [x] Support multiline input, conversation/session state, and optional system prompt overrides.
 - 2.3 [x] Provide CLI flags for model/temperature/max tokens and persist last-used options per session.
