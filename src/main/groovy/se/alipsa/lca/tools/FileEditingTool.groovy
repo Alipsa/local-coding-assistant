@@ -593,11 +593,17 @@ class FileEditingTool {
       StringBuilder replacement = new StringBuilder()
       boolean inReplace = false
       for (String raw : lines) {
-        String line = raw.trim()
-        if (line.startsWith(">")) {
-          line = line.substring(1).trim()
+        String line = raw
+        if (line.trim().startsWith(">")) {
+          // Remove the first '>' character, but preserve all other whitespace
+          int idx = line.indexOf('>')
+          if (idx != -1 && idx + 1 < line.length()) {
+            line = line.substring(idx + 1)
+          } else if (idx != -1) {
+            line = ""
+          }
         }
-        if (line == "====") {
+        if (line.trim() == "====") {
           inReplace = true
           continue
         }
