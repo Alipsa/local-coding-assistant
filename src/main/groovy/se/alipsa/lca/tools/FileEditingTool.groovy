@@ -61,6 +61,64 @@ class FileEditingTool {
     }
   }
 
+  String readFile(String filePath) {
+    try {
+      Path path = resolvePath(filePath)
+      if (!Files.exists(path)) {
+        throw new IllegalArgumentException("File $filePath does not exist")
+      }
+      return Files.readString(path)
+    } catch (IOException e) {
+      log.error("Error reading file {}", filePath, e)
+      throw new IllegalArgumentException("Error reading file: ${e.message}", e)
+    }
+  }
+
+  SearchReplaceResult applySearchReplaceBlocks(String filePath, String blocksText, boolean dryRun) {
+    if (blocksText == null || blocksText.trim().isEmpty()) {
+      return new SearchReplaceResult(false, dryRun, true, List.of(), null, List.of("No blocks provided"))
+    }
+    Path target = resolvePath(filePath)
+    if (!Files.exists(target)) {
+      return new SearchReplaceResult(
+        false,
+        dryRun,
+        true,
+        List.of(),
+        null,
+        List.of("File ${filePath} does not exist".toString())
+      )
+    }
+    String original = Files.readString(target)
+    boolean hadTrailingNewline = hasTrailingNewline(original)
+    List<SearchReplaceBlock> blocks = parseBlocks(blocksText)
+    if (blocks.isEmpty()) {
+      return new SearchReplaceResult(false, dryRun, true, List.of(), null, List.of("No valid blocks found"))
+    }
+    List<BlockResult> blockResults = new ArrayList<>()
+    String working = original
+    boolean conflict = false
+    for (int i = 0; i < blocks.size(); i++) {
+      SearchReplaceBlock block = blocks.get(i)
+      BlockResult result = applySingleBlock(working, block, i)
+      blockResults.add(result)
+      if (result.conflicted) {
+        conflict = true
+      } else {
+        working = result.updatedText
+      }
+    }
+    if (!dryRun && conflict) {
+      return new SearchReplaceResult(false, false, true, blockResults, null, List.of("Conflicts detected; no changes applied."))
+    }
+    if (!dryRun) {
+      Path backup = createBackup(target, original)
+      writeLines(target, splitToLines(working), resolveLineSeparator(original), hadTrailingNewline)
+      return new SearchReplaceResult(true, false, conflict, blockResults, projectRoot.relativize(backup).toString(), List.of())
+    }
+    new SearchReplaceResult(false, true, conflict, blockResults, null, List.of())
+  }
+
   String replace(String filePath, String oldString, String newString) {
     try {
       Path path = resolvePath(filePath)
@@ -525,6 +583,51 @@ class FileEditingTool {
     return content.substring(0, PREVIEW_LIMIT) + "..."
   }
 
+  private static List<SearchReplaceBlock> parseBlocks(String text) {
+    List<SearchReplaceBlock> blocks = new ArrayList<>()
+    Matcher matcher = Pattern.compile("(?s)<<<<SEARCH\\s*(.*?)>>>>").matcher(text)
+    while (matcher.find()) {
+      String body = matcher.group(1).trim()
+      List<String> lines = Arrays.asList(body.split("\\R"))
+      StringBuilder search = new StringBuilder()
+      StringBuilder replacement = new StringBuilder()
+      boolean inReplace = false
+      for (String raw : lines) {
+        String line = raw.trim()
+        if (line.startsWith(">")) {
+          line = line.substring(1).trim()
+        }
+        if (line == "====") {
+          inReplace = true
+          continue
+        }
+        (inReplace ? replacement : search).append(line).append("\n")
+      }
+      String searchText = search.toString().stripTrailing()
+      String replaceText = replacement.toString().stripTrailing()
+      if (searchText) {
+        blocks.add(new SearchReplaceBlock(searchText, replaceText))
+      }
+    }
+    blocks
+  }
+
+  private static BlockResult applySingleBlock(String content, SearchReplaceBlock block, int index) {
+    if (block.search == null || block.search.isEmpty()) {
+      return new BlockResult(index, true, "Empty search block", content)
+    }
+    int first = content.indexOf(block.search)
+    if (first < 0) {
+      return new BlockResult(index, true, "Search text not found", content)
+    }
+    int second = content.indexOf(block.search, first + block.search.length())
+    if (second >= 0) {
+      return new BlockResult(index, true, "Search text not unique", content)
+    }
+    String updated = content.substring(0, first) + block.replace + content.substring(first + block.search.length())
+    new BlockResult(index, false, "Replaced", updated)
+  }
+
   private Path resolvePath(String filePath) {
     Path resolvedPath = projectRoot.resolve(filePath).normalize()
     if (!resolvedPath.startsWith(projectRoot)) {
@@ -541,6 +644,12 @@ class FileEditingTool {
       Path realAncestor = existing.toRealPath()
       if (!realAncestor.startsWith(realProjectRoot)) {
         throw new IllegalArgumentException("File path must be within the project directory")
+      }
+      if (Files.exists(resolvedPath)) {
+        Path realTarget = resolvedPath.toRealPath()
+        if (!realTarget.startsWith(realProjectRoot)) {
+          throw new IllegalArgumentException("File path must be within the project directory")
+        }
       }
     } catch (IOException e) {
       throw new IllegalArgumentException("Unable to resolve file path safely", e)
@@ -722,4 +831,31 @@ class FileEditingTool {
     String newline
     boolean originalExists
   }
+  @Canonical
+  @CompileStatic
+  static class SearchReplaceResult {
+    boolean applied
+    boolean dryRun
+    boolean hasConflicts
+    List<BlockResult> blocks
+    String backupPath
+    List<String> messages
+  }
+
+  @Canonical
+  @CompileStatic
+  static class BlockResult {
+    int index
+    boolean conflicted
+    String message
+    String updatedText
+  }
+
+  @Canonical
+  @CompileStatic
+  private static class SearchReplaceBlock {
+    String search
+    String replace
+  }
+
 }

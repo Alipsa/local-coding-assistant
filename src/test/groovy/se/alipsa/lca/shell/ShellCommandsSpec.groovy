@@ -9,6 +9,10 @@ import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
 import spock.lang.Specification
+import spock.lang.TempDir
+
+import java.nio.file.Files
+import java.nio.file.Path
 
 class ShellCommandsSpec extends Specification {
 
@@ -19,7 +23,13 @@ class ShellCommandsSpec extends Specification {
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> "edited text"
   }
-  ShellCommands commands = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool)
+  @TempDir
+  Path tempDir
+  ShellCommands commands
+
+  def setup() {
+    commands = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool, tempDir.resolve("reviews.log").toString())
+  }
 
   def "chat uses persona mode and session overrides"() {
     given:
@@ -55,17 +65,37 @@ class ShellCommandsSpec extends Specification {
 
   def "review uses review options and system prompt override"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(new CodeSnippet("code"), "review", null)
+    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
+      new CodeSnippet("code"),
+      "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it",
+      null
+    )
     agent.reviewCode(_, _, ai, _, "system") >> reviewed
+    fileEditingTool.readFile(_) >> "content"
 
     when:
-    def response = commands.review("println 'hi'", "check safety", "default", null, 0.2d, 1024, "system")
+    def response = commands.review(
+      "println 'hi'",
+      "check safety",
+      "default",
+      null,
+      0.2d,
+      1024,
+      "system",
+      ["src/App.groovy"],
+      false,
+      ReviewSeverity.LOW,
+      true,
+      false
+    )
 
     then:
-    response == "review"
+    response.contains("[High] src/App.groovy:10 - bug")
+    !response.contains("\u001B[")
+    response.contains("Tests:")
     1 * agent.reviewCode(
       { UserInput ui -> ui.getContent() == "check safety" },
-      { CodeSnippet code -> code.text == "println 'hi'" },
+      { CodeSnippet snippet -> snippet.text.contains("println 'hi'") && snippet.text.contains("src/App.groovy") },
       ai,
       { LlmOptions opts ->
         opts.getModel() == "default-model" &&
@@ -187,13 +217,37 @@ class ShellCommandsSpec extends Specification {
     result.contains("line")
   }
 
+  def "review writes to log path"() {
+    given:
+    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
+      new CodeSnippet("code"),
+      "Findings:\n- [Low] general - note\nTests:\n- test",
+      null
+    )
+    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    fileEditingTool.readFile(_) >> "content"
+
+    when:
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+
+    then:
+    Files.exists(tempDir.resolve("reviews.log"))
+  }
+
   def "applyPatch honors confirm all choice"() {
     given:
     def patchResult = new FileEditingTool.PatchResult(true, false, false, List.of(), List.of())
     fileEditingTool.applyPatch(_, true) >> patchResult
     fileEditingTool.applyPatch(_, false) >> patchResult
     int confirmations = 0
-    ShellCommands confirming = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool) {
+    ShellCommands confirming = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      tempDir.resolve("other.log").toString()
+    ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
         confirmations++
@@ -209,5 +263,67 @@ class ShellCommandsSpec extends Specification {
     then:
     confirmations == 0
     3 * fileEditingTool.applyPatch(_, _)
+  }
+
+  def "applyBlocks runs dry-run when requested"() {
+    given:
+    fileEditingTool.applySearchReplaceBlocks(_, _, true) >> new FileEditingTool.SearchReplaceResult(
+      false,
+      true,
+      false,
+      [
+        new FileEditingTool.BlockResult(0, false, "Replaced", "updated")
+      ],
+      null,
+      List.of()
+    )
+
+    when:
+    def result = commands.applyBlocks("file.txt", "blocks", null, true, true)
+
+    then:
+    result.contains("Dry run")
+    1 * fileEditingTool.applySearchReplaceBlocks("file.txt", "blocks", true)
+  }
+
+  def "reviewlog filters by severity and path"() {
+    given:
+    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
+      new CodeSnippet("code"),
+      "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test",
+      null
+    )
+    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    fileEditingTool.readFile(_) >> "content"
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+
+    when:
+    def out = commands.reviewLog(ReviewSeverity.HIGH, "src/App.groovy", 5, 1, null, true)
+
+    then:
+    out.contains("High")
+    !out.contains("Low")
+  }
+
+  def "reviewlog respects pagination and since"() {
+    given:
+    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
+      new CodeSnippet("code"),
+      "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test",
+      null
+    )
+    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    fileEditingTool.readFile(_) >> "content"
+    commands.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    Thread.sleep(5)
+    commands.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    String timestamp = java.time.Instant.now().minusSeconds(1).toString()
+
+    when:
+    def out = commands.reviewLog(ReviewSeverity.LOW, null, 1, 2, timestamp, true)
+
+    then:
+    out.contains("entry2")
+    !out.contains("entry1")
   }
 }

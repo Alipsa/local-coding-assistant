@@ -70,6 +70,17 @@ class FileEditingSpec extends Specification {
     ex.message == "File missing.txt does not exist"
   }
 
+  def "readFile returns content for existing file"() {
+    given:
+    Files.writeString(tempFile, "read me")
+
+    when:
+    def content = fileEditingAgent.readFile("test-file.txt")
+
+    then:
+    content == "read me"
+  }
+
   def "applies unified patch and creates backup"() {
     given:
     Files.writeString(tempFile, "one\n-two\n")
@@ -191,6 +202,58 @@ class FileEditingSpec extends Specification {
     result.applied
     Files.readString(tempFile) == "alpha\nBETA\ngamma\n"
     Files.exists(tempDir.resolve(result.backupPath))
+  }
+
+  def "preserves trailing newline when replacing range"() {
+    given:
+    Files.writeString(tempFile, "one\ntwo\n")
+
+    when:
+    fileEditingAgent.replaceRange("test-file.txt", 2, 2, "SECOND", false)
+
+    then:
+    Files.readString(tempFile).endsWith("\n")
+  }
+
+  def "applies search and replace blocks uniquely"() {
+    given:
+    Files.writeString(tempFile, "foo\nbar\nbaz\n", java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)
+    String blocks = """\
+<<<<SEARCH
+> bar
+> ====
+> BAR
+>>>>
+"""
+
+    when:
+    FileEditingTool.SearchReplaceResult result = fileEditingAgent.applySearchReplaceBlocks("test-file.txt", blocks, false)
+
+    then:
+    result.applied
+    !result.hasConflicts
+    Files.readString(tempFile).contains("BAR")
+    result.backupPath
+  }
+
+  def "detects ambiguous search replace block"() {
+    given:
+    Files.writeString(tempFile, "foo\nbar\nbar\n")
+    String blocks = """\
+<<<<SEARCH
+> bar
+> ====
+> BAR
+>>>>
+"""
+
+    when:
+    FileEditingTool.SearchReplaceResult result = fileEditingAgent.applySearchReplaceBlocks("test-file.txt", blocks, false)
+
+    then:
+    result.hasConflicts
+    !result.applied
+    Files.readString(tempFile).contains("bar\nbar")
   }
 
   def "provides symbol context"() {

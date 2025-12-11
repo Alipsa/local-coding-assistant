@@ -211,4 +211,17 @@ class CodingAssistantAgentSpec extends Specification {
     result.is(editResult)
     1 * fileEditingTool.revertLatestBackup("file", false)
   }
+
+  def "applySearchReplaceBlocks delegates"() {
+    given:
+    def srResult = new FileEditingTool.SearchReplaceResult(true, false, false, List.of(), "b", List.of())
+    fileEditingTool.applySearchReplaceBlocks("f", "blocks", true) >> srResult
+
+    when:
+    def result = agent.applySearchReplaceBlocks("f", "blocks", true)
+
+    then:
+    result.is(srResult)
+    1 * fileEditingTool.applySearchReplaceBlocks("f", "blocks", true)
+  }
 }

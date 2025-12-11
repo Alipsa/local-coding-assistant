@@ -249,6 +249,11 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     fileEditingAgent.revertLatestBackup(filePath, dryRun)
   }
 
+  @Action(description = "Apply Search-and-Replace blocks to a file with backups.")
+  FileEditingTool.SearchReplaceResult applySearchReplaceBlocks(String filePath, String blocksText, boolean dryRun) {
+    fileEditingAgent.applySearchReplaceBlocks(filePath, blocksText, dryRun)
+  }
+
   @Action(description = "Search the web for a given query")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query) {
@@ -302,6 +307,7 @@ Assess the proposal for correctness, repository fit, error handling, and testing
 Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
 Reference likely target files or layers and call out missing Spock coverage.
 Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
+Format findings as bullet lines using: [Severity] file:line - comment (severity: High/Medium/Low; file may be 'general').
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Limit narrative to ${reviewWordCount} words.
 
