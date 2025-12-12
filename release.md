@@ -16,7 +16,6 @@ Code review and suggestions
     >>>>
   ```
   - Your FileEditingTool locates the unique original code block string and replaces it. This is far more robust than line numbers for local models.
-- 4.5 Avoid unified diffs for generation. Instead, use Search and Replace Blocks.
 - 4.6 Ensure the output is parsable.
   - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colors for High/Medium/Low severity).
 
