@@ -34,6 +34,9 @@ class CodeSearchTool {
     if (query == null || query.trim().isEmpty()) {
       return List.of()
     }
+    if (containsUnsafe(query)) {
+      throw new IllegalArgumentException("Query contains unsupported characters")
+    }
     int ctx = contextLines < 0 ? 0 : contextLines
     List<String> command = new ArrayList<>()
     command.addAll(List.of("rg", "--json", "--no-heading", "--line-number", "--column", "--context", String.valueOf(ctx)))
@@ -42,7 +45,9 @@ class CodeSearchTool {
     }
     command.add(query)
     if (paths != null) {
-      command.addAll(paths.findAll { it != null && !it.trim().isEmpty() }.collect { it.trim() })
+      paths.findAll { it != null && !it.trim().isEmpty() }
+        .collect { validatePath(it.trim()) }
+        .each { command.add(it) }
     }
     ProcessBuilder pb = new ProcessBuilder(command)
     pb.directory(projectRoot.toFile())
@@ -51,36 +56,41 @@ class CodeSearchTool {
     Map<String, Map<Integer, String>> contextByPath = new HashMap<>()
     try {
       Process process = pb.start()
-      process.getInputStream().readLines().each { String line ->
-        if (!line.trim()) {
-          return
-        }
-        Map<String, Object> event = (Map<String, Object>) MAPPER.readValue(line, Map)
-        String type = (String) event.get("type")
-        if ("context" == type) {
-          Map data = (Map) event.get("data")
-          String path = ((Map) data.get("path"))?.get("text") as String
-          Integer lineNumber = (Integer) data.get("line_number")
-          String text = ((Map) data.get("lines"))?.get("text") as String
-          if (path != null && lineNumber != null && text != null) {
-            contextByPath.computeIfAbsent(path) { new HashMap<>() }.put(lineNumber, text)
+      process.getInputStream().withCloseable { InputStream is ->
+        is.newReader().readLines().each { String line ->
+          if (!line.trim()) {
+            return
           }
-        } else if ("match" == type) {
-          Map data = (Map) event.get("data")
-          String path = ((Map) data.get("path"))?.get("text") as String
-          Integer lineNumber = (Integer) data.get("line_number")
-          String text = ((Map) data.get("lines"))?.get("text") as String
-          List submatches = (List) data.get("submatches")
-          Integer column = submatches && submatches[0] != null ? ((Map) submatches[0]).get("start") as Integer : 0
-          String snippet = buildSnippet(contextByPath.getOrDefault(path, Map.of()), lineNumber, text, ctx)
-          if (path != null && lineNumber != null && text != null) {
-            hits.add(new SearchHit(path, lineNumber, column != null ? column + 1 : 1, snippet))
+          Map<String, Object> event = (Map<String, Object>) MAPPER.readValue(line, Map)
+          String type = (String) event.get("type")
+          if ("context" == type) {
+            Map data = (Map) event.get("data")
+            String path = ((Map) data.get("path"))?.get("text") as String
+            Integer lineNumber = (Integer) data.get("line_number")
+            String text = ((Map) data.get("lines"))?.get("text") as String
+            if (path != null && lineNumber != null && text != null) {
+              contextByPath.computeIfAbsent(path) { new HashMap<>() }.put(lineNumber, text)
+            }
+          } else if ("match" == type) {
+            Map data = (Map) event.get("data")
+            String path = ((Map) data.get("path"))?.get("text") as String
+            Integer lineNumber = (Integer) data.get("line_number")
+            String text = ((Map) data.get("lines"))?.get("text") as String
+            List submatches = (List) data.get("submatches")
+            Integer column = submatches && submatches[0] != null ? ((Map) submatches[0]).get("start") as Integer : 0
+            String snippet = buildSnippet(contextByPath.getOrDefault(path, Map.of()), lineNumber, text, ctx)
+            if (path != null && lineNumber != null && text != null) {
+              hits.add(new SearchHit(path, lineNumber, column != null ? column + 1 : 1, snippet))
+            }
           }
         }
       }
-      int exit = process.waitFor()
-      if (exit != 0 && hits.isEmpty()) {
-        log.warn("ripgrep exited with code {}", exit)
+      boolean finished = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+      if (!finished) {
+        process.destroyForcibly()
+        log.warn("ripgrep search timed out")
+      } else if (process.exitValue() != 0 && hits.isEmpty()) {
+        log.warn("ripgrep exited with code {}", process.exitValue())
       }
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) {
@@ -107,6 +117,18 @@ class CodeSearchTool {
       builder.append(String.format("%4d | %s%n", i, text.stripTrailing()))
     }
     builder.toString().stripTrailing()
+  }
+
+  private boolean containsUnsafe(String query) {
+    query.contains("|") || query.contains("`") || query.contains(";")
+  }
+
+  private String validatePath(String path) {
+    Path resolved = projectRoot.resolve(path).normalize()
+    if (!resolved.startsWith(projectRoot)) {
+      throw new IllegalArgumentException("Path must be within project root: " + path)
+    }
+    path
   }
 
   @Canonical

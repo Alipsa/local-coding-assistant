@@ -35,13 +35,6 @@ class ContextBudgetManager {
       return new BudgetResult(text, hits, false)
     }
     int allowed = Math.max(0, charBudget)
-    String trimmed = text.substring(0, Math.min(allowed, text.length()))
-    int newlineIndex = trimmed.lastIndexOf("\n")
-    if (newlineIndex >= 0 && newlineIndex >= allowed - 50) {
-      trimmed = trimmed.substring(0, newlineIndex).stripTrailing() + "\n..."
-    } else {
-      trimmed = trimmed.stripTrailing() + "..."
-    }
     List<CodeSearchTool.SearchHit> safeHits = hits != null ? hits : List.of()
     List<ScoredHit> scored = safeHits.collect { CodeSearchTool.SearchHit hit ->
       new ScoredHit(hit, relevanceScore(hit), blockSize(hit))
@@ -89,12 +82,13 @@ ${hit.snippet}
   private static int relevanceScore(CodeSearchTool.SearchHit hit) {
     int score = 0
     if (hit.path) {
-      if (hit.path.toLowerCase().contains("test")) {
+      String lower = hit.path.toLowerCase()
+      if (lower.contains("test")) {
         score -= 1
       } else {
         score += 2
       }
-      if (hit.path.toLowerCase().contains("main")) {
+      if (lower.contains("main")) {
         score += 1
       }
     }

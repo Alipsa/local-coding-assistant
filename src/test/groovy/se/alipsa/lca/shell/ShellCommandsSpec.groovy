@@ -11,6 +11,7 @@ import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
+import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -39,7 +40,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       Stub(CodeSearchTool),
       new ContextPacker(),
-      new ContextBudgetManager(10000),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
       tempDir.resolve("reviews.log").toString()
     )
   }

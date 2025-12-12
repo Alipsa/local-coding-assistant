@@ -15,10 +15,6 @@ class TokenEstimator {
       return 0
     }
     String[] parts = text.trim().split(/\s+/)
-    if (parts.length > 0) {
-      return parts.length
-    }
-    // fallback: rough chars/4
-    (int) Math.ceil(text.length() / 4.0d)
+    return parts.length
   }
 }
