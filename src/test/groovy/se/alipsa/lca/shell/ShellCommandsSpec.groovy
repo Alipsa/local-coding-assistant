@@ -8,6 +8,9 @@ import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
+import se.alipsa.lca.tools.CodeSearchTool
+import se.alipsa.lca.tools.ContextPacker
+import se.alipsa.lca.tools.ContextBudgetManager
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -28,7 +31,17 @@ class ShellCommandsSpec extends Specification {
   ShellCommands commands
 
   def setup() {
-    commands = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool, tempDir.resolve("reviews.log").toString())
+    commands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000),
+      tempDir.resolve("reviews.log").toString()
+    )
   }
 
   def "chat uses persona mode and session overrides"() {

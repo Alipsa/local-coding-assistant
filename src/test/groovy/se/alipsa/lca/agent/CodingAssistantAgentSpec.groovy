@@ -4,11 +4,13 @@ import com.embabel.agent.api.common.Ai
 import com.embabel.agent.domain.io.UserInput
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
+import se.alipsa.lca.tools.CodeSearchTool
 import spock.lang.Specification
 
 class CodingAssistantAgentSpec extends Specification {
 
   FileEditingTool fileEditingTool = Stub(FileEditingTool)
+  CodeSearchTool codeSearchTool = Stub(CodeSearchTool)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
   CodingAssistantAgent agent = new CodingAssistantAgent(
     220,
@@ -17,7 +19,8 @@ class CodingAssistantAgentSpec extends Specification {
     0.65d,
     0.25d,
     fileEditingTool,
-    webSearchTool
+    webSearchTool,
+    codeSearchTool
   )
 
   def "craftCode builds a repository-aware plan and output format"() {
@@ -223,5 +226,18 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     result.is(srResult)
     1 * fileEditingTool.applySearchReplaceBlocks("f", "blocks", true)
+  }
+
+  def "searchFiles delegates"() {
+    given:
+    def hits = List.of(new CodeSearchTool.SearchHit("p", 1, 1, "snippet"))
+    codeSearchTool.search("q", List.of("p"), 2, 5) >> hits
+
+    when:
+    def result = agent.searchFiles("q", List.of("p"), 2, 5)
+
+    then:
+    result == hits
+    1 * codeSearchTool.search("q", List.of("p"), 2, 5)
   }
 }
