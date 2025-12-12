@@ -69,6 +69,7 @@ class ContextBudgetManager {
 
   private static int blockSize(CodeSearchTool.SearchHit hit) {
     String snippet = hit.snippet ?: ""
+    // Rough overhead for path/line formatting and newlines.
     snippet.length() + 32
   }
 
@@ -83,14 +84,9 @@ ${hit.snippet}
     int score = 0
     if (hit.path) {
       String lower = hit.path.toLowerCase()
-      if (lower.contains("test")) {
-        score -= 1
-      } else {
-        score += 2
-      }
-      if (lower.contains("main")) {
-        score += 1
-      }
+      // Prefer main code over tests; configurable if needed.
+      score += lower.contains("test") ? -1 : 2
+      score += lower.contains("main") ? 1 : 0
     }
     int distance = (int) (hit.line / 1000)
     score += Math.max(0, 3 - distance) // crude bias toward top of file

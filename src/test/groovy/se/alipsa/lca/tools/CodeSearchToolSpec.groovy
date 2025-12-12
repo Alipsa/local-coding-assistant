@@ -25,4 +25,30 @@ class CodeSearchToolSpec extends Specification {
     hits.first().path.endsWith("Sample.groovy")
     hits.first().snippet.contains("match here")
   }
+
+  def "validatePath rejects traversal"() {
+    when:
+    new CodeSearchTool(tempDir).search("x", ["../outside.txt"], 0, 1)
+
+    then:
+    thrown(IllegalArgumentException)
+  }
+
+  def "query with unsafe characters is rejected"() {
+    when:
+    new CodeSearchTool(tempDir).search("foo | bar", List.of(), 0, 1)
+
+    then:
+    thrown(IllegalArgumentException)
+  }
+
+  def "returns empty list when no matches"() {
+    given:
+    Path file = tempDir.resolve("empty.txt")
+    Files.writeString(file, "nothing here")
+    CodeSearchTool tool = new CodeSearchTool(tempDir)
+
+    expect:
+    tool.search("nomatch", List.of("empty.txt"), 0, 5).isEmpty()
+  }
 }

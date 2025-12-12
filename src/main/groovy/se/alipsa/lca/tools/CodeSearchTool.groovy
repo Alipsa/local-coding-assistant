@@ -120,7 +120,8 @@ class CodeSearchTool {
   }
 
   private boolean containsUnsafe(String query) {
-    query.contains("|") || query.contains("`") || query.contains(";")
+    String[] forbidden = ['|', '`', ';', '&', '$', '(', ')', '\n', '\r']
+    forbidden.any { query.contains(it) }
   }
 
   private String validatePath(String path) {
