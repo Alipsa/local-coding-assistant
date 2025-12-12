@@ -611,7 +611,7 @@ class ShellCommands {
       if (parent != null) {
         Files.createDirectories(parent)
       }
-      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
       String entry = """
 === Review ===
 Prompt: ${prompt}

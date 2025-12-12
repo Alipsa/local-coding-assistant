@@ -62,6 +62,14 @@ class CodeSearchTool {
     if (!Files.isRegularFile(file)) {
       return
     }
+    if (isIgnored(file)) {
+      return
+    }
+    long size = Files.size(file)
+    // Skip extremely large files to avoid memory pressure
+    if (size > 5 * 1024 * 1024) {
+      return
+    }
     List<String> lines = Files.readAllLines(file)
     for (int i = 0; i < lines.size(); i++) {
       String line = lines.get(i)
@@ -108,6 +116,18 @@ class CodeSearchTool {
       builder.append(String.format("%4d | %s%n", i, text.stripTrailing()))
     }
     builder.toString().stripTrailing()
+  }
+
+  private boolean isIgnored(Path file) {
+    String relative = projectRoot.relativize(file).toString()
+    if (relative.startsWith(".git") || relative.contains("/.git/")) {
+      return true
+    }
+    if (relative.startsWith(".lca") || relative.contains("/.lca/")) {
+      return true
+    }
+    String lower = relative.toLowerCase()
+    return lower.endsWith(".env") || lower.contains("/.idea/") || lower.contains("/build/") || lower.contains("/target/")
   }
 
   private boolean containsUnsafe(String query) {

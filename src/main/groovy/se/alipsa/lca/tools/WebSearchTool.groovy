@@ -45,9 +45,9 @@ class WebSearchTool {
         def titleElement = element.querySelector("h2 a")
         def snippetElement = element.querySelector("span.result__snippet")
         new SearchResult(
-          titleElement?.innerText(),
-          titleElement?.getAttribute("href"),
-          snippetElement?.innerText()
+          title: titleElement?.innerText(),
+          url: titleElement?.getAttribute("href"),
+          snippet: snippetElement?.innerText()
         )
       }
       browser.close()

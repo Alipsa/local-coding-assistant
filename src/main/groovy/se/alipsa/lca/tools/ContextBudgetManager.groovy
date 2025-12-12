@@ -76,8 +76,10 @@ class ContextBudgetManager {
         }
         int slice = Math.min(blockText.length(), remainingChars)
         if (slice > 0) {
-          builder.append(blockText, 0, slice)
-          if (slice < blockText.length() && remainingChars >= 3) {
+          boolean needsEllipsis = slice < blockText.length()
+          int adjustedSlice = needsEllipsis && slice > 3 ? slice - 3 : slice
+          builder.append(blockText, 0, adjustedSlice)
+          if (needsEllipsis) {
             builder.append("...")
           }
           kept.add(scoredHit.hit)

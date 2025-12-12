@@ -340,7 +340,7 @@ Tests: list the specific tests or scenarios to validate
     String findingsSection = hasFindings ? limitedReview.trim() : "Findings:\n- ${limitedReview.trim()}"
     if (!hasTests) {
       String testsBlock = "\nTests:\n- Cover happy-path and failure-path behavior with Spock."
-      int reserved = testsBlock.trim().split(/\\s+/).length
+      int reserved = testsBlock.trim().split(/\s+/).length
       String limitedFindings = enforceWordLimit(findingsSection, Math.max(1, reviewWordCount - reserved))
       String combined = (limitedFindings + testsBlock).trim()
       return enforceWordLimit(combined, reviewWordCount)

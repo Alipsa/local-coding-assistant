@@ -598,9 +598,9 @@ class FileEditingTool {
         // Remove the first '>' character, but preserve all other whitespace
         int idx = line.indexOf('>')
         if (idx != -1 && idx + 1 < line.length()) {
-            line = line.substring(idx + 1).stripLeading()
+          line = line.substring(idx + 1).stripLeading()
         } else if (idx != -1) {
-            line = ""
+          line = ""
         }
       }
         if (line.trim() == "====") {
