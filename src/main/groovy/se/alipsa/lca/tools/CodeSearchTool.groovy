@@ -38,18 +38,23 @@ class CodeSearchTool {
     List<SearchHit> hits = new ArrayList<>()
     List<Path> targets = resolveTargets(paths)
     for (Path target : targets) {
+      if (limit > 0 && hits.size() >= limit) {
+        break
+      }
       if (Files.isDirectory(target)) {
+        boolean stop = false
         target.toFile().eachFileRecurse(FileType.FILES) { File f ->
           if (limit > 0 && hits.size() >= limit) {
+            stop = true
             return
           }
           processFile(query, ctx, limit, hits, f.toPath())
         }
+        if (stop) {
+          break
+        }
       } else {
         processFile(query, ctx, limit, hits, target)
-      }
-      if (limit > 0 && hits.size() >= limit) {
-        break
       }
     }
     if (limit > 0 && hits.size() > limit) {
@@ -70,17 +75,21 @@ class CodeSearchTool {
     if (size > 5 * 1024 * 1024) {
       return
     }
-    List<String> lines = Files.readAllLines(file)
-    for (int i = 0; i < lines.size(); i++) {
-      String line = lines.get(i)
-      int idx = line.indexOf(query)
-      if (idx >= 0) {
-        int lineNumber = i + 1
-        String snippet = buildSnippetFromLines(lines, lineNumber, contextLines)
-        String relative = projectRoot.relativize(file).toString()
-        hits.add(new SearchHit(relative, lineNumber, idx + 1, snippet))
-        if (limit > 0 && hits.size() >= limit) {
-          return
+    List<String> lines = new ArrayList<>()
+    Files.newBufferedReader(file).withCloseable { reader ->
+      String line
+      int lineNumber = 0
+      while ((line = reader.readLine()) != null) {
+        lineNumber++
+        lines.add(line)
+        int idx = line.indexOf(query)
+        if (idx >= 0) {
+          String snippet = buildSnippetFromLines(lines, lineNumber, contextLines)
+          String relative = projectRoot.relativize(file).toString()
+          hits.add(new SearchHit(relative, lineNumber, idx + 1, snippet))
+          if (limit > 0 && hits.size() >= limit) {
+            return
+          }
         }
       }
     }
@@ -120,14 +129,26 @@ class CodeSearchTool {
 
   private boolean isIgnored(Path file) {
     String relative = projectRoot.relativize(file).toString()
-    if (relative.startsWith(".git") || relative.contains("/.git/")) {
-      return true
-    }
-    if (relative.startsWith(".lca") || relative.contains("/.lca/")) {
-      return true
-    }
     String lower = relative.toLowerCase()
-    return lower.endsWith(".env") || lower.contains("/.idea/") || lower.contains("/build/") || lower.contains("/target/")
+    if (lower.startsWith(".git") || lower.contains("/.git/")) {
+      return true
+    }
+    if (lower.startsWith(".lca") || lower.contains("/.lca/")) {
+      return true
+    }
+    if (lower.contains("/node_modules/") || lower.startsWith("node_modules")) {
+      return true
+    }
+    if (lower.contains("/build/") || lower.contains("/target/") || lower.contains("/dist/") || lower.contains("/out/")) {
+      return true
+    }
+    if (lower.contains("/.idea/") || lower.contains("/.vscode/") || lower.contains("/.gradle/") || lower.contains("/.m2/")) {
+      return true
+    }
+    if (lower.endsWith(".env") || lower.endsWith(".lock") || lower.endsWith(".jar") || lower.endsWith(".class")) {
+      return true
+    }
+    false
   }
 
   private boolean containsUnsafe(String query) {

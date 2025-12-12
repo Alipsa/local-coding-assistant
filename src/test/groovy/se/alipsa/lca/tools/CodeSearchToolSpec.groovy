@@ -51,4 +51,15 @@ class CodeSearchToolSpec extends Specification {
     expect:
     tool.search("nomatch", List.of("empty.txt"), 0, 5).isEmpty()
   }
+
+  def "ignores git directory content by default"() {
+    given:
+    Path gitDir = tempDir.resolve(".git")
+    Files.createDirectories(gitDir)
+    Files.writeString(gitDir.resolve("config"), "match")
+    CodeSearchTool tool = new CodeSearchTool(tempDir)
+
+    expect:
+    tool.search("match", List.of(), 1, 5).isEmpty()
+  }
 }

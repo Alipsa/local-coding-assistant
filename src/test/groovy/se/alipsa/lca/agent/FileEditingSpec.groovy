@@ -241,6 +241,31 @@ class FileEditingSpec extends Specification {
     result.backupPath
   }
 
+  def "preserves leading whitespace in search replace blocks"() {
+    given:
+    Files.writeString(
+      tempFile,
+      "foo\n  bar\nbaz\n",
+      java.nio.file.StandardOpenOption.CREATE,
+      java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
+    )
+    String blocks = """\
+<<<<SEARCH
+>   bar
+> ====
+>   BAR
+>>>>
+"""
+
+    when:
+    FileEditingTool.SearchReplaceResult result = fileEditingAgent.applySearchReplaceBlocks("test-file.txt", blocks, false)
+
+    then:
+    result.applied
+    !result.hasConflicts
+    Files.readString(tempFile).contains("  BAR")
+  }
+
   def "detects ambiguous search replace block"() {
     given:
     Files.writeString(tempFile, "foo\nbar\nbar\n")
