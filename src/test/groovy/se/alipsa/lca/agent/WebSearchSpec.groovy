@@ -12,7 +12,6 @@ class WebSearchSpec extends Specification {
 
     def "search parses results from the page"() {
         given:
-        GroovyMock(Playwright, global: true)
         def mockPlaywright = Mock(Playwright)
         def mockBrowserType = Mock(BrowserType)
         def mockBrowser = Mock(Browser)
@@ -31,9 +30,10 @@ class WebSearchSpec extends Specification {
         mockTitleElement.getAttribute("href") >> "http://example.com"
         mockElement.querySelector("span.result__snippet") >> mockSnippetElement
         mockSnippetElement.innerText() >> "Test Snippet"
+        def tool = new WebSearchTool({ mockPlaywright } as java.util.function.Supplier<Playwright>)
 
         when:
-        def results = new WebSearchTool().search("test query")
+        def results = tool.search("test query")
 
         then:
         results.size() == 1

@@ -53,12 +53,12 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colors for High/Medium/Low severity).  
 
 ## 5) Code search and context building
-- 5.1 [ ] Integrate ripgrep-based search (respect .gitignore) to gather snippets for prompts.
-- 5.2 [ ] Implement a context packer that deduplicates and truncates snippets to stay within token limits.
-- 5.3 [ ] Add a `search` command returning matches with surrounding lines, copy-to-context, and optional web search toggle.
-- 5.4 [ ] Unit-test context assembly and truncation.
-- 5.5 [ ] Create a Context Budget Manager to manage context limits effectively.
-  - The Challenge: Context limits. DeepSeek 6.7b usually has a 16k or 32k window, but performance degrades as you fill it. 
+- 5.1 [x] Integrate ripgrep-based search (respect .gitignore) to gather snippets for prompts.
+- 5.2 [x] Implement a context packer that deduplicates and truncates snippets to stay within token limits.
+- 5.3 [x] Add a `search` command returning matches with surrounding lines, copy-to-context, and optional web search toggle.
+- 5.4 [x] Unit-test context assembly and truncation.
+- 5.5 [x] Create a Context Budget Manager to manage context limits effectively.
+  - The Challenge: Context limits. qwen3-coder:30b has a 256K window, but performance degrades as you fill it. 
   - Before sending the prompt, calculate the token count of: System Prompt + User Prompt + File A + File B. If it exceeds the limit, you must auto-summarize or drop the least relevant file before hitting the API.
   
 ## 6) Web search augmentation

@@ -6,6 +6,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import se.alipsa.lca.agent.CodingAssistantAgent
+import se.alipsa.lca.agent.Personas
 import spock.lang.Specification
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -20,9 +21,7 @@ class CodingAssistantControllerSpec extends Specification {
   def "generateAndReviewCode wires Ai through to agent actions"() {
     given:
     def crafted = new CodingAssistantAgent.CodeSnippet("code")
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(crafted, "review", null)
-    agent.craftCode(_, ai) >> crafted
-    agent.reviewCode(_, crafted, ai) >> reviewed
+    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(crafted, "review", Personas.REVIEWER)
 
     when:
     def response = mvc.perform(post("/api/code/generateAndReview")
@@ -31,7 +30,7 @@ class CodingAssistantControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk()).andReturn()
-    1 * agent.craftCode({ UserInput ui -> ui.getContent() == "write a search command" }, ai)
-    1 * agent.reviewCode({ UserInput ui -> ui.getContent() == "write a search command" }, crafted, ai)
+    1 * agent.craftCode({ UserInput ui -> ui.getContent() == "write a search command" }, ai) >> crafted
+    1 * agent.reviewCode({ UserInput ui -> ui.getContent() == "write a search command" }, crafted, ai) >> reviewed
   }
 }

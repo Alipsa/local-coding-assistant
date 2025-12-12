@@ -6,8 +6,14 @@ import com.embabel.common.ai.model.LlmOptions
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.agent.Personas
+import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
+import se.alipsa.lca.tools.CodeSearchTool
+import se.alipsa.lca.tools.ContextPacker
+import se.alipsa.lca.tools.ContextBudgetManager
+import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -19,7 +25,7 @@ class ShellCommandsSpec extends Specification {
   SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "")
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
-  FileEditingTool fileEditingTool = Stub()
+  FileEditingTool fileEditingTool = Mock()
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> "edited text"
   }
@@ -28,13 +34,23 @@ class ShellCommandsSpec extends Specification {
   ShellCommands commands
 
   def setup() {
-    commands = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool, tempDir.resolve("reviews.log").toString())
+    commands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      tempDir.resolve("reviews.log").toString()
+    )
   }
 
   def "chat uses persona mode and session overrides"() {
     given:
     CodeSnippet snippet = new CodeSnippet("result")
-    agent.craftCode(_, ai, PersonaMode.ARCHITECT, _, "extra system") >> snippet
+    agent.craftCode(_, ai, PersonaMode.ARCHITECT, _, _) >> snippet
 
     when:
     def response = commands.chat(
@@ -60,7 +76,7 @@ class ShellCommandsSpec extends Specification {
         opts.getMaxTokens() == 2048
       },
       "extra system"
-    )
+    ) >> snippet
   }
 
   def "review uses review options and system prompt override"() {
@@ -68,9 +84,9 @@ class ShellCommandsSpec extends Specification {
     def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
       new CodeSnippet("code"),
       "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it",
-      null
+      Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, "system") >> reviewed
+    agent.reviewCode(_, _, ai, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -103,13 +119,13 @@ class ShellCommandsSpec extends Specification {
         opts.getMaxTokens() == 1024
       },
       "system"
-    )
+    ) >> reviewed
   }
 
   def "paste can forward content to chat"() {
     given:
     CodeSnippet snippet = new CodeSnippet("assistant response")
-    agent.craftCode(_, ai, PersonaMode.CODER, _, "") >> snippet
+    agent.craftCode(_, ai, PersonaMode.CODER, _, _) >> snippet
 
     when:
     def result = commands.paste("multi\nline", "/end", true, "default", PersonaMode.CODER)
@@ -122,7 +138,7 @@ class ShellCommandsSpec extends Specification {
       PersonaMode.CODER,
       _ as LlmOptions,
       ""
-    )
+    ) >> snippet
   }
 
   def "search formats results"() {
@@ -222,7 +238,7 @@ class ShellCommandsSpec extends Specification {
     def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
       new CodeSnippet("code"),
       "Findings:\n- [Low] general - note\nTests:\n- test",
-      null
+      Personas.REVIEWER
     )
     agent.reviewCode(_, _, ai, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
@@ -237,8 +253,6 @@ class ShellCommandsSpec extends Specification {
   def "applyPatch honors confirm all choice"() {
     given:
     def patchResult = new FileEditingTool.PatchResult(true, false, false, List.of(), List.of())
-    fileEditingTool.applyPatch(_, true) >> patchResult
-    fileEditingTool.applyPatch(_, false) >> patchResult
     int confirmations = 0
     ShellCommands confirming = new ShellCommands(
       agent,
@@ -262,12 +276,15 @@ class ShellCommandsSpec extends Specification {
 
     then:
     confirmations == 0
-    3 * fileEditingTool.applyPatch(_, _)
+    3 * fileEditingTool.applyPatch(_, _) >> patchResult
   }
 
   def "applyBlocks runs dry-run when requested"() {
-    given:
-    fileEditingTool.applySearchReplaceBlocks(_, _, true) >> new FileEditingTool.SearchReplaceResult(
+    when:
+    def result = commands.applyBlocks("file.txt", "blocks", null, true, true)
+
+    then:
+    1 * fileEditingTool.applySearchReplaceBlocks("file.txt", "blocks", true) >> new FileEditingTool.SearchReplaceResult(
       false,
       true,
       false,
@@ -277,13 +294,7 @@ class ShellCommandsSpec extends Specification {
       null,
       List.of()
     )
-
-    when:
-    def result = commands.applyBlocks("file.txt", "blocks", null, true, true)
-
-    then:
     result.contains("Dry run")
-    1 * fileEditingTool.applySearchReplaceBlocks("file.txt", "blocks", true)
   }
 
   def "reviewlog filters by severity and path"() {
@@ -291,7 +302,7 @@ class ShellCommandsSpec extends Specification {
     def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
       new CodeSnippet("code"),
       "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test",
-      null
+      Personas.REVIEWER
     )
     agent.reviewCode(_, _, ai, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
@@ -310,7 +321,7 @@ class ShellCommandsSpec extends Specification {
     def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
       new CodeSnippet("code"),
       "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test",
-      null
+      Personas.REVIEWER
     )
     agent.reviewCode(_, _, ai, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"

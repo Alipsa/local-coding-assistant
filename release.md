@@ -1,6 +1,23 @@
 # Release Notes for the local-coding-assistant 
 
-## Version 0.4.0 - Code review and suggestions, In progress
+## Version 0.4.0 - Code review and suggestions, 2025-12-12
+Code review and suggestions
+- 4.1 Add a `review` command that feeds selected files/diffs into the agent with severity-tagged output.
+- 4.2 Include file/line references and recommendations; allow staged-only or path-filtered reviews.
+- 4.3 Persist review summaries to a log file for later recall.
+- 4.4 Add tests for review formatting and inputs.
+- 4.5 Avoid unified diffs for generation. Instead, use Search and Replace Blocks.
+  - The Challenge: LLMs are notoriously bad at line numbers. If the agent says "Replace line 40-45", and the file changed since the context was loaded, you corrupt the file. Instead, ask the model to output:
+   ```
+    <<<<SEARCH 
+    > original code block 
+    > ==== 
+    > new code block
+    >>>>
+  ```
+  - Your FileEditingTool locates the unique original code block string and replaces it. This is far more robust than line numbers for local models.
+- 4.6 Ensure the output is parsable.
+  - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colors for High/Medium/Low severity).
 
 ## Version 0.3.0 - Editing and patch application, Spring Shell CLI bridge, 2025-12-11
 - 2.1 [x] Add Spring Shell commands that wrap the agent (e.g., `/chat`, `/review`, `/edit`, `/search`) and stream responses.

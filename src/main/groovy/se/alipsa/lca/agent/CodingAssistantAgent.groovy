@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Profile
 import org.springframework.lang.NonNull
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
+import se.alipsa.lca.tools.CodeSearchTool
 
 import java.time.Instant
 import java.time.ZoneId
@@ -114,6 +115,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   protected final LlmOptions reviewLlmOptions
   private final FileEditingTool fileEditingAgent
   private final WebSearchTool webSearchAgent
+  private final CodeSearchTool codeSearchTool
 
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
@@ -122,7 +124,8 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     FileEditingTool fileEditingAgent,
-    WebSearchTool webSearchAgent
+    WebSearchTool webSearchAgent,
+    CodeSearchTool codeSearchTool
   ) {
     this.snippetWordCount = snippetWordCount
     this.reviewWordCount = reviewWordCount
@@ -133,6 +136,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.reviewLlmOptions = LlmOptions.withModel(llmModel).withTemperature(reviewTemperature)
     this.fileEditingAgent = fileEditingAgent
     this.webSearchAgent = webSearchAgent
+    this.codeSearchTool = codeSearchTool
   }
 
   @AchievesGoal(
@@ -260,6 +264,12 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     webSearchAgent.search(query)
   }
 
+  @Action(description = "Search repository files for a pattern.")
+  @JsonDeserialize(as = ArrayList.class, contentAs = CodeSearchTool.SearchHit.class)
+  List<CodeSearchTool.SearchHit> searchFiles(String query, List<String> paths, int contextLines, int limit) {
+    codeSearchTool.search(query, paths, contextLines, limit)
+  }
+
   protected String buildCraftCodePrompt(
     UserInput userInput,
     PersonaMode personaMode,
@@ -324,22 +334,18 @@ Tests: list the specific tests or scenarios to validate
   }
 
   protected String enforceReviewFormat(String review) {
-    String limitedReview = enforceWordLimit(review, reviewWordCount)
+    String limitedReview = enforceWordLimit(review ?: "", reviewWordCount)
     boolean hasFindings = limitedReview =~ /(?im)^Findings:/
     boolean hasTests = limitedReview =~ /(?im)^Tests:/
-    if (hasFindings && hasTests) {
-      return limitedReview
-    }
-    StringBuilder builder = new StringBuilder()
-    if (!hasFindings) {
-      builder.append("Findings:\n- ").append(limitedReview.trim()).append('\n')
-    } else {
-      builder.append(limitedReview.trim()).append('\n')
-    }
+    String findingsSection = hasFindings ? limitedReview.trim() : "Findings:\n- ${limitedReview.trim()}"
     if (!hasTests) {
-      builder.append("Tests:\n- Cover happy-path and failure-path behavior with Spock.")
+      String testsBlock = "\nTests:\n- Cover happy-path and failure-path behavior with Spock."
+      int reserved = testsBlock.trim().split(/\s+/).length
+      String limitedFindings = enforceWordLimit(findingsSection, Math.max(1, reviewWordCount - reserved))
+      String combined = (limitedFindings + testsBlock).trim()
+      return enforceWordLimit(combined, reviewWordCount)
     }
-    enforceWordLimit(builder.toString().trim(), reviewWordCount)
+    enforceWordLimit(findingsSection, reviewWordCount)
   }
 
   protected String enforceWordLimit(String text, int limit) {

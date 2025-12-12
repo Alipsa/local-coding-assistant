@@ -19,7 +19,12 @@ import se.alipsa.lca.review.ReviewParser
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.review.ReviewSummary
 import se.alipsa.lca.shell.SessionState.SessionSettings
+import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.ContextPacker
+import se.alipsa.lca.tools.ContextBudgetManager
+import se.alipsa.lca.tools.PackedContext
+import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
 
 import java.io.BufferedReader
@@ -42,6 +47,9 @@ class ShellCommands {
   private final SessionState sessionState
   private final EditorLauncher editorLauncher
   private final FileEditingTool fileEditingTool
+  private final CodeSearchTool codeSearchTool
+  private final ContextPacker contextPacker
+  private final ContextBudgetManager contextBudgetManager
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -51,6 +59,9 @@ class ShellCommands {
     SessionState sessionState,
     EditorLauncher editorLauncher,
     FileEditingTool fileEditingTool,
+    CodeSearchTool codeSearchTool,
+    ContextPacker contextPacker,
+    ContextBudgetManager contextBudgetManager,
     @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
   ) {
     this.codingAssistantAgent = codingAssistantAgent
@@ -58,7 +69,31 @@ class ShellCommands {
     this.sessionState = sessionState
     this.editorLauncher = editorLauncher
     this.fileEditingTool = fileEditingTool
+    this.codeSearchTool = codeSearchTool
+    this.contextPacker = contextPacker
+    this.contextBudgetManager = contextBudgetManager
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
+  }
+
+  ShellCommands(
+    CodingAssistantAgent codingAssistantAgent,
+    Ai ai,
+    SessionState sessionState,
+    EditorLauncher editorLauncher,
+    FileEditingTool fileEditingTool,
+    String reviewLogPath
+  ) {
+    this(
+      codingAssistantAgent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      new CodeSearchTool(),
+      new ContextPacker(),
+      new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
+      reviewLogPath
+    )
   }
 
   @ShellMethod(key = ["chat", "/chat"], value = "Send a prompt to the coding assistant.")
@@ -89,6 +124,9 @@ class ShellCommands {
       options,
       system
     )
+    if (snippet == null) {
+      return "No response generated."
+    }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${snippet.text}")
     snippet.text
   }
@@ -153,7 +191,7 @@ class ShellCommands {
     int pageSize = Math.max(1, limit)
     int startIndex = Math.max(0, (Math.max(1, page) - 1) * pageSize)
     if (startIndex >= entries.size()) {
-      return "No matching review entries."
+      startIndex = Math.max(0, entries.size() - pageSize)
     }
     entries = entries.subList(startIndex, Math.min(entries.size(), startIndex + pageSize))
     entries.collect { LogEntry entry ->
@@ -181,6 +219,36 @@ class ShellCommands {
       }
       .toList()
       .join("\n\n")
+  }
+
+  @ShellMethod(
+    key = ["codesearch", "/codesearch"],
+    value = "Search repository files with ripgrep and build context."
+  )
+  String codeSearch(
+    @ShellOption(help = "Pattern to search for") String query,
+    @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "Paths or globs to search") List<String> paths,
+    @ShellOption(defaultValue = "2", help = "Context lines around matches") int context,
+    @ShellOption(defaultValue = "20", help = "Maximum matches to return") int limit,
+    @ShellOption(defaultValue = "false", help = "Pack results into a single context blob") boolean pack,
+    @ShellOption(defaultValue = "8000", help = "Max chars when packing") int maxChars,
+    @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens
+  ) {
+    List<CodeSearchTool.SearchHit> hits = codeSearchTool.search(query, paths, context, limit)
+    if (hits.isEmpty()) {
+      return "No matches found."
+    }
+    if (pack) {
+      PackedContext packed = contextPacker.pack(hits, maxChars)
+      int tokens = maxTokens > 0 ? maxTokens : contextBudgetManager.maxTokens
+      int chars = maxChars > 0 ? maxChars : contextBudgetManager.maxChars
+      def budgeted = contextBudgetManager.applyBudget(packed.text, packed.included, chars, tokens)
+      String summary = "Packed ${budgeted.included.size()} matches" + ((packed.truncated || budgeted.truncated) ? " (truncated)" : "")
+      return summary + "\n" + budgeted.text
+    }
+    hits.collect { CodeSearchTool.SearchHit hit ->
+      "${hit.path}:${hit.line}:${hit.column}\n${hit.snippet}"
+    }.join("\n\n")
   }
 
   @ShellMethod(key = ["edit", "/edit"], value = "Open default editor to draft a prompt, optionally send to assistant.")
@@ -392,9 +460,9 @@ class ShellCommands {
     }
   }
 
-  private static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
+  static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
     StringBuilder builder = new StringBuilder("Findings:")
-    List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+    List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
     if (filtered.isEmpty()) {
       builder.append("\n- None")
     } else {
@@ -457,7 +525,7 @@ class ShellCommands {
       String timestamp = extractField(trimmed, "Timestamp:")
       String body = extractBody(trimmed)
       ReviewSummary summary = ReviewParser.parse(body)
-      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
       if (filtered.isEmpty()) {
         return
       }
@@ -543,7 +611,7 @@ class ShellCommands {
       if (parent != null) {
         Files.createDirectories(parent)
       }
-      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
       String entry = """
 === Review ===
 Prompt: ${prompt}
@@ -588,6 +656,9 @@ ${renderReview(summary, minSeverity, false)}
   }
 
   private static String formatPatchResult(FileEditingTool.PatchResult result) {
+    if (result == null) {
+      return "No patch result."
+    }
     StringBuilder builder = new StringBuilder()
     builder.append(result.dryRun ? "Dry run" : "Patch apply")
     builder.append(result.hasConflicts ? " (conflicts detected)" : " completed")
@@ -619,6 +690,9 @@ ${renderReview(summary, minSeverity, false)}
   }
 
   private static String formatSearchReplaceResult(FileEditingTool.SearchReplaceResult result) {
+    if (result == null) {
+      return "No block result."
+    }
     StringBuilder builder = new StringBuilder()
     builder.append(result.dryRun ? "Dry run" : "Applied blocks")
     builder.append(result.hasConflicts ? " (conflicts detected)" : "")

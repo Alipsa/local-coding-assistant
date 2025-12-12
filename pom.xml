@@ -11,7 +11,7 @@
   </parent>
   <groupId>se.alipsa.lca</groupId>
   <artifactId>local-coding-assistant</artifactId>
-  <version>0.4.0</version>
+  <version>0.5.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Local Coding Assistant</name>
   <description>The Local Coding assistant is an AI LLM interface based on Ollama and Embabel</description>
@@ -37,10 +37,24 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <embabel-agent.version>0.3.0</embabel-agent.version>
+    <extra-enforcer-rules.version>1.11.0</extra-enforcer-rules.version>
     <groovy.version>5.0.3</groovy.version>
+    <junit.version>6.0.1</junit.version>
     <playwright.version>1.57.0</playwright.version>
     <spock.version>2.4-groovy-5.0</spock.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
 
@@ -71,21 +85,6 @@
       <version>${groovy.version}</version>
     </dependency>
 
-    <!-- Testing with Spock -->
-    <dependency>
-      <groupId>org.spockframework</groupId>
-      <artifactId>spock-core</artifactId>
-      <version>${spock.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.spockframework</groupId>
-      <artifactId>spock-spring</artifactId>
-      <version>${spock.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-
     <!--dependency>
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
@@ -106,6 +105,25 @@
       <groupId>com.microsoft.playwright</groupId>
       <artifactId>playwright</artifactId>
       <version>${playwright.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Testing with Spock -->
+    <dependency>
+      <groupId>org.spockframework</groupId>
+      <artifactId>spock-core</artifactId>
+      <version>${spock.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.spockframework</groupId>
+      <artifactId>spock-spring</artifactId>
+      <version>${spock.version}</version>
+      <scope>test</scope>
     </dependency>
 
   </dependencies>
@@ -174,7 +192,7 @@
           <dependency>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>extra-enforcer-rules</artifactId>
-            <version>1.11.0</version>
+            <version>${extra-enforcer-rules.version}</version>
           </dependency>
         </dependencies>
       </plugin>
@@ -213,11 +231,14 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <!--suppress UnresolvedMavenProperty -->
           <argLine>
             -javaagent:${org.mockito:mockito-core:jar}
             -Xshare:off
           </argLine>
+          <includes>
+            <include>**/*Spec.java</include>
+            <include>**/*Test.java</include>
+          </includes>
         </configuration>
       </plugin>
       <plugin>
@@ -234,26 +255,27 @@
         </executions>
       </plugin>
       <plugin>
-        <!-- Gmaven plus does not handle groovydoc for 5.0.1, so use antrun -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-antrun-plugin</artifactId>
         <version>3.2.0</version>
+
         <executions>
+
+          <!-- A) Generate GroovyDoc for package/deploy -->
           <execution>
-            <id>groovydoc</id>
+            <id>groovydoc-generate</id>
             <phase>prepare-package</phase>
+            <goals><goal>run</goal></goals>
             <configuration>
-              <target name="groovydoc">
-                <!-- Make GroovyDoc task available -->
+              <target name="groovydoc-generate">
                 <taskdef name="groovydoc"
                          classname="org.codehaus.groovy.ant.Groovydoc"
                          classpathref="maven.plugin.classpath"/>
 
-                <mkdir dir="${project.build.directory}/site/groovydoc"/>
+                <mkdir dir="${project.build.directory}/groovydoc"/>
 
-                <!-- Use attributes: sourcepath + classpath -->
                 <groovydoc
-                    destdir="${project.build.directory}/site/groovydoc"
+                    destdir="${project.build.directory}/groovydoc"
                     use="true"
                     private="false"
                     windowtitle="${project.name} ${project.version} API"
@@ -262,9 +284,25 @@
                 />
               </target>
             </configuration>
-            <goals><goal>run</goal></goals>
           </execution>
+
+          <!-- B) Copy GroovyDoc into the site output for mvn site -->
+          <execution>
+            <id>groovydoc-copy-to-site</id>
+            <phase>pre-site</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <target name="groovydoc-copy-to-site">
+                <mkdir dir="${project.reporting.outputDirectory}/groovydoc"/>
+                <copy todir="${project.reporting.outputDirectory}/groovydoc" overwrite="true">
+                  <fileset dir="${project.build.directory}/groovydoc"/>
+                </copy>
+              </target>
+            </configuration>
+          </execution>
+
         </executions>
+
         <dependencies>
           <dependency>
             <groupId>org.apache.groovy</groupId>
@@ -283,6 +321,7 @@
           </dependency>
         </dependencies>
       </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
@@ -294,7 +333,7 @@
             <goals><goal>jar</goal></goals>
             <configuration>
               <classifier>javadoc</classifier>
-              <classesDirectory>${project.build.directory}/site/groovydoc</classesDirectory>
+              <classesDirectory>${project.build.directory}/groovydoc</classesDirectory>
             </configuration>
           </execution>
         </executions>
@@ -302,7 +341,14 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-site-plugin</artifactId>
-        <version>4.0.0-M16</version>
+        <version>3.21.0</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.maven.skins</groupId>
+            <artifactId>maven-fluido-skin</artifactId>
+            <version>2.1.0</version>
+          </dependency>
+        </dependencies>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
