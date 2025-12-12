@@ -43,3 +43,7 @@ class PackedContext {
   List<CodeSearchTool.SearchHit> included
   boolean truncated
 }
+/**
+ * Combines search hits into a single de-duplicated context blob suitable for LLM prompts.
+ * Adjacent hits from the same file are merged to reduce verbosity while retaining location info.
+ */

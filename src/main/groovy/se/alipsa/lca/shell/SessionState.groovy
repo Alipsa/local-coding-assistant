@@ -97,7 +97,7 @@ class SessionState {
   ) {
     String resolvedModel = model ?: defaultModel
     LlmOptions options = resolvedModel ? LlmOptions.withModel(resolvedModel) : LlmOptions.withDefaultLlm()
-    if (resolvedModel) {
+    if (resolvedModel && options.getModel() == null) {
       options.setModel(resolvedModel)
     }
     options = options.withTemperature(temperature != null ? temperature : fallbackTemperature)

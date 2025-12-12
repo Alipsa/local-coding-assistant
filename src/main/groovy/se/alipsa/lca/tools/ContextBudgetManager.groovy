@@ -5,6 +5,10 @@ import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
+/**
+ * Enforces character/token budgets on packed context, preferring higher-relevance hits.
+ * Uses simple heuristics to score main code over tests and trims context until limits are met.
+ */
 @Component
 @CompileStatic
 class ContextBudgetManager {
@@ -12,15 +16,25 @@ class ContextBudgetManager {
   final int maxChars
   final int maxTokens
   private final TokenEstimator tokenEstimator
+  private final int mainBias
+  private final int testPenalty
 
   ContextBudgetManager(
     @Value('${context.max.chars:12000}') int maxChars,
     @Value('${context.max.tokens:0}') int maxTokens,
-    TokenEstimator tokenEstimator
+    TokenEstimator tokenEstimator,
+    @Value('${context.score.main.bias:2}') int mainBias,
+    @Value('${context.score.test.penalty:-1}') int testPenalty
   ) {
     this.maxChars = maxChars > 0 ? maxChars : 12000
     this.maxTokens = maxTokens > 0 ? maxTokens : 0
     this.tokenEstimator = tokenEstimator
+    this.mainBias = mainBias
+    this.testPenalty = testPenalty
+  }
+
+  ContextBudgetManager(int maxChars, int maxTokens, TokenEstimator tokenEstimator) {
+    this(maxChars, maxTokens, tokenEstimator, 2, -1)
   }
 
   BudgetResult applyBudget(String text, List<CodeSearchTool.SearchHit> hits) {
@@ -112,12 +126,11 @@ ${hit.snippet}
 """.stripIndent().trim()
   }
 
-  private static int relevanceScore(CodeSearchTool.SearchHit hit) {
+  private int relevanceScore(CodeSearchTool.SearchHit hit) {
     int score = 0
     if (hit.path) {
       String lower = hit.path.toLowerCase()
-      // Prefer main code over tests; configurable if needed.
-      score += lower.contains("test") ? -1 : 2
+      score += lower.contains("test") ? testPenalty : mainBias
       score += lower.contains("main") ? 1 : 0
     }
     int distance = (int) (hit.line / 1000)

@@ -91,7 +91,7 @@ class ShellCommands {
       fileEditingTool,
       new CodeSearchTool(),
       new ContextPacker(),
-      new ContextBudgetManager(12000, 0, new TokenEstimator()),
+      new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
       reviewLogPath
     )
   }
