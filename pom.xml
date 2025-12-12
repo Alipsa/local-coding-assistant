@@ -11,7 +11,7 @@
   </parent>
   <groupId>se.alipsa.lca</groupId>
   <artifactId>local-coding-assistant</artifactId>
-  <version>0.4.0-SNAPSHOT</version>
+  <version>0.4.0</version>
   <packaging>jar</packaging>
   <name>Local Coding Assistant</name>
   <description>The Local Coding assistant is an AI LLM interface based on Ollama and Embabel</description>

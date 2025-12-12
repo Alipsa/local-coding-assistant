@@ -71,7 +71,7 @@ fi
 # Generate the commit log:
 # --no-merges: Excludes all merge commits (the new requirement)
 # --pretty=format:"* %s (%an)": Formats each commit as a bullet point with subject and author
-RELEASE_NOTES=$(git log --no-merges --pretty=format:"* %s (%an)" "$LOG_RANGE")
+RELEASE_NOTES=$(git log --no-merges --pretty=format:"%s" "$LOG_RANGE")
 
 # Check if RELEASE_NOTES is empty
 if [ -z "$RELEASE_NOTES" ]; then
