@@ -4,7 +4,7 @@ if [[ $(git status --porcelain) ]]; then
   echo "Git changes detected, commit all changes first before releasing"
   exit
 fi
-mvn -Prelease -B clean site deploy
+mvn -Prelease -B clean package site deploy
 echo "Release to maven successful!"
 
 echo "Starting GitHub release process..."
