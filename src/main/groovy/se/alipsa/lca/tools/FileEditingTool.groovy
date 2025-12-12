@@ -22,7 +22,7 @@ import java.util.regex.Pattern
 class FileEditingTool {
 
   private static final Logger log = LoggerFactory.getLogger(FileEditingTool)
-  private static final Pattern HUNK_HEADER = Pattern.compile(/^@@ -(\\d+),?(\\d*) \\+(\\d+),?(\\d*) @@/)
+  private static final Pattern HUNK_HEADER = Pattern.compile('^@@ -(\\d+),?(\\d*) \\+(\\d+),?(\\d*) @@')
   private static final DateTimeFormatter BACKUP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")
   private static final String BACKUP_ROOT = ".lca/backups"
   private static final int PREVIEW_LIMIT = 800
@@ -594,15 +594,15 @@ class FileEditingTool {
       boolean inReplace = false
       for (String raw : lines) {
         String line = raw
-        if (line.trim().startsWith(">")) {
-          // Remove the first '>' character, but preserve all other whitespace
-          int idx = line.indexOf('>')
-          if (idx != -1 && idx + 1 < line.length()) {
-            line = line.substring(idx + 1)
-          } else if (idx != -1) {
+      if (line.trim().startsWith(">")) {
+        // Remove the first '>' character, but preserve all other whitespace
+        int idx = line.indexOf('>')
+        if (idx != -1 && idx + 1 < line.length()) {
+            line = line.substring(idx + 1).stripLeading()
+        } else if (idx != -1) {
             line = ""
-          }
         }
+      }
         if (line.trim() == "====") {
           inReplace = true
           continue

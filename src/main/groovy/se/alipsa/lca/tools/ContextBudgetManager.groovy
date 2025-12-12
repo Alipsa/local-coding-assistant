@@ -34,7 +34,8 @@ class ContextBudgetManager {
     if (text.length() <= charBudget && (tokenBudget <= 0 || tokenEstimator.estimate(text) <= tokenBudget)) {
       return new BudgetResult(text, hits, false)
     }
-    int allowed = Math.max(0, charBudget)
+    int remainingChars = Math.max(0, charBudget)
+    int remainingTokens = tokenBudget > 0 ? tokenBudget : Integer.MAX_VALUE
     List<CodeSearchTool.SearchHit> safeHits = hits != null ? hits : List.of()
     List<ScoredHit> scored = safeHits.collect { CodeSearchTool.SearchHit hit ->
       new ScoredHit(hit, relevanceScore(hit), blockSize(hit))
@@ -47,23 +48,52 @@ class ContextBudgetManager {
       return a.blockSize <=> b.blockSize
     }
     List<CodeSearchTool.SearchHit> kept = new ArrayList<>()
-    int budget = allowed
-    int tokenCap = tokenBudget > 0 ? tokenBudget : Integer.MAX_VALUE
+    StringBuilder builder = new StringBuilder()
+    boolean truncated = false
     for (ScoredHit scoredHit : scored) {
-      if (budget - scoredHit.blockSize < 0) {
-        continue
-      }
       String blockText = blockString(scoredHit.hit)
-      int tokens = tokenEstimator.estimate(blockText)
-      if (tokens > tokenCap) {
+      int blockTokens = tokenEstimator.estimate(blockText)
+      if (blockTokens > remainingTokens) {
+        truncated = true
         continue
       }
-      kept.add(scoredHit.hit)
-      budget -= scoredHit.blockSize
-      tokenCap -= tokens
+      int spacing = builder.length() > 0 ? 2 : 0
+      if (blockText.length() + spacing <= remainingChars) {
+        if (spacing > 0) {
+          builder.append("\n\n")
+          remainingChars = Math.max(0, remainingChars - spacing)
+        }
+        builder.append(blockText)
+        remainingChars = Math.max(0, remainingChars - blockText.length())
+        remainingTokens -= blockTokens
+        kept.add(scoredHit.hit)
+        continue
+      }
+      if (kept.isEmpty() && remainingChars > 0) {
+        if (spacing > 0 && remainingChars > spacing) {
+          builder.append("\n\n")
+          remainingChars = Math.max(0, remainingChars - spacing)
+        }
+        int slice = Math.min(blockText.length(), remainingChars)
+        if (slice > 0) {
+          builder.append(blockText, 0, slice)
+          if (slice < blockText.length() && remainingChars >= 3) {
+            builder.append("...")
+          }
+          kept.add(scoredHit.hit)
+          truncated = true
+          remainingTokens = Math.max(0, remainingTokens - tokenEstimator.estimate(builder.toString()))
+          remainingChars = 0
+        }
+        continue
+      }
+      truncated = true
     }
-    String rebuilt = buildText(kept)
-    boolean truncated = kept.size() < safeHits.size() || rebuilt.length() < text.length()
+    String rebuilt = builder.toString().stripTrailing()
+    if (rebuilt.isEmpty() && !safeHits.isEmpty() && kept.isEmpty()) {
+      truncated = true
+    }
+    truncated = truncated || kept.size() < safeHits.size() || rebuilt.length() < text.length()
     new BudgetResult(rebuilt, kept, truncated)
   }
 

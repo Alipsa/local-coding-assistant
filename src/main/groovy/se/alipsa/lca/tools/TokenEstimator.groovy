@@ -11,10 +11,14 @@ class TokenEstimator {
    * Approximate token count using whitespace splitting with a fallback heuristic.
    */
   int estimate(String text) {
-    if (text == null || text.isEmpty()) {
+    if (text == null) {
       return 0
     }
-    String[] parts = text.trim().split(/\s+/)
+    String trimmed = text.trim()
+    if (trimmed.isEmpty()) {
+      return 0
+    }
+    String[] parts = trimmed.split(/\s+/)
     return parts.length
   }
 }

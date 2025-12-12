@@ -22,8 +22,8 @@ class RenderReviewSpec extends Specification {
     def text = ShellCommands.renderReview(summary, ReviewSeverity.HIGH, false)
 
     then:
-    !text.contains("LOW")
-    text.contains("HIGH")
+    !text.contains("Low")
+    text.contains("High")
     text.contains("Tests:")
   }
 }

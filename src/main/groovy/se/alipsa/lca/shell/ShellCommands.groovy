@@ -75,6 +75,27 @@ class ShellCommands {
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
+  ShellCommands(
+    CodingAssistantAgent codingAssistantAgent,
+    Ai ai,
+    SessionState sessionState,
+    EditorLauncher editorLauncher,
+    FileEditingTool fileEditingTool,
+    String reviewLogPath
+  ) {
+    this(
+      codingAssistantAgent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      new CodeSearchTool(),
+      new ContextPacker(),
+      new ContextBudgetManager(12000, 0, new TokenEstimator()),
+      reviewLogPath
+    )
+  }
+
   @ShellMethod(key = ["chat", "/chat"], value = "Send a prompt to the coding assistant.")
   String chat(
     @ShellOption(help = "Prompt text; multiline supported by quoting or paste mode") String prompt,
@@ -103,6 +124,9 @@ class ShellCommands {
       options,
       system
     )
+    if (snippet == null) {
+      return "No response generated."
+    }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${snippet.text}")
     snippet.text
   }
@@ -167,7 +191,7 @@ class ShellCommands {
     int pageSize = Math.max(1, limit)
     int startIndex = Math.max(0, (Math.max(1, page) - 1) * pageSize)
     if (startIndex >= entries.size()) {
-      return "No matching review entries."
+      startIndex = Math.max(0, entries.size() - pageSize)
     }
     entries = entries.subList(startIndex, Math.min(entries.size(), startIndex + pageSize))
     entries.collect { LogEntry entry ->
@@ -436,9 +460,9 @@ class ShellCommands {
     }
   }
 
-  private static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
+  static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
     StringBuilder builder = new StringBuilder("Findings:")
-    List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+    List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
     if (filtered.isEmpty()) {
       builder.append("\n- None")
     } else {
@@ -501,7 +525,7 @@ class ShellCommands {
       String timestamp = extractField(trimmed, "Timestamp:")
       String body = extractBody(trimmed)
       ReviewSummary summary = ReviewParser.parse(body)
-      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() >= minSeverity.ordinal() }
+      List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
       if (filtered.isEmpty()) {
         return
       }
@@ -632,6 +656,9 @@ ${renderReview(summary, minSeverity, false)}
   }
 
   private static String formatPatchResult(FileEditingTool.PatchResult result) {
+    if (result == null) {
+      return "No patch result."
+    }
     StringBuilder builder = new StringBuilder()
     builder.append(result.dryRun ? "Dry run" : "Patch apply")
     builder.append(result.hasConflicts ? " (conflicts detected)" : " completed")
@@ -663,6 +690,9 @@ ${renderReview(summary, minSeverity, false)}
   }
 
   private static String formatSearchReplaceResult(FileEditingTool.SearchReplaceResult result) {
+    if (result == null) {
+      return "No block result."
+    }
     StringBuilder builder = new StringBuilder()
     builder.append(result.dryRun ? "Dry run" : "Applied blocks")
     builder.append(result.hasConflicts ? " (conflicts detected)" : "")

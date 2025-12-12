@@ -217,7 +217,12 @@ class FileEditingSpec extends Specification {
 
   def "applies search and replace blocks uniquely"() {
     given:
-    Files.writeString(tempFile, "foo\nbar\nbaz\n", java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)
+    Files.writeString(
+      tempFile,
+      "foo\nbar\nbaz\n",
+      java.nio.file.StandardOpenOption.CREATE,
+      java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
+    )
     String blocks = """\
 <<<<SEARCH
 > bar

@@ -97,6 +97,9 @@ class SessionState {
   ) {
     String resolvedModel = model ?: defaultModel
     LlmOptions options = resolvedModel ? LlmOptions.withModel(resolvedModel) : LlmOptions.withDefaultLlm()
+    if (resolvedModel) {
+      options.setModel(resolvedModel)
+    }
     options = options.withTemperature(temperature != null ? temperature : fallbackTemperature)
     Integer resolvedMaxTokens = (maxTokens != null && maxTokens > 0) ? maxTokens : defaultMaxTokens
     if (resolvedMaxTokens != null && resolvedMaxTokens > 0) {

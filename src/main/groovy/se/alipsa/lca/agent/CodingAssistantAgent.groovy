@@ -334,22 +334,18 @@ Tests: list the specific tests or scenarios to validate
   }
 
   protected String enforceReviewFormat(String review) {
-    String limitedReview = enforceWordLimit(review, reviewWordCount)
+    String limitedReview = enforceWordLimit(review ?: "", reviewWordCount)
     boolean hasFindings = limitedReview =~ /(?im)^Findings:/
     boolean hasTests = limitedReview =~ /(?im)^Tests:/
-    if (hasFindings && hasTests) {
-      return limitedReview
-    }
-    StringBuilder builder = new StringBuilder()
-    if (!hasFindings) {
-      builder.append("Findings:\n- ").append(limitedReview.trim()).append('\n')
-    } else {
-      builder.append(limitedReview.trim()).append('\n')
-    }
+    String findingsSection = hasFindings ? limitedReview.trim() : "Findings:\n- ${limitedReview.trim()}"
     if (!hasTests) {
-      builder.append("Tests:\n- Cover happy-path and failure-path behavior with Spock.")
+      String testsBlock = "\nTests:\n- Cover happy-path and failure-path behavior with Spock."
+      int reserved = testsBlock.trim().split(/\\s+/).length
+      String limitedFindings = enforceWordLimit(findingsSection, Math.max(1, reviewWordCount - reserved))
+      String combined = (limitedFindings + testsBlock).trim()
+      return enforceWordLimit(combined, reviewWordCount)
     }
-    enforceWordLimit(builder.toString().trim(), reviewWordCount)
+    enforceWordLimit(findingsSection, reviewWordCount)
   }
 
   protected String enforceWordLimit(String text, int limit) {
