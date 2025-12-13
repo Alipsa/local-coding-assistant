@@ -53,7 +53,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colors for High/Medium/Low severity).  
 
 ## 5) Code search and context building
-- 5.1 [x] Integrate ripgrep-based search (respect .gitignore) to gather snippets for prompts.
+- 5.1 [x] Integrate ripgrep-like search (respect .gitignore) to gather snippets for prompts.
 - 5.2 [x] Implement a context packer that deduplicates and truncates snippets to stay within token limits.
 - 5.3 [x] Add a `search` command returning matches with surrounding lines, copy-to-context, and optional web search toggle.
 - 5.4 [x] Unit-test context assembly and truncation.

@@ -1,5 +1,14 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 0.5.0 - Code search and context building
+- 5.1 Integrate ripgrep-like search (respect .gitignore) to gather snippets for prompts.
+- 5.2 Implement a context packer that deduplicates and truncates snippets to stay within token limits.
+- 5.3 Add a `search` command returning matches with surrounding lines, copy-to-context, and optional web search toggle.
+- 5.4 Unit-test context assembly and truncation.
+- 5.5 Create a Context Budget Manager to manage context limits effectively.
+  - The Challenge: Context limits. qwen3-coder:30b has a 256K window, but performance degrades as it gets closer to the limit.
+  - Before sending the prompt, calculate the token count of: System Prompt + User Prompt + File A + File B. If it exceeds the limit, auto-summarize or drop the least relevant file before hitting the API.
+
 ## Version 0.4.0 - Code review and suggestions, 2025-12-12
 Code review and suggestions
 - 4.1 Add a `review` command that feeds selected files/diffs into the agent with severity-tagged output.
