@@ -241,6 +241,7 @@ class ShellCommands {
     try {
       results = codingAssistantAgent.search(query, options)
     } catch (Exception e) {
+      results = []
       return "Web search unavailable: ${e.message ?: e.class.simpleName}"
     }
     if (results == null || results.isEmpty()) {
