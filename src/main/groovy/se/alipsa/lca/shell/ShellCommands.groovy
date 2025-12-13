@@ -223,7 +223,8 @@ class ShellCommands {
     boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
     if (!allowed) {
       return "Web search is disabled for this session. " +
-        "Enable with assistant.web-search.enabled=true or pass --enable-web-search true."
+        "Enable globally in application.properties with assistant.web-search.enabled=true, " +
+        "or enable for this request by passing --enable-web-search true."
     }
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
