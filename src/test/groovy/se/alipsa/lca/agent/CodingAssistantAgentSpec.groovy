@@ -19,6 +19,7 @@ class CodingAssistantAgentSpec extends Specification {
     "test-model",
     0.65d,
     0.25d,
+    true,
     fileEditingTool,
     webSearchTool,
     codeSearchTool

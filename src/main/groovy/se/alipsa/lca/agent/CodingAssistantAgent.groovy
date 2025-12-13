@@ -111,6 +111,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   protected final String llmModel
   protected final double craftTemperature
   protected final double reviewTemperature
+  protected final boolean webSearchEnabledDefault
   protected final LlmOptions craftLlmOptions
   protected final LlmOptions reviewLlmOptions
   private final FileEditingTool fileEditingAgent
@@ -123,6 +124,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     @Value('${assistant.llm.model:qwen3-coder:30b}') String llmModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
+    @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent,
     CodeSearchTool codeSearchTool
@@ -132,6 +134,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.llmModel = llmModel
     this.craftTemperature = craftTemperature
     this.reviewTemperature = reviewTemperature
+    this.webSearchEnabledDefault = webSearchEnabledDefault
     this.craftLlmOptions = LlmOptions.withModel(llmModel).withTemperature(craftTemperature)
     this.reviewLlmOptions = LlmOptions.withModel(llmModel).withTemperature(reviewTemperature)
     this.fileEditingAgent = fileEditingAgent
@@ -261,7 +264,14 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   @Action(description = "Search the web for a given query")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query) {
-    webSearchAgent.search(query)
+    search(query, null)
+  }
+
+  @Action(description = "Search the web for a given query with options")
+  @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
+  List<WebSearchTool.SearchResult> search(String query, WebSearchTool.SearchOptions options) {
+    WebSearchTool.SearchOptions resolved = WebSearchTool.withDefaults(options, webSearchEnabledDefault)
+    webSearchAgent.search(query, resolved)
   }
 
   @Action(description = "Search repository files for a pattern.")

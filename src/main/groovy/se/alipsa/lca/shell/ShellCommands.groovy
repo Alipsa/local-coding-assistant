@@ -113,7 +113,8 @@ class ShellCommands {
       temperature,
       reviewTemperature,
       maxTokens,
-      systemPrompt
+      systemPrompt,
+      null
     )
     LlmOptions options = sessionState.craftOptions(settings)
     String system = sessionState.systemPrompt(settings)
@@ -151,7 +152,7 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
   ) {
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
-    SessionSettings settings = sessionState.update(session, model, null, reviewTemperature, maxTokens, systemPrompt)
+    SessionSettings settings = sessionState.update(session, model, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
     String reviewPayload = buildReviewPayload(code, paths, staged)
@@ -210,12 +211,48 @@ class ShellCommands {
   @ShellMethod(key = ["search", "/search"], value = "Run web search through the agent tool.")
   String search(
     @ShellOption(help = "Query to search") String query,
-    @ShellOption(defaultValue = "5", help = "Number of results to show") int limit
+    @ShellOption(defaultValue = "5", help = "Number of results to show") int limit,
+    @ShellOption(defaultValue = "default", help = "Session id for caching and configuration") String session,
+    @ShellOption(defaultValue = "duckduckgo", help = "Search provider") String provider,
+    @ShellOption(defaultValue = "15000", help = "Timeout in milliseconds") long timeoutMillis,
+    @ShellOption(defaultValue = "true", help = "Run browser in headless mode") boolean headless,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override web search enablement (true/false)") Boolean enableWebSearch
   ) {
-    codingAssistantAgent.search(query).stream()
-      .limit(limit)
+    boolean defaultEnabled = sessionState.isWebSearchEnabled(session)
+    Boolean overrideEnabled = enableWebSearch
+    boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
+    if (!allowed) {
+      return "Web search is disabled for this session. " +
+        "Enable globally in application.properties with assistant.web-search.enabled=true, " +
+        "or enable for this request by passing --enable-web-search true."
+    }
+    WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
+      new WebSearchTool.SearchOptions(
+        provider: WebSearchTool.providerFrom(provider),
+        limit: limit,
+        headless: headless,
+        timeoutMillis: timeoutMillis,
+        sessionId: session,
+        webSearchEnabled: overrideEnabled
+      ),
+      defaultEnabled
+    )
+    List<WebSearchTool.SearchResult> results
+    try {
+      results = codingAssistantAgent.search(query, options)
+    } catch (Exception e) {
+      results = []
+      return "Web search unavailable: ${e.message ?: e.class.simpleName}"
+    }
+    if (results == null || results.isEmpty()) {
+      return "No web results."
+    }
+    results.stream()
       .map { WebSearchTool.SearchResult result ->
-        "${result.title} - ${result.url}\n${result.snippet}"
+        String title = result.title ?: "(no title)"
+        String url = result.url ?: "(no url)"
+        String snippet = result.snippet ?: ""
+        "${title} - ${url}\n${snippet}"
       }
       .toList()
       .join("\n\n")
