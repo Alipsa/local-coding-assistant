@@ -22,7 +22,7 @@ import java.nio.file.Path
 
 class ShellCommandsSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "")
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true)
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   FileEditingTool fileEditingTool = Mock()
@@ -147,12 +147,16 @@ class ShellCommandsSpec extends Specification {
       new WebSearchTool.SearchResult("T1", "http://example.com", "S1"),
       new WebSearchTool.SearchResult("T2", "http://example.org", "S2")
     ]
-    agent.search(_) >> results
 
     when:
-    def out = commands.search("query", 1)
+    def out = commands.search("query", 1, "default", "duckduckgo", 15000L, true, null)
 
     then:
+    1 * agent.search("query", { WebSearchTool.SearchOptions opts ->
+      opts.limit == 1 &&
+      opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
+      opts.webSearchEnabled
+    }) >> results
     out.contains("T1 - http://example.com")
     out.contains("S1")
   }

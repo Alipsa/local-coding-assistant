@@ -5,7 +5,7 @@ import spock.lang.Specification
 
 class SessionStateSpec extends Specification {
 
-  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "")
+  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "", true)
 
   def "uses default model and temperatures when unset"() {
     when:
@@ -22,7 +22,7 @@ class SessionStateSpec extends Specification {
 
   def "applies overrides and max tokens"() {
     when:
-    def settings = state.update("s2", "custom", 0.9d, 0.4d, 1024, "sys")
+    def settings = state.update("s2", "custom", 0.9d, 0.4d, 1024, "sys", null)
     def craft = state.craftOptions(settings)
 
     then:
@@ -43,12 +43,24 @@ class SessionStateSpec extends Specification {
 
   def "falls back to default system prompt when unset"() {
     given:
-    def withDefault = new SessionState("default-model", 0.7d, 0.35d, 0, "base")
+    def withDefault = new SessionState("default-model", 0.7d, 0.35d, 0, "base", false)
 
     when:
     def prompt = withDefault.systemPrompt(withDefault.getOrCreate("s3"))
 
     then:
     prompt == "base"
+  }
+
+  def "tracks web search enablement with defaults"() {
+    when:
+    def disabled = new SessionState("m", 0.5d, 0.4d, 0, "", false)
+    def settings = disabled.update("s4", null, null, null, null, null, true)
+
+    then:
+    state.isWebSearchEnabled("unknown")
+    !disabled.isWebSearchEnabled("unknown")
+    disabled.isWebSearchEnabled("s4")
+    settings.webSearchEnabled
   }
 }

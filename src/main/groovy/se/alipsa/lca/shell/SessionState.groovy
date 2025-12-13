@@ -20,19 +20,22 @@ class SessionState {
   private final double defaultReviewTemperature
   private final Integer defaultMaxTokens
   private final String defaultSystemPrompt
+  private final boolean defaultWebSearchEnabled
 
   SessionState(
     @Value('${assistant.llm.model:qwen3-coder:30b}') String defaultModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double defaultCraftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double defaultReviewTemperature,
     @Value('${assistant.llm.max-tokens:0}') Integer defaultMaxTokens,
-    @Value('${assistant.system-prompt:}') String defaultSystemPrompt
+    @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
+    @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled
   ) {
     this.defaultModel = defaultModel
     this.defaultCraftTemperature = defaultCraftTemperature
     this.defaultReviewTemperature = defaultReviewTemperature
     this.defaultMaxTokens = defaultMaxTokens
     this.defaultSystemPrompt = defaultSystemPrompt
+    this.defaultWebSearchEnabled = defaultWebSearchEnabled
   }
 
   SessionSettings update(
@@ -41,18 +44,20 @@ class SessionState {
     Double craftTemperature,
     Double reviewTemperature,
     Integer maxTokens,
-    String systemPrompt
+    String systemPrompt,
+    Boolean webSearchEnabled
   ) {
     String key = sessionId ?: "default"
     sessions.compute(key) { _, existing ->
-      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null)
+      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null, null)
       new SessionSettings(
         key,
         model != null ? model : current.model,
         craftTemperature != null ? craftTemperature : current.craftTemperature,
         reviewTemperature != null ? reviewTemperature : current.reviewTemperature,
         maxTokens != null ? maxTokens : current.maxTokens,
-        systemPrompt != null ? systemPrompt : current.systemPrompt
+        systemPrompt != null ? systemPrompt : current.systemPrompt,
+        webSearchEnabled != null ? webSearchEnabled : current.webSearchEnabled
       )
     }
   }
@@ -60,7 +65,7 @@ class SessionState {
   SessionSettings getOrCreate(String sessionId) {
     String key = sessionId ?: "default"
     sessions.computeIfAbsent(key) {
-      new SessionSettings(it, null, null, null, null, null)
+      new SessionSettings(it, null, null, null, null, null, null)
     }
   }
 
@@ -87,6 +92,14 @@ class SessionState {
 
   List<String> history(String sessionId) {
     history.getOrDefault(sessionId ?: "default", List.of())
+  }
+
+  boolean isWebSearchEnabled(String sessionId) {
+    SessionSettings settings = getOrCreate(sessionId)
+    if (settings.webSearchEnabled != null) {
+      return settings.webSearchEnabled
+    }
+    defaultWebSearchEnabled
   }
 
   private LlmOptions buildOptions(
@@ -117,5 +130,6 @@ class SessionState {
     Double reviewTemperature
     Integer maxTokens
     String systemPrompt
+    Boolean webSearchEnabled
   }
 }
