@@ -92,8 +92,8 @@ class WebSearchTool {
     if (!normalizedQuery) {
       return List.of()
     }
-    String cacheKey = cacheKey(resolved.provider, normalizedQuery, resolved.sessionId)
-    CacheEntry cached = cache.get(cacheKey)
+    String key = cacheKey(resolved.provider, normalizedQuery, resolved.sessionId)
+    CacheEntry cached = cache.get(key)
     if (cached != null) {
       int available = Math.min(cached.results.size(), resolved.limit)
       return new ArrayList<>(cached.results.subList(0, available))
