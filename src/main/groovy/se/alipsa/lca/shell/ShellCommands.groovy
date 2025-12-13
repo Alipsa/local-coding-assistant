@@ -218,7 +218,9 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Run browser in headless mode") boolean headless,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override web search enablement (true/false)") Boolean enableWebSearch
   ) {
-    boolean allowed = enableWebSearch != null ? enableWebSearch : sessionState.isWebSearchEnabled(session)
+    boolean defaultEnabled = sessionState.isWebSearchEnabled(session)
+    Boolean overrideEnabled = enableWebSearch
+    boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
     if (!allowed) {
       return "Web search is disabled for this session. " +
         "Enable with assistant.web-search.enabled=true or pass --enable-web-search true."
@@ -230,9 +232,9 @@ class ShellCommands {
         headless: headless,
         timeoutMillis: timeoutMillis,
         sessionId: session,
-        webSearchEnabled: allowed
+        webSearchEnabled: overrideEnabled
       ),
-      allowed
+      defaultEnabled
     )
     List<WebSearchTool.SearchResult> results
     try {
@@ -244,7 +246,6 @@ class ShellCommands {
       return "No web results."
     }
     results.stream()
-      .limit(limit)
       .map { WebSearchTool.SearchResult result ->
         String title = result.title ?: "(no title)"
         String url = result.url ?: "(no url)"

@@ -13,7 +13,7 @@ RELEASE_MD_PATH="$REPO_ROOT/release.md"
 
 # --- Function to Check for Required Commands ---
 check_commands() {
-    for cmd in gh mvn git; do
+    for cmd in gh mvn git awk; do
         if ! command -v "$cmd" &> /dev/null; then
             echo "Error: Required command '$cmd' is not installed or not in your PATH." >&2
             exit 1
@@ -70,7 +70,6 @@ if [ -f "$RELEASE_MD_PATH" ]; then
         if (found) exit
         if (index($0, ver) > 0) {
           found=1
-          print
           next
         }
       }

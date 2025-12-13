@@ -31,8 +31,9 @@ class WebSearchController {
     @RequestParam(defaultValue = "duckduckgo") String provider,
     @RequestParam(defaultValue = "15000") long timeoutMillis,
     @RequestParam(defaultValue = "true") boolean headless,
-    @RequestParam(defaultValue = "true") boolean enabled
+    @RequestParam(required = false) Boolean enabled
   ) {
+    boolean defaultEnabled = webSearchEnabledDefault
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
         provider: WebSearchTool.providerFrom(provider),
@@ -41,7 +42,7 @@ class WebSearchController {
         timeoutMillis: timeoutMillis,
         webSearchEnabled: enabled
       ),
-      webSearchEnabledDefault
+      defaultEnabled
     )
     webSearchAgent.search(query, options)
   }

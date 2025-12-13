@@ -88,4 +88,49 @@ class WebSearchSpec extends Specification {
     first.size() == 1
     second.size() == 1
   }
+
+  def "returns disabled result when web search is disabled"() {
+    given:
+    def tool = new WebSearchTool({
+      throw new IllegalStateException("Should not be called when disabled")
+    } as java.util.function.Supplier<Playwright>)
+
+    when:
+    def results = tool.search("query", new WebSearchTool.SearchOptions(webSearchEnabled: false))
+
+    then:
+    results.size() == 1
+    results[0].title == "Web search disabled"
+  }
+
+  def "returns failure result on exception"() {
+    given:
+    def tool = new WebSearchTool({
+      throw new RuntimeException("boom")
+    } as java.util.function.Supplier<Playwright>)
+
+    when:
+    def results = tool.search("query", new WebSearchTool.SearchOptions(webSearchEnabled: true))
+
+    then:
+    results.size() == 1
+    results[0].title == "Web search unavailable"
+    results[0].snippet.contains("boom")
+  }
+
+  def "returns empty list for blank query without calling supplier"() {
+    given:
+    int calls = 0
+    def tool = new WebSearchTool({
+      calls++
+      Mock(Playwright)
+    } as java.util.function.Supplier<Playwright>)
+
+    when:
+    def results = tool.search("   ", new WebSearchTool.SearchOptions(webSearchEnabled: true))
+
+    then:
+    results.isEmpty()
+    calls == 0
+  }
 }

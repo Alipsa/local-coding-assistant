@@ -99,12 +99,12 @@ class WebSearchTool {
       return new ArrayList<>(cached.results.subList(0, available))
     }
 
-    Playwright playwright = playwrightSupplier.get()
-    Browser browser = null
-    try (playwright) {
-      browser = playwright.chromium().launch(
+    try (
+      Playwright playwright = playwrightSupplier.get();
+      Browser browser = playwright.chromium().launch(
         new BrowserType.LaunchOptions().setHeadless(resolved.headless)
       )
+    ) {
       def page = browser.newPage()
       page.setDefaultTimeout(resolved.timeoutMillis)
       page.navigate(providerUrl(resolved.provider))
@@ -128,16 +128,8 @@ class WebSearchTool {
       cache.put(cacheKey, new CacheEntry(results))
       int take = Math.min(results.size(), resolved.limit)
       List<SearchResult> limited = results.subList(0, take)
-      browser.close()
       return new ArrayList<>(limited)
     } catch (Exception e) {
-      if (browser != null) {
-        try {
-          browser.close()
-        } catch (Exception ignored) {
-          // ignore close failures
-        }
-      }
       return List.of(failureResult(e.message))
     }
   }
