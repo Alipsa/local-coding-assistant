@@ -125,7 +125,7 @@ class WebSearchTool {
         )
       }.findAll { it.title || it.url || it.snippet }
 
-      cache.put(cacheKey, new CacheEntry(results))
+      cache.put(key, new CacheEntry(results))
       int take = Math.min(results.size(), resolved.limit)
       List<SearchResult> limited = results.subList(0, take)
       return new ArrayList<>(limited)
