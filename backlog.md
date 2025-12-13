@@ -62,10 +62,10 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - Before sending the prompt, calculate the token count of: System Prompt + User Prompt + File A + File B. If it exceeds the limit, you must auto-summarize or drop the least relevant file before hitting the API.
   
 ## 6) Web search augmentation
-- 6.1 [ ] Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitization/snippet trimming.
-- 6.2 [ ] Add a CLI/agent flag to enable/disable web search, plus offline fallback messaging.
-- 6.3 [ ] Cache recent queries for reuse in the same session; allow selecting search provider if available.
-- 6.4 [ ] Make web search outputs usable by the agent (structured snippets) and add tests for parsing/formatting.
+- 6.1 [x] Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitization/snippet trimming.
+- 6.2 [x] Add a CLI/agent flag to enable/disable web search, plus offline fallback messaging.
+- 6.3 [x] Cache recent queries for reuse in the same session; allow selecting search provider if available.
+- 6.4 [x] Make web search outputs usable by the agent (structured snippets) and add tests for parsing/formatting.
 
 ## 7) Git-aware operations
 - 7.1 [ ] Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.

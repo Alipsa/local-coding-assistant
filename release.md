@@ -1,5 +1,11 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 0.6.0 - Web search augmentation
+- 6.1 Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitization/snippet trimming.
+- 6.2 Add a CLI/agent flag to enable/disable web search, plus offline fallback messaging.
+- 6.3 Cache recent queries for reuse in the same session; allow selecting search provider if available.
+- 6.4 Make web search outputs usable by the agent (structured snippets) and add tests for parsing/formatting.
+
 ## Version 0.5.0 - Code search and context building
 - 5.1 Integrate ripgrep-like search (respect .gitignore) to gather snippets for prompts.
 - 5.2 Implement a context packer that deduplicates and truncates snippets to stay within token limits.
