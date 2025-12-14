@@ -934,9 +934,10 @@ ${renderReview(summary, minSeverity, false)}
       }
       try {
         int parsed = Integer.parseInt(value)
-        if (parsed > 0) {
-          indexes.add(parsed)
+        if (parsed <= 0) {
+          throw new IllegalArgumentException("Hunk indexes must be 1-based; got ${parsed}")
         }
+        indexes.add(parsed)
       } catch (NumberFormatException e) {
         throw new IllegalArgumentException("Invalid hunk index: ${value}", e)
       }

@@ -27,7 +27,7 @@ class GitTool {
     try {
       this.realProjectRoot = this.projectRoot.toRealPath()
     } catch (IOException e) {
-      throw new IllegalStateException("Failed to resolve project root", e)
+      this.realProjectRoot = this.projectRoot
     }
   }
 
@@ -208,7 +208,7 @@ class GitTool {
         throw new IllegalArgumentException("Path must be inside project root: ${path}")
       }
       if (!Files.exists(resolved)) {
-        return path
+        return realProjectRoot.relativize(resolved).toString()
       }
       throw new IllegalArgumentException("Unable to validate path ${path}: ${e.message}", e)
     }

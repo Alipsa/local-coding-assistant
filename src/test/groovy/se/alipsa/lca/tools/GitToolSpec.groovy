@@ -75,6 +75,141 @@ line6
     !staged.output.contains("+line5 updated")
   }
 
+  def "stageHunks supports second and multiple hunks"() {
+    given:
+    initRepo()
+    Path file = tempDir.resolve("multi.txt")
+    Files.writeString(
+      file,
+      """one
+two
+three
+four
+five
+six
+"""
+    )
+    runGit("add", "multi.txt")
+    runGit("commit", "-m", "init multi")
+    Files.writeString(
+      file,
+      """one updated
+two
+three
+four
+five updated
+six
+"""
+    )
+
+    when:
+    def secondOnly = gitTool.stageHunks("multi.txt", List.of(2))
+    def staged = gitTool.stagedDiff()
+
+    then:
+    secondOnly.success
+    staged.output.contains("five updated")
+    !staged.output.contains("one updated")
+
+    when:
+    runGit("reset", "HEAD")
+    def both = gitTool.stageHunks("multi.txt", List.of(2, 1))
+    def stagedBoth = gitTool.stagedDiff()
+
+    then:
+    both.success
+    stagedBoth.output.contains("one updated")
+    stagedBoth.output.contains("five updated")
+  }
+
+  def "stageFiles stages multiple files"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "a")
+    Files.writeString(tempDir.resolve("b.txt"), "b")
+
+    when:
+    def result = gitTool.stageFiles(List.of("a.txt", "b.txt"))
+    String staged = runGitCapture("diff", "--cached", "--name-only")
+
+    then:
+    result.success
+    staged.contains("a.txt")
+    staged.contains("b.txt")
+  }
+
+  def "applyPatch supports check and cached"() {
+    given:
+    initRepo()
+    Path sample = tempDir.resolve("sample.txt")
+    Path cachedFile = tempDir.resolve("cached.txt")
+    Files.writeString(sample, "hello\nstay\n")
+    Files.writeString(cachedFile, "cached\nstay\n")
+    runGit("add", "sample.txt", "cached.txt")
+    runGit("commit", "-m", "baseline")
+    String patch = """--- a/sample.txt
++++ b/sample.txt
+@@ -1,2 +1,2 @@
+-hello
++hello world
+ stay
+"""
+    String cachedPatch = """--- a/cached.txt
++++ b/cached.txt
+@@ -1,2 +1,2 @@
+-cached
++cached staged
+ stay
+"""
+
+    when:
+    def checkResult = gitTool.applyPatch(patch, false, true)
+    String before = Files.readString(sample)
+
+    then:
+    checkResult.success
+    before.contains("hello\nstay")
+
+    when:
+    def applyResult = gitTool.applyPatch(patch, false, false)
+    String updated = Files.readString(sample)
+
+    then:
+    applyResult.success
+    updated.contains("hello world")
+
+    when:
+    def cachedResult = gitTool.applyPatch(cachedPatch, true, false)
+    String cachedContent = Files.readString(cachedFile)
+    String cachedDiff = runGitCapture("diff", "--cached")
+
+    then:
+    cachedResult.success
+    cachedContent.contains("cached\nstay")
+    cachedDiff.contains("cached staged")
+  }
+
+  def "push succeeds to local bare remote"() {
+    given:
+    initRepo()
+    Path file = tempDir.resolve("push.txt")
+    Files.writeString(file, "push")
+    runGit("add", "push.txt")
+    runGit("commit", "-m", "push it")
+    Path remote = tempDir.resolve("remote.git")
+    runGit("init", "--bare", remote.toString())
+    runGit("remote", "add", "origin", remote.toString())
+    runGit("config", "push.default", "current")
+
+    when:
+    def result = gitTool.push(false)
+
+    then:
+    result.success
+    result.repoPresent
+    !result.error.toLowerCase().contains("fatal")
+  }
+
   private void initRepo() {
     runGit("init")
     runGit("config", "user.name", "Test User")
@@ -90,5 +225,18 @@ line6
     pb.redirectErrorStream(true)
     Process process = pb.start()
     process.waitFor()
+  }
+
+  private String runGitCapture(String... args) {
+    List<String> command = new ArrayList<>()
+    command.add("git")
+    command.addAll(List.of(args))
+    ProcessBuilder pb = new ProcessBuilder(command)
+    pb.directory(tempDir.toFile())
+    pb.redirectErrorStream(true)
+    Process process = pb.start()
+    String output = new String(process.getInputStream().readAllBytes())
+    process.waitFor()
+    output
   }
 }
