@@ -7,7 +7,7 @@
 - 7.4 Add lightweight tests for git command wrappers (mocked repo).
 - 7.5 Add a "Safety Valve".
   - The agent should not be allowed to git push without explicit user confirmation (Y/n/a).
-  - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
+  - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. Consider committing before I apply patches."
 
 ## Version 0.6.0 - Web search augmentation
 - 6.1 Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitization/snippet trimming.
