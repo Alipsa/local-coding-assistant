@@ -951,7 +951,7 @@ ${renderReview(summary, minSeverity, false)}
   private static String buildCommitPrompt(String diff, String hint, String systemPrompt) {
     StringBuilder builder = new StringBuilder()
     builder.append(
-      "You are crafting a git commit message for staged changes in a Groovy/Spring project.\n"
+      "You are crafting a git commit message for staged changes in the current project.\n"
     )
     builder.append(
       "Write a concise, imperative subject line (<= 72 characters) and optional bullet body.\n"
@@ -973,7 +973,7 @@ ${renderReview(summary, minSeverity, false)}
       return
     }
     if (gitTool.isDirty()) {
-      println("Warning: You have uncommitted changes. I recommend committing before I apply patches.")
+      println("Warning: Uncommitted changes detected. Consider committing before applying patches.")
     }
   }
 

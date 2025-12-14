@@ -224,7 +224,10 @@ six
     pb.directory(tempDir.toFile())
     pb.redirectErrorStream(true)
     Process process = pb.start()
-    process.waitFor()
+    int exit = process.waitFor()
+    if (exit != 0) {
+      throw new IllegalStateException("Git command failed: ${command.join(' ')} (exit ${exit})")
+    }
   }
 
   private String runGitCapture(String... args) {

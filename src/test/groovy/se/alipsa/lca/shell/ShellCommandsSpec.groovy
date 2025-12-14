@@ -426,4 +426,110 @@ class ShellCommandsSpec extends Specification {
     result == "Staging canceled."
     0 * repoGit.stageFiles(_)
   }
+
+  def "gitStatus formats output"() {
+    given:
+    GitTool repoGit = Stub(GitTool) {
+      status(false) >> new GitTool.GitResult(true, true, 0, "clean", "")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("status.log").toString()
+    )
+
+    when:
+    def out = cmds.gitStatus(false)
+
+    then:
+    out.contains("clean")
+  }
+
+  def "gitDiff uses git tool output"() {
+    given:
+    GitTool repoGit = Stub(GitTool) {
+      diff(true, ["src/App.groovy"], 2, false) >> new GitTool.GitResult(true, true, 0, "diff output", "")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("diff.log").toString()
+    )
+
+    when:
+    def out = cmds.gitDiff(true, 2, ["src/App.groovy"], false)
+
+    then:
+    out.contains("diff output")
+  }
+
+  def "gitApply runs confirmation and apply"() {
+    given:
+    GitTool repoGit = Mock() {
+      1 * applyPatch("patch", false, true) >> new GitTool.GitResult(true, true, 0, "ok", "")
+      1 * applyPatch("patch", false, false) >> new GitTool.GitResult(true, true, 0, "applied", "")
+      _ * isGitRepo() >> true
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("apply.log").toString()
+    ) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        ConfirmChoice.YES
+      }
+
+      @Override
+      protected void warnDirtyWorkspace() {
+        // no-op for tests
+      }
+    }
+
+    when:
+    def out = cmds.gitApply("patch", null, false, true, true)
+
+    then:
+    out.contains("applied")
+  }
+
+  def "gitPush requires confirmation"() {
+    given:
+    GitTool repoGit = Stub(GitTool) {
+      isGitRepo() >> true
+      push(false) >> new GitTool.GitResult(true, true, 0, "pushed", "")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("push.log").toString()
+    ) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        ConfirmChoice.YES
+      }
+    }
+
+    when:
+    def out = cmds.gitPush(false)
+
+    then:
+    out.contains("pushed")
+  }
 }
