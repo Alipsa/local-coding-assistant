@@ -74,6 +74,42 @@ line6
     !staged.output.contains("+line5 updated")
   }
 
+  def "stageHunks error cases are reported"() {
+    when:
+    def missingFile = gitTool.stageHunks("", List.of(1))
+
+    then:
+    !missingFile.success
+    missingFile.error.contains("File path is required.")
+
+    when:
+    def noHunks = gitTool.stageHunks("file.txt", List.of())
+
+    then:
+    !noHunks.success
+    noHunks.error.contains("Provide at least one hunk")
+
+    when:
+    initRepo()
+    Path file = tempDir.resolve("nodiff.txt")
+    Files.writeString(file, "line")
+    runGit("add", "nodiff.txt")
+    runGit("commit", "-m", "base")
+    def noDiff = gitTool.stageHunks("nodiff.txt", List.of(1))
+
+    then:
+    !noDiff.success
+    noDiff.error.contains("No diff available")
+
+    when:
+    Files.writeString(file, "line changed")
+    def noMatch = gitTool.stageHunks("nodiff.txt", List.of(2))
+
+    then:
+    !noMatch.success
+    noMatch.error.contains("No matching hunks")
+  }
+
   def "stageHunks supports second and multiple hunks"() {
     given:
     initRepo()
@@ -135,6 +171,26 @@ six
     result.success
     staged.contains("a.txt")
     staged.contains("b.txt")
+  }
+
+  def "stageFiles rejects traversal outside project"() {
+    when:
+    gitTool.stageFiles(["../../etc/passwd"])
+
+    then:
+    thrown(IllegalArgumentException)
+  }
+
+  def "stageFiles rejects absolute path outside project"() {
+    given:
+    Path outside = tempDir.getParent().resolve("outside.txt")
+    Files.writeString(outside, "content")
+
+    when:
+    gitTool.stageFiles([outside.toString()])
+
+    then:
+    thrown(IllegalArgumentException)
   }
 
   def "applyPatch supports check and cached"() {

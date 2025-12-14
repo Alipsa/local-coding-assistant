@@ -17,6 +17,9 @@ class GitTool {
   private static final Logger log = LoggerFactory.getLogger(GitTool)
   private final Path projectRoot
   private final Path realProjectRoot
+  // Not thread-safe; create separate instances per thread/session.
+  private final Object repoCheckLock = new Object()
+  private Boolean cachedRepoStatus = null
 
   GitTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -147,8 +150,17 @@ class GitTool {
   }
 
   boolean isGitRepo() {
-    GitResult result = runGit(List.of("rev-parse", "--is-inside-work-tree"), false)
-    result.success && result.output?.toLowerCase()?.contains("true")
+    if (cachedRepoStatus != null) {
+      return cachedRepoStatus.booleanValue()
+    }
+    synchronized (repoCheckLock) {
+      if (cachedRepoStatus != null) {
+        return cachedRepoStatus.booleanValue()
+      }
+      GitResult result = runGitNoCheck(List.of("rev-parse", "--is-inside-work-tree"))
+      cachedRepoStatus = result.success && result.output?.toLowerCase()?.contains("true")
+      return cachedRepoStatus
+    }
   }
 
   boolean isDirty() {
@@ -229,10 +241,33 @@ class GitTool {
     try {
       process = pb.start()
       if (input != null) {
-        process.outputStream.withCloseable { it.write(input.getBytes()) }
+        process.outputStream.withCloseable { it.write(input.getBytes(java.nio.charset.StandardCharsets.UTF_8)) }
       }
-      String output = new String(process.getInputStream().readAllBytes())
-      String error = new String(process.getErrorStream().readAllBytes())
+      String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+      String error = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+      int exit = process.waitFor()
+      return new GitResult(exit == 0, true, exit, output.stripTrailing(), error.stripTrailing())
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
+      log.warn("Git command failed: {}", args.join(" "), e)
+      return new GitResult(false, true, 1, "", e.message ?: e.class.simpleName)
+    }
+  }
+
+  private GitResult runGitNoCheck(List<String> args) {
+    List<String> command = new ArrayList<>()
+    command.add("git")
+    command.addAll(args)
+    ProcessBuilder pb = new ProcessBuilder(command)
+    pb.directory(projectRoot.toFile())
+    pb.redirectErrorStream(false)
+    Process process
+    try {
+      process = pb.start()
+      String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+      String error = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
       int exit = process.waitFor()
       return new GitResult(exit == 0, true, exit, output.stripTrailing(), error.stripTrailing())
     } catch (IOException | InterruptedException e) {
