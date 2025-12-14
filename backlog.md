@@ -472,3 +472,20 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
       * CI/automation scenarios.
     * Explanation of exit codes and confirmation behavior.
     * Safety cautions when combining `--yes` with destructive commands.
+
+* **16 [ ] Add support for AGENTS.md**
+  * If an AGENTS.md file is present in the project root, load its contents and provide it as context to the agent.
+  * This allows users to define custom agent behaviors, guidelines, or constraints specific to their project.
+  * Document the expected format and usage of AGENTS.md in the project documentation.
+  
+* **17 [ ] Tutorials and examples**
+
+  * Create a `docs/tutorial.md` tutorial that walks through:
+    * Basic usage.
+    * Creating a new project from scratch. 
+    * Common workflows (edit, review, search, git).
+  * Include screenshots or terminal recordings if possible.
+  * Link to this tutorial prominently from the `README.md`.
+  * Provide example scripts for batch mode usage in `docs/examples/`.
+  * Consider adding a sample project in `examples/` that users can clone and try out.
+  * Ensure all documentation is kept up-to-date with the latest features and commands.
