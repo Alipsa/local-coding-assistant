@@ -8,6 +8,8 @@ import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.agent.Personas
 import se.alipsa.lca.review.ReviewSeverity
+import se.alipsa.lca.tools.GitTool
+import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
@@ -26,6 +28,12 @@ class ShellCommandsSpec extends Specification {
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   FileEditingTool fileEditingTool = Mock()
+  GitTool gitTool = Stub() {
+    isGitRepo() >> false
+    stagedDiff() >> new GitTool.GitResult(false, false, 1, "", "")
+    isDirty() >> false
+    hasStagedChanges() >> false
+  }
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> "edited text"
   }
@@ -40,6 +48,7 @@ class ShellCommandsSpec extends Specification {
       sessionState,
       editorLauncher,
       fileEditingTool,
+      gitTool,
       Stub(CodeSearchTool),
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
@@ -264,6 +273,7 @@ class ShellCommandsSpec extends Specification {
       sessionState,
       editorLauncher,
       fileEditingTool,
+      gitTool,
       tempDir.resolve("other.log").toString()
     ) {
       @Override
@@ -330,7 +340,15 @@ class ShellCommandsSpec extends Specification {
     agent.reviewCode(_, _, ai, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
     def instants = [java.time.Instant.parse("2025-01-01T00:00:00Z"), java.time.Instant.parse("2025-01-01T00:00:10Z")].iterator()
-    ShellCommands clocked = new ShellCommands(agent, ai, sessionState, editorLauncher, fileEditingTool, tempDir.resolve("reviews.log").toString()) {
+    ShellCommands clocked = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      tempDir.resolve("reviews.log").toString()
+    ) {
       @Override
       protected java.time.Instant nowInstant() {
         instants.hasNext() ? instants.next() : java.time.Instant.now()
@@ -345,5 +363,173 @@ class ShellCommandsSpec extends Specification {
     then:
     out.contains("entry2")
     !out.contains("entry1")
+  }
+
+  def "commitSuggest uses staged diff and llm options"() {
+    given:
+    def stagedDiff = new GitTool.GitResult(true, true, 0, "diff --git a/f b/f\n+change", "")
+    GitTool repoGit = Mock()
+    _ * repoGit.isGitRepo() >> true
+    _ * repoGit.hasStagedChanges() >> true
+    _ * repoGit.stagedDiff() >> stagedDiff
+    PromptRunner promptRunner = Mock()
+    ShellCommands commitCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("commit.log").toString()
+    )
+    ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
+      assert opts.model == "default-model"
+      assert opts.temperature == 0.5d
+      assert opts.maxTokens == 512
+      promptRunner
+    }
+    promptRunner.generateText(_ as String) >> { String prompt ->
+      assert prompt.contains("diff --git")
+      assert prompt.contains("focus on bugfix")
+      "Subject: Demo\nBody:\n- Added"
+    }
+
+    when:
+    def message = commitCommands.commitSuggest("default", null, 0.5d, 512, "focus on bugfix")
+
+    then:
+    message.contains("Subject")
+  }
+
+  def "stage cancels when user declines confirmation"() {
+    given:
+    GitTool repoGit = Mock()
+    ShellCommands staging = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("stage.log").toString()
+    ) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        ConfirmChoice.NO
+      }
+    }
+
+    when:
+    def result = staging.stage(["file.txt"], null, null, true)
+
+    then:
+    result == "Staging canceled."
+    0 * repoGit.stageFiles(_)
+  }
+
+  def "gitStatus formats output"() {
+    given:
+    GitTool repoGit = Stub(GitTool) {
+      status(false) >> new GitTool.GitResult(true, true, 0, "clean", "")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("status.log").toString()
+    )
+
+    when:
+    def out = cmds.gitStatus(false)
+
+    then:
+    out.contains("clean")
+  }
+
+  def "gitDiff uses git tool output"() {
+    given:
+    GitTool repoGit = Stub(GitTool) {
+      diff(true, ["src/App.groovy"], 2, false) >> new GitTool.GitResult(true, true, 0, "diff output", "")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("diff.log").toString()
+    )
+
+    when:
+    def out = cmds.gitDiff(true, 2, ["src/App.groovy"], false)
+
+    then:
+    out.contains("diff output")
+  }
+
+  def "gitApply runs confirmation and apply"() {
+    given:
+    GitTool repoGit = Mock() {
+      1 * applyPatch("patch", false, true) >> new GitTool.GitResult(true, true, 0, "ok", "")
+      1 * applyPatch("patch", false, false) >> new GitTool.GitResult(true, true, 0, "applied", "")
+      _ * isGitRepo() >> true
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("apply.log").toString()
+    ) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        ConfirmChoice.YES
+      }
+
+      @Override
+      protected void warnDirtyWorkspace() {
+        // no-op for tests
+      }
+    }
+
+    when:
+    def out = cmds.gitApply("patch", null, false, true, true)
+
+    then:
+    out.contains("applied")
+  }
+
+  def "gitPush requires confirmation"() {
+    given:
+    GitTool repoGit = Stub(GitTool) {
+      isGitRepo() >> true
+      push(false) >> new GitTool.GitResult(true, true, 0, "pushed", "")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      tempDir.resolve("push.log").toString()
+    ) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        ConfirmChoice.YES
+      }
+    }
+
+    when:
+    def out = cmds.gitPush(false)
+
+    then:
+    out.contains("pushed")
   }
 }

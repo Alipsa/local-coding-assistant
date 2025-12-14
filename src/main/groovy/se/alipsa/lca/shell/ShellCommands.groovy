@@ -21,6 +21,7 @@ import se.alipsa.lca.review.ReviewSummary
 import se.alipsa.lca.shell.SessionState.SessionSettings
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.PackedContext
@@ -47,6 +48,7 @@ class ShellCommands {
   private final SessionState sessionState
   private final EditorLauncher editorLauncher
   private final FileEditingTool fileEditingTool
+  private final GitTool gitTool
   private final CodeSearchTool codeSearchTool
   private final ContextPacker contextPacker
   private final ContextBudgetManager contextBudgetManager
@@ -62,6 +64,32 @@ class ShellCommands {
     CodeSearchTool codeSearchTool,
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
+    String reviewLogPath
+  ) {
+    this(
+      codingAssistantAgent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      new GitTool(resolveProjectRoot(fileEditingTool)),
+      codeSearchTool,
+      contextPacker,
+      contextBudgetManager,
+      reviewLogPath
+    )
+  }
+
+  ShellCommands(
+    CodingAssistantAgent codingAssistantAgent,
+    Ai ai,
+    SessionState sessionState,
+    EditorLauncher editorLauncher,
+    FileEditingTool fileEditingTool,
+    GitTool gitTool,
+    CodeSearchTool codeSearchTool,
+    ContextPacker contextPacker,
+    ContextBudgetManager contextBudgetManager,
     @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
   ) {
     this.codingAssistantAgent = codingAssistantAgent
@@ -69,6 +97,7 @@ class ShellCommands {
     this.sessionState = sessionState
     this.editorLauncher = editorLauncher
     this.fileEditingTool = fileEditingTool
+    this.gitTool = gitTool
     this.codeSearchTool = codeSearchTool
     this.contextPacker = contextPacker
     this.contextBudgetManager = contextBudgetManager
@@ -81,6 +110,7 @@ class ShellCommands {
     SessionState sessionState,
     EditorLauncher editorLauncher,
     FileEditingTool fileEditingTool,
+    GitTool gitTool,
     String reviewLogPath
   ) {
     this(
@@ -89,6 +119,7 @@ class ShellCommands {
       sessionState,
       editorLauncher,
       fileEditingTool,
+      gitTool,
       new CodeSearchTool(),
       new ContextPacker(),
       new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
@@ -323,6 +354,146 @@ class ShellCommands {
     chat(body, session, persona, null, null, null, null, null)
   }
 
+  @ShellMethod(key = ["status", "/status"], value = "Show git status for the current repository.")
+  String gitStatus(
+    @ShellOption(defaultValue = "false", help = "Use short porcelain output") boolean shortFormat
+  ) {
+    formatGitResult("Status", gitTool.status(shortFormat))
+  }
+
+  @ShellMethod(key = ["diff", "/diff"], value = "Show git diff with optional staging and path filters.")
+  String gitDiff(
+    @ShellOption(defaultValue = "false", help = "Use staged diff (--cached)") boolean staged,
+    @ShellOption(defaultValue = "3", help = "Number of context lines") int context,
+    @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "Paths to include") List<String> paths,
+    @ShellOption(defaultValue = "false", help = "Show stats instead of full patch") boolean stat
+  ) {
+    GitTool.GitResult result = gitTool.diff(staged, paths, context, stat)
+    formatGitResult("Diff", result)
+  }
+
+  @ShellMethod(
+    key = ["gitapply", "/gitapply", "git-apply", "/git-apply"],
+    value = "Apply a patch using git apply (optionally to index) with confirmation."
+  )
+  String gitApply(
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      help = "Patch text; ignored when patch-file is provided"
+    ) String patch,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Patch file relative to project root") String patchFile,
+    @ShellOption(defaultValue = "false", help = "Apply to index (--cached)") boolean cached,
+    @ShellOption(defaultValue = "true", help = "Run git apply --check before writing") boolean check,
+    @ShellOption(defaultValue = "true", help = "Ask for confirmation before applying") boolean confirm
+  ) {
+    String body = resolvePatchBody(patch, patchFile)
+    GitTool.GitResult preview = null
+    if (check) {
+      preview = gitTool.applyPatch(body, cached, true)
+      if (!preview.repoPresent) {
+        return formatGitResult("Git apply", preview)
+      }
+      if (!preview.success) {
+        return formatGitResult("Git apply check failed", preview)
+      }
+      println(formatGitResult("Git apply preview", preview))
+    } else if (!gitTool.isGitRepo()) {
+      return "Not a git repository."
+    }
+    boolean shouldConfirm = confirm && !applyAllConfirmed
+    if (shouldConfirm) {
+      ConfirmChoice choice = confirmAction("Apply patch with git apply${cached ? ' --cached' : ''}?")
+      if (choice == ConfirmChoice.NO) {
+        return "Git apply canceled."
+      }
+      if (choice == ConfirmChoice.ALL) {
+        applyAllConfirmed = true
+      }
+    }
+    warnDirtyWorkspace()
+    GitTool.GitResult applied = gitTool.applyPatch(body, cached, false)
+    formatGitResult("Git apply", applied)
+  }
+
+  @ShellMethod(key = ["stage", "/stage"], value = "Stage files or specific hunks with confirmation.")
+  String stage(
+    @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "File paths to stage") List<String> paths,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "File to stage hunks from") String file,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Comma-separated hunk numbers to stage") String hunks,
+    @ShellOption(defaultValue = "true", help = "Ask for confirmation before staging") boolean confirm
+  ) {
+    boolean hunkMode = hunks != null && hunks.trim()
+    if (!hunkMode && (paths == null || paths.isEmpty())) {
+      throw new IllegalArgumentException("Provide file paths or hunk numbers to stage.")
+    }
+    boolean shouldConfirm = confirm && !applyAllConfirmed
+    if (shouldConfirm) {
+      String targetLabel = hunkMode ? "hunks from ${file}" : "${paths.size()} file(s)"
+      ConfirmChoice choice = confirmAction("Stage ${targetLabel}?")
+      if (choice == ConfirmChoice.NO) {
+        return "Staging canceled."
+      }
+      if (choice == ConfirmChoice.ALL) {
+        applyAllConfirmed = true
+      }
+    }
+    GitTool.GitResult result
+    if (hunkMode) {
+      if (file == null || file.trim().isEmpty()) {
+        throw new IllegalArgumentException("Specify --file when staging hunks.")
+      }
+      List<Integer> indexes = parseHunkIndexes(hunks)
+      result = gitTool.stageHunks(file, indexes)
+    } else {
+      result = gitTool.stageFiles(paths)
+    }
+    formatGitResult("Stage", result)
+  }
+
+  @ShellMethod(
+    key = ["commit-suggest", "/commit-suggest"],
+    value = "Draft an imperative commit message from staged changes."
+  )
+  String commitSuggest(
+    @ShellOption(defaultValue = "default", help = "Session id for options") String session,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override temperature") Double temperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Optional guidance for the commit message") String hint
+  ) {
+    if (!gitTool.isGitRepo()) {
+      return "Not a git repository; cannot suggest a commit message."
+    }
+    if (!gitTool.hasStagedChanges()) {
+      return "No staged changes found. Stage files or hunks first."
+    }
+    GitTool.GitResult diff = gitTool.stagedDiff()
+    if (!diff.success) {
+      return formatGitResult("Staged diff", diff)
+    }
+    SessionSettings settings = sessionState.update(session, model, temperature, null, maxTokens, null, null)
+    LlmOptions options = sessionState.craftOptions(settings)
+    String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings))
+    String message = ai.withLlm(options).generateText(prompt)
+    sessionState.appendHistory(session, "Commit suggest request", message)
+    message?.trim() ?: "No commit message generated."
+  }
+
+  @ShellMethod(key = ["git-push", "/git-push"], value = "Push the current branch with confirmation.")
+  String gitPush(
+    @ShellOption(defaultValue = "false", help = "Use --force-with-lease") boolean force
+  ) {
+    if (!gitTool.isGitRepo()) {
+      return "Not a git repository."
+    }
+    ConfirmChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
+    if (choice != ConfirmChoice.YES && choice != ConfirmChoice.ALL) {
+      return "Push canceled."
+    }
+    GitTool.GitResult result = gitTool.push(force)
+    formatGitResult("Push", result)
+  }
+
   @ShellMethod(
     key = ["apply", "/apply"],
     value = "Apply a unified diff patch with optional dry-run, confirmation, and backups."
@@ -356,6 +527,7 @@ class ShellCommands {
         applyAllConfirmed = true
       }
     }
+    warnDirtyWorkspace()
     FileEditingTool.PatchResult result = fileEditingTool.applyPatch(body, false)
     formatPatchResult(result)
   }
@@ -391,6 +563,7 @@ class ShellCommands {
         applyAllConfirmed = true
       }
     }
+    warnDirtyWorkspace()
     FileEditingTool.SearchReplaceResult result = fileEditingTool.applySearchReplaceBlocks(filePath, body, false)
     formatSearchReplaceResult(result)
   }
@@ -478,23 +651,11 @@ class ShellCommands {
   }
 
   private String stagedDiff() {
-    try {
-      ProcessBuilder pb = new ProcessBuilder("git", "diff", "--cached")
-      pb.directory(fileEditingTool.projectRoot.toFile())
-      pb.redirectErrorStream(true)
-      Process process = pb.start()
-      String output = new String(process.getInputStream().readAllBytes())
-      int exit = process.waitFor()
-      if (exit != 0 || output.trim().isEmpty()) {
-        return ""
-      }
-      return output
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt()
-      }
+    GitTool.GitResult diff = gitTool.stagedDiff()
+    if (!diff.repoPresent || !diff.success) {
       return ""
     }
+    diff.output ?: ""
   }
 
   static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
@@ -741,6 +902,85 @@ ${renderReview(summary, minSeverity, false)}
       builder.append("\nBackup: ").append(result.backupPath)
     }
     builder.toString().stripTrailing()
+  }
+
+  private String formatGitResult(String label, GitTool.GitResult result) {
+    if (result == null) {
+      return "${label} returned no result."
+    }
+    if (!result.repoPresent) {
+      return "Not a git repository."
+    }
+    StringBuilder builder = new StringBuilder(label)
+    builder.append(result.success ? " succeeded" : " failed (exit ${result.exitCode})")
+    if (result.output != null && result.output.trim()) {
+      builder.append("\n").append(result.output.trim())
+    }
+    if (result.error != null && result.error.trim()) {
+      builder.append("\n").append(result.error.trim())
+    }
+    builder.toString().stripTrailing()
+  }
+
+  private static List<Integer> parseHunkIndexes(String hunks) {
+    if (hunks == null || !hunks.trim()) {
+      return List.of()
+    }
+    List<Integer> indexes = new ArrayList<>()
+    hunks.split(",").each { String raw ->
+      String value = raw.trim()
+      if (!value) {
+        return
+      }
+      try {
+        int parsed = Integer.parseInt(value)
+        if (parsed <= 0) {
+          throw new IllegalArgumentException("Hunk indexes must be 1-based; got ${parsed}")
+        }
+        indexes.add(parsed)
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Invalid hunk index: ${value}", e)
+      }
+    }
+    if (indexes.isEmpty()) {
+      throw new IllegalArgumentException("No valid hunk indexes parsed from '${hunks}'.")
+    }
+    indexes
+  }
+
+  private static String buildCommitPrompt(String diff, String hint, String systemPrompt) {
+    StringBuilder builder = new StringBuilder()
+    builder.append(
+      "You are crafting a git commit message for staged changes in the current project.\n"
+    )
+    builder.append(
+      "Write a concise, imperative subject line (<= 72 characters) and optional bullet body.\n"
+    )
+    builder.append("Use American English and mention tests if added or missing.\n")
+    if (systemPrompt != null && systemPrompt.trim()) {
+      builder.append("System guidance: ").append(systemPrompt.trim()).append("\n")
+    }
+    if (hint != null && hint.trim()) {
+      builder.append("User notes: ").append(hint.trim()).append("\n")
+    }
+    builder.append("\nStaged diff:\n").append(diff)
+    builder.append("\n\nRespond with:\nSubject: <one line>\nBody:\n- <bullet lines or 'none'>")
+    builder.toString()
+  }
+
+  private void warnDirtyWorkspace() {
+    if (!gitTool.isGitRepo()) {
+      return
+    }
+    if (gitTool.isDirty()) {
+      // Direct stdout to ensure the user sees the safety notice even when logs are redirected.
+      println("Warning: Uncommitted changes detected. Consider committing before applying patches.")
+    }
+  }
+
+  private static Path resolveProjectRoot(FileEditingTool fileEditingTool) {
+    Path root = fileEditingTool != null ? fileEditingTool.getProjectRoot() : null
+    root != null ? root : Paths.get(".").toAbsolutePath().normalize()
   }
 
   @CompileStatic
