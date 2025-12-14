@@ -68,11 +68,11 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 6.4 [x] Make web search outputs usable by the agent (structured snippets) and add tests for parsing/formatting.
 
 ## 7) Git-aware operations
-- 7.1 [ ] Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.
-- 7.2 [ ] Support staging selected hunks/files after an edit command (with confirmation).
-- 7.3 [ ] Include a `commit-suggest` helper that drafts commit messages from staged diffs.
-- 7.4 [ ] Add lightweight tests for git command wrappers (mocked repo).
-- 7.5 [ ] Add a "Safety Valve".
+- 7.1 [x] Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.
+- 7.2 [x] Support staging selected hunks/files after an edit command (with confirmation).
+- 7.3 [x] Include a `commit-suggest` helper that drafts commit messages from staged diffs.
+- 7.4 [x] Add lightweight tests for git command wrappers (mocked repo).
+- 7.5 [x] Add a "Safety Valve".
   - The agent should not be allowed to git push without explicit user confirmation (Y/n/a).
   - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
    

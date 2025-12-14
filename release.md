@@ -1,5 +1,14 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 0.7.0 - Git-aware operations
+- 7.1 Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.
+- 7.2 Support staging selected hunks/files after an edit command (with confirmation).
+- 7.3 Include a `commit-suggest` helper that drafts commit messages from staged diffs.
+- 7.4 Add lightweight tests for git command wrappers (mocked repo).
+- 7.5 Add a "Safety Valve".
+  - The agent should not be allowed to git push without explicit user confirmation (Y/n/a).
+  - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
+
 ## Version 0.6.0 - Web search augmentation
 - 6.1 Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitization/snippet trimming.
 - 6.2 Add a CLI/agent flag to enable/disable web search, plus offline fallback messaging.
