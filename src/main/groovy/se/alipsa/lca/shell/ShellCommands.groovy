@@ -973,6 +973,7 @@ ${renderReview(summary, minSeverity, false)}
       return
     }
     if (gitTool.isDirty()) {
+      // Direct stdout to ensure the user sees the safety notice even when logs are redirected.
       println("Warning: Uncommitted changes detected. Consider committing before applying patches.")
     }
   }

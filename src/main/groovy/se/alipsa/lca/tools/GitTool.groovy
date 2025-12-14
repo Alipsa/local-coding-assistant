@@ -123,6 +123,7 @@ class GitTool {
           current.clear()
         }
         current.add(line)
+        // hunks are treated as 1-based for user-facing indexing
         hunkIndex++
         continue
       }
@@ -146,30 +147,18 @@ class GitTool {
   }
 
   boolean isGitRepo() {
-    try {
-      ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--is-inside-work-tree")
-      pb.directory(projectRoot.toFile())
-      pb.redirectErrorStream(true)
-      Process process = pb.start()
-      String output = new String(process.getInputStream().readAllBytes())
-      int exit = process.waitFor()
-      return exit == 0 && output.toLowerCase().contains("true")
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt()
-      }
-      return false
-    }
+    GitResult result = runGit(List.of("rev-parse", "--is-inside-work-tree"), false)
+    result.success && result.output?.toLowerCase()?.contains("true")
   }
 
   boolean isDirty() {
     GitResult status = runGit(List.of("status", "--porcelain"))
-    status.repoPresent && status.success && status.output?.trim()
+    status.repoPresent && status.success && status.output != null && !status.output.trim().isEmpty()
   }
 
   boolean hasStagedChanges() {
     GitResult diff = runGit(List.of("diff", "--cached", "--name-only"))
-    diff.repoPresent && diff.success && diff.output?.trim()
+    diff.repoPresent && diff.success && diff.output != null && !diff.output.trim().isEmpty()
   }
 
   GitResult push(boolean force) {
@@ -215,11 +204,19 @@ class GitTool {
   }
 
   private GitResult runGit(List<String> args) {
-    runGitWithInput(args, null)
+    runGit(args, true)
+  }
+
+  private GitResult runGit(List<String> args, boolean requireRepo) {
+    runGitWithInput(args, null, requireRepo)
   }
 
   private GitResult runGitWithInput(List<String> args, String input) {
-    if (!isGitRepo()) {
+    runGitWithInput(args, input, true)
+  }
+
+  private GitResult runGitWithInput(List<String> args, String input, boolean requireRepo) {
+    if (requireRepo && !isGitRepo()) {
       return new GitResult(false, false, 1, "", "Not a git repository.")
     }
     List<String> command = new ArrayList<>()
