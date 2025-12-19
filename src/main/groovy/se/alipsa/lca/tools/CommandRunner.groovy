@@ -50,6 +50,10 @@ class CommandRunner {
     }
   }
 
+  /**
+   * Run a command through bash -lc from the project root.
+   * Caller must validate or confirm untrusted commands (especially agent-originated) before calling.
+   */
   CommandResult run(String command, long timeoutMillis, int maxOutputChars) {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
@@ -70,12 +74,9 @@ class CommandRunner {
     try {
       logWriter = prepareWriter(logPath)
       writeHeader(logWriter, command, started)
-      ProcessBuilder pb = new ProcessBuilder(List.of("bash", "-lc", command))
-      pb.directory(realProjectRoot.toFile())
-      pb.redirectErrorStream(false)
-      process = pb.start()
+      process = startProcess(command)
       AtomicInteger remaining = new AtomicInteger(outputLimit)
-      StringBuilder visibleOutput = new StringBuilder()
+      StringBuffer visibleOutput = new StringBuffer()
       StreamCollector outCollector = new StreamCollector(
         process.getInputStream(),
         logWriter,
@@ -131,10 +132,17 @@ class CommandRunner {
     }
   }
 
-  private Path createLogPath() throws IOException {
+  protected Path createLogPath() throws IOException {
     Path dir = realProjectRoot.resolve(".lca/run-logs")
     Files.createDirectories(dir)
     dir.resolve("run-${LOG_TIME.format(Instant.now())}.log")
+  }
+
+  protected Process startProcess(String command) throws IOException {
+    ProcessBuilder pb = new ProcessBuilder(List.of("bash", "-lc", command))
+    pb.directory(realProjectRoot.toFile())
+    pb.redirectErrorStream(false)
+    pb.start()
   }
 
   private static BufferedWriter prepareWriter(Path logPath) throws IOException {
@@ -160,7 +168,7 @@ class CommandRunner {
     }
   }
 
-  private static void writeHeader(BufferedWriter writer, String command, Instant started) {
+  private static void writeHeader(BufferedWriter writer, String command, Instant started) throws IOException {
     writer.write("Command: ${command}".toString())
     writer.newLine()
     writer.write("Started: ${started}".toString())
@@ -168,7 +176,7 @@ class CommandRunner {
     writer.flush()
   }
 
-  private static void writeFooter(BufferedWriter writer, Instant started, Instant ended, int exit, boolean timedOut) {
+  private static void writeFooter(BufferedWriter writer, Instant started, Instant ended, int exit, boolean timedOut) throws IOException {
     writer.newLine()
     writer.write("Completed: ${ended}".toString())
     writer.newLine()
@@ -197,7 +205,7 @@ class CommandRunner {
     private final InputStream stream
     private final BufferedWriter logWriter
     private final String label
-    private final StringBuilder visibleOutput
+    private final StringBuffer visibleOutput
     private final AtomicInteger remainingVisible
     volatile boolean truncated = false
 
@@ -205,7 +213,7 @@ class CommandRunner {
       InputStream stream,
       BufferedWriter logWriter,
       String label,
-      StringBuilder visibleOutput,
+      StringBuffer visibleOutput,
       AtomicInteger remainingVisible
     ) {
       this.stream = stream
@@ -227,7 +235,7 @@ class CommandRunner {
           appendVisible(formatted)
         }
       } catch (IOException ignored) {
-        truncated = truncated || false
+        truncated = true
       }
     }
 
