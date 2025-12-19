@@ -177,16 +177,18 @@ class CommandRunner {
   }
 
   private static void writeFooter(BufferedWriter writer, Instant started, Instant ended, int exit, boolean timedOut) throws IOException {
-    writer.newLine()
-    writer.write("Completed: ${ended}".toString())
-    writer.newLine()
-    writer.write("DurationMillis: ${ended.toEpochMilli() - started.toEpochMilli()}".toString())
-    writer.newLine()
-    writer.write("ExitCode: ${exit}".toString())
-    writer.newLine()
-    writer.write("TimedOut: ${timedOut}".toString())
-    writer.newLine()
-    writer.flush()
+    synchronized (writer) {
+      writer.newLine()
+      writer.write("Completed: ${ended}".toString())
+      writer.newLine()
+      writer.write("DurationMillis: ${ended.toEpochMilli() - started.toEpochMilli()}".toString())
+      writer.newLine()
+      writer.write("ExitCode: ${exit}".toString())
+      writer.newLine()
+      writer.write("TimedOut: ${timedOut}".toString())
+      writer.newLine()
+      writer.flush()
+    }
   }
 
   @Canonical
