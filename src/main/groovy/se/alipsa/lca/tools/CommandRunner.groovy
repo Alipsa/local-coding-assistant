@@ -240,16 +240,18 @@ class CommandRunner {
     }
 
     private void appendVisible(String formatted) {
-      int remaining = remainingVisible.get()
-      if (remaining <= 0) {
-        truncated = true
-        return
-      }
-      int toTake = Math.min(remaining, formatted.length())
-      visibleOutput.append(formatted, 0, toTake)
-      remainingVisible.addAndGet(-toTake)
-      if (toTake < formatted.length() || remainingVisible.get() <= 0) {
-        truncated = true
+      synchronized (visibleOutput) {
+        int remaining = remainingVisible.get()
+        if (remaining <= 0) {
+          truncated = true
+          return
+        }
+        int toTake = Math.min(remaining, formatted.length())
+        visibleOutput.append(formatted, 0, toTake)
+        int after = remainingVisible.addAndGet(-toTake)
+        if (toTake < formatted.length() || after <= 0) {
+          truncated = true
+        }
       }
     }
   }
