@@ -11,6 +11,7 @@ import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.tools.GitTool
 import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
@@ -37,6 +38,9 @@ class ShellCommandsSpec extends Specification {
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> "edited text"
   }
+  CommandRunner commandRunner = Stub() {
+    run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, "", false, null)
+  }
   @TempDir
   Path tempDir
   ShellCommands commands
@@ -52,6 +56,7 @@ class ShellCommandsSpec extends Specification {
       Stub(CodeSearchTool),
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      commandRunner,
       tempDir.resolve("reviews.log").toString()
     )
   }
@@ -274,6 +279,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      commandRunner,
       tempDir.resolve("other.log").toString()
     ) {
       @Override
@@ -347,6 +353,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      commandRunner,
       tempDir.resolve("reviews.log").toString()
     ) {
       @Override
@@ -373,6 +380,7 @@ class ShellCommandsSpec extends Specification {
     _ * repoGit.hasStagedChanges() >> true
     _ * repoGit.stagedDiff() >> stagedDiff
     PromptRunner promptRunner = Mock()
+    CommandRunner runTool = Stub()
     ShellCommands commitCommands = new ShellCommands(
       agent,
       ai,
@@ -380,6 +388,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      runTool,
       tempDir.resolve("commit.log").toString()
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
@@ -411,6 +420,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      commandRunner,
       tempDir.resolve("stage.log").toString()
     ) {
       @Override
@@ -439,6 +449,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      commandRunner,
       tempDir.resolve("status.log").toString()
     )
 
@@ -461,6 +472,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      commandRunner,
       tempDir.resolve("diff.log").toString()
     )
 
@@ -485,6 +497,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      commandRunner,
       tempDir.resolve("apply.log").toString()
     ) {
       @Override
@@ -518,6 +531,7 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      commandRunner,
       tempDir.resolve("push.log").toString()
     ) {
       @Override
@@ -531,5 +545,69 @@ class ShellCommandsSpec extends Specification {
 
     then:
     out.contains("pushed")
+  }
+
+  def "runCommand confirms agent requests and logs output"() {
+    given:
+    CommandRunner runner = Mock() {
+      1 * run("echo hi", 5000L, 2000) >> new CommandRunner.CommandResult(
+        true,
+        false,
+        0,
+        "[OUT] hi",
+        false,
+        tempDir.resolve("run.log")
+      )
+    }
+    List<String> prompts = []
+    ShellCommands runCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      runner,
+      tempDir.resolve("runReviews.log").toString()
+    ) {
+      @Override
+      protected ConfirmChoice confirmAction(String prompt) {
+        prompts.add(prompt)
+        ConfirmChoice.YES
+      }
+    }
+
+    when:
+    def output = runCommands.runCommand("echo hi", 5000L, 2000, "sess", true, true)
+
+    then:
+    prompts.first().startsWith("> Agent wants to run: 'echo hi'")
+    output.contains("Exit: 0")
+    output.contains("Log:")
+    sessionState.history("sess").any { it.contains("Exit 0") }
+  }
+
+  def "runCommand reports timeout and truncation"() {
+    given:
+    CommandRunner runner = Stub() {
+      run("long task", 10L, 5) >> new CommandRunner.CommandResult(false, true, -1, "data", true, null)
+    }
+    ShellCommands runCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      runner,
+      tempDir.resolve("run2.log").toString()
+    )
+
+    when:
+    def output = runCommands.runCommand("long task", 10L, 5, "default", false, false)
+
+    then:
+    output.contains("timed out")
+    output.contains("Output truncated")
   }
 }

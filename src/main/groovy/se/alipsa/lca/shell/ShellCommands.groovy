@@ -25,6 +25,7 @@ import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.PackedContext
+import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
 
@@ -52,6 +53,7 @@ class ShellCommands {
   private final CodeSearchTool codeSearchTool
   private final ContextPacker contextPacker
   private final ContextBudgetManager contextBudgetManager
+  private final CommandRunner commandRunner
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -64,6 +66,7 @@ class ShellCommands {
     CodeSearchTool codeSearchTool,
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
+    CommandRunner commandRunner,
     String reviewLogPath
   ) {
     this(
@@ -76,6 +79,7 @@ class ShellCommands {
       codeSearchTool,
       contextPacker,
       contextBudgetManager,
+      commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
       reviewLogPath
     )
   }
@@ -90,6 +94,7 @@ class ShellCommands {
     CodeSearchTool codeSearchTool,
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
+    CommandRunner commandRunner,
     @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
   ) {
     this.codingAssistantAgent = codingAssistantAgent
@@ -101,6 +106,7 @@ class ShellCommands {
     this.codeSearchTool = codeSearchTool
     this.contextPacker = contextPacker
     this.contextBudgetManager = contextBudgetManager
+    this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -111,6 +117,7 @@ class ShellCommands {
     EditorLauncher editorLauncher,
     FileEditingTool fileEditingTool,
     GitTool gitTool,
+    CommandRunner commandRunner,
     String reviewLogPath
   ) {
     this(
@@ -123,6 +130,7 @@ class ShellCommands {
       new CodeSearchTool(),
       new ContextPacker(),
       new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
+      commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
       reviewLogPath
     )
   }
@@ -492,6 +500,45 @@ class ShellCommands {
     }
     GitTool.GitResult result = gitTool.push(force)
     formatGitResult("Push", result)
+  }
+
+  @ShellMethod(
+    key = ["run", "/run"],
+    value = "Execute a project command with timeout, truncation, and logging."
+  )
+  String runCommand(
+    @ShellOption(help = "Command to execute (runs via bash -lc)") String command,
+    @ShellOption(defaultValue = "60000", help = "Timeout in milliseconds") long timeoutMillis,
+    @ShellOption(defaultValue = "8000", help = "Maximum output characters to display") int maxOutputChars,
+    @ShellOption(defaultValue = "default", help = "Session id for history logging") String session,
+    @ShellOption(defaultValue = "true", help = "Ask for confirmation before running") boolean confirm,
+    @ShellOption(defaultValue = "false", help = "Set when the request originates from the agent") boolean agentRequested
+  ) {
+    String trimmed = command != null ? command.trim() : ""
+    if (!trimmed) {
+      throw new IllegalArgumentException("Command must not be empty.")
+    }
+    boolean shouldConfirm = (agentRequested || confirm) && !applyAllConfirmed
+    if (shouldConfirm) {
+      String prompt = agentRequested
+        ? "> Agent wants to run: '${trimmed}'. Allow?"
+        : "Run command '${trimmed}'?"
+      ConfirmChoice choice = confirmAction(prompt)
+      if (choice == ConfirmChoice.NO) {
+        return "Command canceled."
+      }
+      if (choice == ConfirmChoice.ALL) {
+        applyAllConfirmed = true
+      }
+    }
+    CommandRunner.CommandResult result = commandRunner.run(trimmed, timeoutMillis, maxOutputChars)
+    String summary = summarizeOutput(result?.output, 5, Math.min(400, Math.max(1, maxOutputChars)))
+    sessionState.appendHistory(
+      session,
+      "Run command: ${trimmed}",
+      "Exit ${result?.timedOut ? 'timeout' : result?.exitCode}; ${summary}"
+    )
+    formatRunResult(trimmed, result, timeoutMillis, maxOutputChars)
   }
 
   @ShellMethod(
@@ -920,6 +967,51 @@ ${renderReview(summary, minSeverity, false)}
       builder.append("\n").append(result.error.trim())
     }
     builder.toString().stripTrailing()
+  }
+
+  private static String formatRunResult(
+    String command,
+    CommandRunner.CommandResult result,
+    long timeoutMillis,
+    int maxOutputChars
+  ) {
+    if (result == null) {
+      return "No command result."
+    }
+    StringBuilder builder = new StringBuilder()
+    builder.append("Command: ").append(command)
+    builder.append("\nExit: ")
+    if (result.timedOut) {
+      builder.append("timed out after ").append(timeoutMillis).append(" ms")
+    } else {
+      builder.append(result.exitCode)
+    }
+    builder.append(result.success ? " (success)" : " (failed)")
+    if (result.truncated) {
+      builder.append("\nOutput truncated to ").append(maxOutputChars).append(" characters.")
+    }
+    if (result.output != null && result.output.trim()) {
+      builder.append("\nOutput:\n").append(result.output.trim())
+    }
+    if (result.logPath != null) {
+      builder.append("\nLog: ").append(result.logPath)
+    }
+    builder.toString().stripTrailing()
+  }
+
+  private static String summarizeOutput(String output, int maxLines, int maxChars) {
+    if (output == null || output.trim().isEmpty()) {
+      return "no output"
+    }
+    String trimmed = output.stripTrailing()
+    String[] lines = trimmed.split("\\R")
+    int linesToTake = Math.min(Math.max(1, maxLines), lines.length)
+    String summary = String.join("\n", lines[0..<linesToTake])
+    if (summary.length() > maxChars) {
+      summary = summary.substring(0, Math.max(1, maxChars))
+    }
+    boolean shortened = lines.length > linesToTake || trimmed.length() > summary.length()
+    shortened ? "${summary} ..." : summary
   }
 
   private static List<Integer> parseHunkIndexes(String hunks) {
