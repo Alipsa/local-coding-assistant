@@ -28,6 +28,7 @@ import se.alipsa.lca.tools.PackedContext
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
+import se.alipsa.lca.tools.ModelRegistry
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -54,6 +55,7 @@ class ShellCommands {
   private final ContextPacker contextPacker
   private final ContextBudgetManager contextBudgetManager
   private final CommandRunner commandRunner
+  private final ModelRegistry modelRegistry
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -67,6 +69,7 @@ class ShellCommands {
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
     CommandRunner commandRunner,
+    ModelRegistry modelRegistry,
     String reviewLogPath
   ) {
     this(
@@ -80,6 +83,7 @@ class ShellCommands {
       contextPacker,
       contextBudgetManager,
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
+      modelRegistry,
       reviewLogPath
     )
   }
@@ -95,6 +99,7 @@ class ShellCommands {
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
     CommandRunner commandRunner,
+    ModelRegistry modelRegistry,
     @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
   ) {
     this.codingAssistantAgent = codingAssistantAgent
@@ -107,6 +112,7 @@ class ShellCommands {
     this.contextPacker = contextPacker
     this.contextBudgetManager = contextBudgetManager
     this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
+    this.modelRegistry = modelRegistry
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -118,6 +124,7 @@ class ShellCommands {
     FileEditingTool fileEditingTool,
     GitTool gitTool,
     CommandRunner commandRunner,
+    ModelRegistry modelRegistry,
     String reviewLogPath
   ) {
     this(
@@ -131,6 +138,7 @@ class ShellCommands {
       new ContextPacker(),
       new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
+      modelRegistry,
       reviewLogPath
     )
   }
@@ -146,9 +154,14 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
   ) {
+    String health = ensureOllamaHealth()
+    if (health != null) {
+      return health
+    }
+    ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(
       session,
-      model,
+      resolution.chosen,
       temperature,
       reviewTemperature,
       maxTokens,
@@ -156,6 +169,7 @@ class ShellCommands {
       null
     )
     LlmOptions options = sessionState.craftOptions(settings)
+    String fallbackNote = resolution.fallbackUsed ? "Note: using fallback model ${resolution.chosen}." : null
     String system = sessionState.systemPrompt(settings)
     CodeSnippet snippet = codingAssistantAgent.craftCode(
       new UserInput(prompt),
@@ -168,6 +182,9 @@ class ShellCommands {
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${snippet.text}")
+    if (fallbackNote != null) {
+      return fallbackNote + "\n" + snippet.text
+    }
     snippet.text
   }
 
@@ -191,7 +208,12 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
   ) {
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
-    SessionSettings settings = sessionState.update(session, model, null, reviewTemperature, maxTokens, systemPrompt, null)
+    String health = ensureOllamaHealth()
+    if (health != null) {
+      return health
+    }
+    ModelResolution resolution = resolveModel(model)
+    SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
     String reviewPayload = buildReviewPayload(code, paths, staged)
@@ -204,6 +226,9 @@ class ShellCommands {
     )
     ReviewSummary summary = ReviewParser.parse(result.review)
     String rendered = renderReview(summary, severityThreshold, !noColor)
+    if (resolution.fallbackUsed) {
+      rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
+    }
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${rendered}")
     if (logReview) {
       writeReviewLog(prompt, summary, paths, staged, severityThreshold)
@@ -479,10 +504,18 @@ class ShellCommands {
     if (!diff.success) {
       return formatGitResult("Staged diff", diff)
     }
-    SessionSettings settings = sessionState.update(session, model, temperature, null, maxTokens, null, null)
+    String health = ensureOllamaHealth()
+    if (health != null) {
+      return health
+    }
+    ModelResolution resolution = resolveModel(model)
+    SessionSettings settings = sessionState.update(session, resolution.chosen, temperature, null, maxTokens, null, null)
     LlmOptions options = sessionState.craftOptions(settings)
     String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings))
     String message = ai.withLlm(options).generateText(prompt)
+    if (resolution.fallbackUsed) {
+      message = "Note: using fallback model ${resolution.chosen}.\n" + (message ?: "")
+    }
     sessionState.appendHistory(session, "Commit suggest request", message)
     message?.trim() ?: "No commit message generated."
   }
@@ -500,6 +533,58 @@ class ShellCommands {
     }
     GitTool.GitResult result = gitTool.push(force)
     formatGitResult("Push", result)
+  }
+
+  @ShellMethod(
+    key = ["model", "/model"],
+    value = "List available Ollama models and switch the active session model."
+  )
+  String model(
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Model name to set for the session") String set,
+    @ShellOption(defaultValue = "default", help = "Session id") String session,
+    @ShellOption(defaultValue = "false", help = "List available models") boolean list
+  ) {
+    ModelRegistry.Health health = modelRegistry.checkHealth()
+    List<String> available = health.reachable ? modelRegistry.listModels() : List.of()
+    StringBuilder builder = new StringBuilder()
+    if (!health.reachable) {
+      builder.append("Ollama unreachable at ").append(modelRegistry.getBaseUrl())
+        .append(": ").append(health.message).append("\n")
+    }
+    if (list || set == null) {
+      builder.append("Default: ").append(sessionState.getDefaultModel() ?: "unspecified")
+        .append("\nFallback: ").append(sessionState.getFallbackModel() ?: "none")
+        .append("\nSession override: ").append(sessionState.getOrCreate(session).getModel() ?: "none")
+        .append("\nAvailable: ")
+      if (available.isEmpty()) {
+        builder.append("unavailable (check Ollama)")
+      } else {
+        builder.append(String.join(", ", available))
+      }
+      if (set == null) {
+        return builder.toString().stripTrailing()
+      }
+      builder.append("\n")
+    }
+    ModelResolution resolution = resolveModel(set, available)
+    sessionState.update(session, resolution.chosen, null, null, null, null, null)
+    builder.append("Session ").append(session).append(" model set to ").append(resolution.chosen)
+    if (resolution.fallbackUsed) {
+      builder.append(" (fallback from ").append(resolution.requested).append(")")
+    }
+    builder.toString().stripTrailing()
+  }
+
+  @ShellMethod(
+    key = ["health", "/health"],
+    value = "Check connectivity to Ollama base URL."
+  )
+  String health() {
+    ModelRegistry.Health health = modelRegistry.checkHealth()
+    if (health.reachable) {
+      return "Ollama reachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
+    }
+    "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
   }
 
   @ShellMethod(
@@ -1014,6 +1099,35 @@ ${renderReview(summary, minSeverity, false)}
     shortened ? "${summary} ..." : summary
   }
 
+  private String ensureOllamaHealth() {
+    ModelRegistry.Health health = modelRegistry.checkHealth()
+    if (!health.reachable) {
+      return "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
+    }
+    null
+  }
+
+  protected ModelResolution resolveModel(String requested) {
+    resolveModel(requested, modelRegistry.listModels())
+  }
+
+  protected ModelResolution resolveModel(String requested, List<String> available) {
+    String desired = requested != null ? requested : sessionState.getDefaultModel()
+    boolean canCheck = available != null && !available.isEmpty()
+    String matchedDesired = (canCheck && desired != null) ? available.find { it != null && it.equalsIgnoreCase(desired) } : desired
+    boolean desiredOk = !canCheck || matchedDesired != null
+    if (desiredOk) {
+      return new ModelResolution(matchedDesired ?: desired, false, requested ?: desired)
+    }
+    String fallback = sessionState.getFallbackModel()
+    String matchedFallback = (fallback != null && canCheck) ? available.find { it.equalsIgnoreCase(fallback) } : fallback
+    boolean fallbackOk = fallback != null && (!canCheck || matchedFallback != null)
+    if (fallbackOk) {
+      return new ModelResolution(matchedFallback ?: fallback, true, desired)
+    }
+    new ModelResolution(desired, false, desired)
+  }
+
   private static List<Integer> parseHunkIndexes(String hunks) {
     if (hunks == null || !hunks.trim()) {
       return List.of()
@@ -1095,5 +1209,13 @@ ${renderReview(summary, minSeverity, false)}
     YES,
     NO,
     ALL
+  }
+
+  @Canonical
+  @CompileStatic
+  protected static class ModelResolution {
+    String chosen
+    boolean fallbackUsed
+    String requested
   }
 }

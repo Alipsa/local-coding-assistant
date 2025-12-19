@@ -7,6 +7,7 @@ import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.CommandRunner
+import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
@@ -16,7 +17,7 @@ import java.nio.file.Path
 
 class CodeSearchCommandSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true)
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback")
   CodingAssistantAgent agent = Mock()
   FileEditingTool fileEditingTool = Stub()
   CodeSearchTool codeSearchTool = Mock()
@@ -26,6 +27,10 @@ class CodeSearchCommandSpec extends Specification {
     edit(_) >> ""
   }
   CommandRunner commandRunner = Stub()
+  ModelRegistry modelRegistry = Stub() {
+    listModels() >> List.of()
+    checkHealth() >> new ModelRegistry.Health(true, "ok")
+  }
   @TempDir
   Path tempDir
   ShellCommands commands
@@ -41,6 +46,7 @@ class CodeSearchCommandSpec extends Specification {
       contextPacker,
       budgetManager,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("reviews.log").toString()
     )
   }

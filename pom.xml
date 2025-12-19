@@ -11,7 +11,7 @@
   </parent>
   <groupId>se.alipsa.lca</groupId>
   <artifactId>local-coding-assistant</artifactId>
-  <version>0.7.0-SNAPSHOT</version>
+  <version>0.9.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Local Coding Assistant</name>
   <description>The Local Coding assistant is an AI LLM interface based on Ollama and Embabel</description>
@@ -82,6 +82,11 @@
     <dependency>
       <groupId>org.apache.groovy</groupId>
       <artifactId>groovy</artifactId>
+      <version>${groovy.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.groovy</groupId>
+      <artifactId>groovy-json</artifactId>
       <version>${groovy.version}</version>
     </dependency>
 
