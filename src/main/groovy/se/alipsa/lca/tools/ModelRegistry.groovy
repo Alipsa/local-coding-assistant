@@ -44,10 +44,6 @@ class ModelRegistry {
   }
 
   List<String> listModels() {
-    Health health = checkHealth()
-    if (!health.reachable) {
-      return List.of()
-    }
     try {
       HttpResponse<String> response = fetchTags()
       if (response.statusCode() >= 200 && response.statusCode() < 300) {
@@ -75,11 +71,7 @@ class ModelRegistry {
     if (modelName == null || modelName.trim().isEmpty()) {
       return false
     }
-    List<String> models = listModels()
-    if (models.isEmpty()) {
-      return false
-    }
-    models.any { it.equalsIgnoreCase(modelName.trim()) }
+    return listModels().any { it.equalsIgnoreCase(modelName.trim()) }
   }
 
   Health checkHealth() {

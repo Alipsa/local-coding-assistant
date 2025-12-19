@@ -27,7 +27,6 @@ class ModelRegistrySpec extends Specification {
 
   def "listModels parses names"() {
     given:
-    String body = '{"models":[{"name":"m1"},{"name":"m2"}]}'
     ModelRegistry registry = new FakeRegistry(true, List.of("m1", "m2"))
 
     expect:
@@ -44,12 +43,32 @@ class ModelRegistrySpec extends Specification {
 
   def "isModelAvailable matches case-insensitively but returns availability"() {
     given:
-    String body = '{"models":[{"name":"M1"}]}'
     ModelRegistry registry = new FakeRegistry(true, List.of("M1"))
 
     expect:
     registry.isModelAvailable("m1")
     !registry.isModelAvailable("m2")
+  }
+
+  def "listModels returns empty on fetch exception"() {
+    given:
+    ModelRegistry registry = new ErrorRegistry(true, true)
+
+    expect:
+    registry.listModels().isEmpty()
+  }
+
+  def "checkHealth returns unreachable on exception"() {
+    given:
+    ModelRegistry registry = new ErrorRegistry(false, false) {
+      @Override
+      Health checkHealth() {
+        return new Health(false, "down")
+      }
+    }
+
+    expect:
+    !registry.checkHealth().reachable
   }
 
   private static class FakeRegistry extends ModelRegistry {
@@ -73,6 +92,25 @@ class ModelRegistrySpec extends Specification {
         return List.of()
       }
       models
+    }
+  }
+
+  private static class ErrorRegistry extends ModelRegistry {
+    private final boolean reachable
+    private final boolean throwOnTags
+
+    ErrorRegistry(boolean reachable, boolean throwOnTags) {
+      super("http://localhost:11434", 1000L, HttpClient.newHttpClient())
+      this.reachable = reachable
+      this.throwOnTags = throwOnTags
+    }
+
+    @Override
+    protected HttpResponse<String> fetchTags() throws Exception {
+      if (throwOnTags) {
+        throw new RuntimeException("fetch failed")
+      }
+      super.fetchTags()
     }
   }
 }

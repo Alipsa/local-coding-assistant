@@ -154,11 +154,11 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
   ) {
-    ModelResolution resolution = resolveModel(model)
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
     }
+    ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(
       session,
       resolution.chosen,
@@ -208,11 +208,11 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
   ) {
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
-    ModelResolution resolution = resolveModel(model)
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
     }
+    ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
@@ -504,11 +504,11 @@ class ShellCommands {
     if (!diff.success) {
       return formatGitResult("Staged diff", diff)
     }
-    ModelResolution resolution = resolveModel(model)
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
     }
+    ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(session, resolution.chosen, temperature, null, maxTokens, null, null)
     LlmOptions options = sessionState.craftOptions(settings)
     String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings))
@@ -1107,11 +1107,11 @@ ${renderReview(summary, minSeverity, false)}
     null
   }
 
-  private ModelResolution resolveModel(String requested) {
+  protected ModelResolution resolveModel(String requested) {
     resolveModel(requested, modelRegistry.listModels())
   }
 
-  private ModelResolution resolveModel(String requested, List<String> available) {
+  protected ModelResolution resolveModel(String requested, List<String> available) {
     String desired = requested != null ? requested : sessionState.getDefaultModel()
     boolean canCheck = available != null && !available.isEmpty()
     String matchedDesired = canCheck ? available.find { it.equalsIgnoreCase(desired) } : desired
