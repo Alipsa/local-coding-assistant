@@ -6,6 +6,7 @@ import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ContextPacker
+import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
@@ -24,6 +25,7 @@ class CodeSearchCommandSpec extends Specification {
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> ""
   }
+  CommandRunner commandRunner = Stub()
   @TempDir
   Path tempDir
   ShellCommands commands
@@ -38,6 +40,7 @@ class CodeSearchCommandSpec extends Specification {
       codeSearchTool,
       contextPacker,
       budgetManager,
+      commandRunner,
       tempDir.resolve("reviews.log").toString()
     )
   }
