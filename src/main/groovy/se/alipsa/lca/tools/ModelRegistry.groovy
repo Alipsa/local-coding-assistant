@@ -24,35 +24,46 @@ class ModelRegistry {
   private final Duration timeout
   private final String baseUrl
   private final long cacheTtlMillis
-  private List<String> cachedModels = null
-  private long cachedAt = 0L
+  private final long healthTtlMillis
+  protected volatile List<String> cachedModels = null
+  protected volatile long cachedAt = 0L
+  private volatile Health cachedHealth = null
+  private volatile long healthCachedAt = 0L
 
   ModelRegistry(
     @Value('${spring.ai.ollama.base-url:http://localhost:11434}') String baseUrl,
     @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis,
-    @Value('${assistant.llm.model-cache-ttl-millis:30000}') long cacheTtlMillis
+    @Value('${assistant.llm.model-cache-ttl-millis:30000}') long cacheTtlMillis,
+    @Value('${assistant.llm.health-cache-ttl-millis:5000}') long healthTtlMillis
   ) {
     this(
       baseUrl,
       timeoutMillis,
       cacheTtlMillis,
+      healthTtlMillis,
       HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)).build()
     )
   }
 
-  ModelRegistry(String baseUrl, long timeoutMillis, long cacheTtlMillis, HttpClient httpClient) {
+  ModelRegistry(String baseUrl, long timeoutMillis, long cacheTtlMillis, long healthTtlMillis, HttpClient httpClient) {
+    if (baseUrl == null || baseUrl.trim().isEmpty()) {
+      throw new IllegalArgumentException("Ollama baseUrl must be provided")
+    }
     this.baseUrl = baseUrl
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
     this.timeout = Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)
     this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
+    this.healthTtlMillis = healthTtlMillis > 0 ? healthTtlMillis : 5000L
     this.client = httpClient
   }
 
   List<String> listModels() {
-    long now = System.currentTimeMillis()
-    if (cachedModels != null && (now - cachedAt) < cacheTtlMillis) {
-      return List.copyOf(cachedModels)
+    long now = nowMillis()
+    List<String> current = cachedModels
+    long currentAt = cachedAt
+    if (current != null && (now - currentAt) < cacheTtlMillis) {
+      return List.copyOf(current)
     }
     try {
       HttpResponse<String> response = fetchTags()
@@ -68,8 +79,10 @@ class ModelRegistry {
             }
             it != null ? it.toString() : null
           }.findAll { it } as List<String>
-          cachedModels = models
-          cachedAt = now
+          synchronized (this) {
+            cachedModels = models
+            cachedAt = now
+          }
           return List.copyOf(models)
         }
       }
@@ -77,8 +90,12 @@ class ModelRegistry {
     } catch (Exception e) {
       log.debug("Failed to list models from {}", tagsUri, e)
     }
-    if (cachedModels != null) {
-      return List.copyOf(cachedModels)
+    if (current != null) {
+      boolean stale = (now - currentAt) >= cacheTtlMillis
+      if (stale) {
+        log.info("Returning stale model cache due to fetch failure; cache age={}ms", now - currentAt)
+      }
+      return List.copyOf(current)
     }
     List.of()
   }
@@ -91,12 +108,27 @@ class ModelRegistry {
   }
 
   Health checkHealth() {
+    long now = nowMillis()
+    Health healthSnapshot = cachedHealth
+    if (healthSnapshot != null && (now - healthCachedAt) < healthTtlMillis) {
+      return healthSnapshot
+    }
     try {
       HttpResponse<Void> response = fetchHealth()
       boolean ok = response.statusCode() >= 200 && response.statusCode() < 300
-      return new Health(ok, ok ? "reachable" : "received status ${response.statusCode()}".toString())
+      Health health = new Health(ok, ok ? "reachable" : "received status ${response.statusCode()}".toString())
+      synchronized (this) {
+        cachedHealth = health
+        healthCachedAt = now
+      }
+      return health
     } catch (Exception e) {
-      return new Health(false, e.message ?: e.class.simpleName)
+      Health health = new Health(false, e.message ?: e.class.simpleName)
+      synchronized (this) {
+        cachedHealth = health
+        healthCachedAt = now
+      }
+      return health
     }
   }
 
@@ -108,6 +140,10 @@ class ModelRegistry {
   protected HttpResponse<Void> fetchHealth() throws Exception {
     HttpRequest request = HttpRequest.newBuilder(tagsUri).timeout(timeout).GET().build()
     client.send(request, HttpResponse.BodyHandlers.discarding())
+  }
+
+  protected long nowMillis() {
+    System.currentTimeMillis()
   }
 
   @Canonical
