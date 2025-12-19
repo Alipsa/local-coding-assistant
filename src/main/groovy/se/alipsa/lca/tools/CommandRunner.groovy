@@ -237,12 +237,12 @@ class CommandRunner {
               logWriter.write(formatted)
             }
           } catch (IOException e) {
-            log.warn("Failed to write to log file for label '{}': {}", label, e.message)
+            log.warn("Failed to write to log file for label '{}': {}", label, e.getMessage())
           }
           appendVisible(formatted)
         }
       } catch (IOException e) {
-        log.warn("Stream reading interrupted for label '{}': {}", label, e.message)
+        log.warn("Stream reading interrupted for label '{}': {}", label, e.getMessage())
         truncated = true
       }
     }
