@@ -60,10 +60,20 @@ class ModelRegistry {
 
   List<String> listModels() {
     long now = nowMillis()
-    List<String> current = cachedModels
-    long currentAt = cachedAt
+    List<String> current
+    long currentAt
+    synchronized (this) {
+      current = cachedModels
+      currentAt = cachedAt
+    }
     if (current != null && (now - currentAt) < cacheTtlMillis) {
       return List.copyOf(current)
+    }
+    // double-check after potential fetch to avoid redundant requests
+    synchronized (this) {
+      if (cachedModels != null && (nowMillis() - cachedAt) < cacheTtlMillis) {
+        return List.copyOf(cachedModels)
+      }
     }
     try {
       HttpResponse<String> response = fetchTags()
@@ -109,9 +119,19 @@ class ModelRegistry {
 
   Health checkHealth() {
     long now = nowMillis()
-    Health healthSnapshot = cachedHealth
-    if (healthSnapshot != null && (now - healthCachedAt) < healthTtlMillis) {
+    Health healthSnapshot
+    long healthAt
+    synchronized (this) {
+      healthSnapshot = cachedHealth
+      healthAt = healthCachedAt
+    }
+    if (healthSnapshot != null && (now - healthAt) < healthTtlMillis) {
       return healthSnapshot
+    }
+    synchronized (this) {
+      if (cachedHealth != null && (nowMillis() - healthCachedAt) < healthTtlMillis) {
+        return cachedHealth
+      }
     }
     try {
       HttpResponse<Void> response = fetchHealth()
