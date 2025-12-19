@@ -76,7 +76,7 @@ class ModelRegistrySpec extends Specification {
     private final List<String> models
 
     FakeRegistry(boolean reachable, List<String> models) {
-      super("http://localhost:11434", 1000L, HttpClient.newHttpClient())
+      super("http://localhost:11434", 1000L, 30000L, HttpClient.newHttpClient())
       this.reachable = reachable
       this.models = models
     }
@@ -100,7 +100,7 @@ class ModelRegistrySpec extends Specification {
     private final boolean throwOnTags
 
     ErrorRegistry(boolean reachable, boolean throwOnTags) {
-      super("http://localhost:11434", 1000L, HttpClient.newHttpClient())
+      super("http://localhost:11434", 1000L, 30000L, HttpClient.newHttpClient())
       this.reachable = reachable
       this.throwOnTags = throwOnTags
     }

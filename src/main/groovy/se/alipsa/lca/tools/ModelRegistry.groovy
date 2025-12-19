@@ -23,27 +23,37 @@ class ModelRegistry {
   private final HttpClient client
   private final Duration timeout
   private final String baseUrl
-
-  ModelRegistry() {
-    this("http://localhost:11434", 4000L)
-  }
+  private final long cacheTtlMillis
+  private List<String> cachedModels = null
+  private long cachedAt = 0L
 
   ModelRegistry(
     @Value('${spring.ai.ollama.base-url:http://localhost:11434}') String baseUrl,
-    @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis
+    @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis,
+    @Value('${assistant.llm.model-cache-ttl-millis:30000}') long cacheTtlMillis
   ) {
-    this(baseUrl, timeoutMillis, HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)).build())
+    this(
+      baseUrl,
+      timeoutMillis,
+      cacheTtlMillis,
+      HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)).build()
+    )
   }
 
-  ModelRegistry(String baseUrl, long timeoutMillis, HttpClient httpClient) {
+  ModelRegistry(String baseUrl, long timeoutMillis, long cacheTtlMillis, HttpClient httpClient) {
     this.baseUrl = baseUrl
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
     this.timeout = Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)
+    this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
     this.client = httpClient
   }
 
   List<String> listModels() {
+    long now = System.currentTimeMillis()
+    if (cachedModels != null && (now - cachedAt) < cacheTtlMillis) {
+      return List.copyOf(cachedModels)
+    }
     try {
       HttpResponse<String> response = fetchTags()
       if (response.statusCode() >= 200 && response.statusCode() < 300) {
@@ -51,18 +61,24 @@ class ModelRegistry {
         Object modelsObj = parsed != null ? parsed.get("models") : null
         if (modelsObj instanceof List) {
           List<?> rawModels = (List<?>) modelsObj
-          return rawModels.collect { Object it ->
+          List<String> models = rawModels.collect { Object it ->
             if (it instanceof Map && ((Map) it).containsKey("name")) {
               Object name = ((Map) it).get("name")
               return name != null ? name.toString() : null
             }
             it != null ? it.toString() : null
           }.findAll { it } as List<String>
+          cachedModels = models
+          cachedAt = now
+          return List.copyOf(models)
         }
       }
       log.debug("Unexpected response listing models: status {}", response.statusCode())
     } catch (Exception e) {
       log.debug("Failed to list models from {}", tagsUri, e)
+    }
+    if (cachedModels != null) {
+      return List.copyOf(cachedModels)
     }
     List.of()
   }

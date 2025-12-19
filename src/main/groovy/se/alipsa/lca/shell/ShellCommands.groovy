@@ -83,7 +83,7 @@ class ShellCommands {
       contextPacker,
       contextBudgetManager,
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
-      modelRegistry != null ? modelRegistry : new ModelRegistry(),
+      modelRegistry,
       reviewLogPath
     )
   }
@@ -112,7 +112,7 @@ class ShellCommands {
     this.contextPacker = contextPacker
     this.contextBudgetManager = contextBudgetManager
     this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
-    this.modelRegistry = modelRegistry != null ? modelRegistry : new ModelRegistry()
+    this.modelRegistry = modelRegistry
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -138,7 +138,7 @@ class ShellCommands {
       new ContextPacker(),
       new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
-      modelRegistry != null ? modelRegistry : new ModelRegistry(),
+      modelRegistry,
       reviewLogPath
     )
   }
