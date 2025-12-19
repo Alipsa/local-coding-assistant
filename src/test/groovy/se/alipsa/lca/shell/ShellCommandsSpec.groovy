@@ -16,6 +16,7 @@ import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
+import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
 import spock.lang.TempDir
@@ -25,7 +26,7 @@ import java.nio.file.Path
 
 class ShellCommandsSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true)
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback-model")
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   FileEditingTool fileEditingTool = Mock()
@@ -40,6 +41,11 @@ class ShellCommandsSpec extends Specification {
   }
   CommandRunner commandRunner = Stub() {
     run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, "", false, null)
+  }
+  ModelRegistry modelRegistry = Stub() {
+    listModels() >> ["default-model", "fallback-model", "custom-model"]
+    isModelAvailable(_) >> true
+    checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
   @TempDir
   Path tempDir
@@ -57,6 +63,7 @@ class ShellCommandsSpec extends Specification {
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
       commandRunner,
+      modelRegistry,
       tempDir.resolve("reviews.log").toString()
     )
   }
@@ -280,6 +287,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       gitTool,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("other.log").toString()
     ) {
       @Override
@@ -354,6 +362,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       gitTool,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("reviews.log").toString()
     ) {
       @Override
@@ -389,6 +398,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       repoGit,
       runTool,
+      modelRegistry,
       tempDir.resolve("commit.log").toString()
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
@@ -421,6 +431,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       repoGit,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("stage.log").toString()
     ) {
       @Override
@@ -450,6 +461,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       repoGit,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("status.log").toString()
     )
 
@@ -473,6 +485,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       repoGit,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("diff.log").toString()
     )
 
@@ -498,6 +511,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       repoGit,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("apply.log").toString()
     ) {
       @Override
@@ -532,6 +546,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       repoGit,
       commandRunner,
+      modelRegistry,
       tempDir.resolve("push.log").toString()
     ) {
       @Override
@@ -568,6 +583,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       gitTool,
       runner,
+      modelRegistry,
       tempDir.resolve("runReviews.log").toString()
     ) {
       @Override
@@ -600,6 +616,7 @@ class ShellCommandsSpec extends Specification {
       fileEditingTool,
       gitTool,
       runner,
+      modelRegistry,
       tempDir.resolve("run2.log").toString()
     )
 
@@ -609,5 +626,54 @@ class ShellCommandsSpec extends Specification {
     then:
     output.contains("timed out")
     output.contains("Output truncated")
+  }
+
+  def "model command falls back when requested model missing"() {
+    given:
+    ModelRegistry fallbackRegistry = Stub() {
+      listModels() >> ["fallback-model"]
+      checkHealth() >> new ModelRegistry.Health(true, "ok")
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      commandRunner,
+      fallbackRegistry,
+      tempDir.resolve("model.log").toString()
+    )
+
+    when:
+    def out = cmds.model("missing-model", "s1", true)
+
+    then:
+    out.contains("fallback from missing-model")
+    sessionState.getOrCreate("s1").model == "fallback-model"
+  }
+
+  def "health command reports unreachable state"() {
+    given:
+    ModelRegistry downRegistry = Stub() {
+      checkHealth() >> new ModelRegistry.Health(false, "connection refused")
+      listModels() >> List.of()
+      getBaseUrl() >> "http://localhost:11434"
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      commandRunner,
+      downRegistry,
+      tempDir.resolve("health.log").toString()
+    )
+
+    expect:
+    cmds.health().contains("unreachable")
   }
 }

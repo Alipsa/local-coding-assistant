@@ -5,7 +5,7 @@ import spock.lang.Specification
 
 class SessionStateSpec extends Specification {
 
-  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "", true)
+  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback")
 
   def "uses default model and temperatures when unset"() {
     when:
@@ -43,7 +43,7 @@ class SessionStateSpec extends Specification {
 
   def "falls back to default system prompt when unset"() {
     given:
-    def withDefault = new SessionState("default-model", 0.7d, 0.35d, 0, "base", false)
+    def withDefault = new SessionState("default-model", 0.7d, 0.35d, 0, "base", false, "fallback")
 
     when:
     def prompt = withDefault.systemPrompt(withDefault.getOrCreate("s3"))
@@ -54,7 +54,7 @@ class SessionStateSpec extends Specification {
 
   def "tracks web search enablement with defaults"() {
     when:
-    def disabled = new SessionState("m", 0.5d, 0.4d, 0, "", false)
+    def disabled = new SessionState("m", 0.5d, 0.4d, 0, "", false, "fallback")
     def settings = disabled.update("s4", null, null, null, null, null, true)
 
     then:

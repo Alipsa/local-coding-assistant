@@ -21,6 +21,7 @@ class SessionState {
   private final Integer defaultMaxTokens
   private final String defaultSystemPrompt
   private final boolean defaultWebSearchEnabled
+  private final String fallbackModel
 
   SessionState(
     @Value('${assistant.llm.model:qwen3-coder:30b}') String defaultModel,
@@ -28,7 +29,8 @@ class SessionState {
     @Value('${assistant.llm.temperature.review:0.35}') double defaultReviewTemperature,
     @Value('${assistant.llm.max-tokens:0}') Integer defaultMaxTokens,
     @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
-    @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled
+    @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled,
+    @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel
   ) {
     this.defaultModel = defaultModel
     this.defaultCraftTemperature = defaultCraftTemperature
@@ -36,6 +38,7 @@ class SessionState {
     this.defaultMaxTokens = defaultMaxTokens
     this.defaultSystemPrompt = defaultSystemPrompt
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
+    this.fallbackModel = fallbackModel
   }
 
   SessionSettings update(
@@ -82,6 +85,14 @@ class SessionState {
       return settings.systemPrompt
     }
     defaultSystemPrompt
+  }
+
+  String getDefaultModel() {
+    defaultModel
+  }
+
+  String getFallbackModel() {
+    fallbackModel
   }
 
   void appendHistory(String sessionId, String... entries) {

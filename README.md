@@ -1,5 +1,7 @@
 ![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white)
+![Groovy](https://img.shields.io/badge/groovy-4298B8.svg?style=for-the-badge&logo=apachegroovy&logoColor=white)
 ![Spring](https://img.shields.io/badge/spring-%236DB33F.svg?style=for-the-badge&logo=spring&logoColor=white)
+![Ollama](https://img.shields.io/badge/ollama-000000.svg?style=for-the-badge&logo=ollama&logoColor=white)
 
 # Local Coding Assistant
 

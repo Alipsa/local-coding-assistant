@@ -85,9 +85,9 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N/a]
 
 ## 9) Model and runtime controls
-- 9.1 [ ] Expose a `model` command to list available Ollama models and switch the active one at runtime.
-- 9.2 [ ] Add a health check that verifies connectivity to `spring.ai.ollama.base-url` before starting a session.
-- 9.3 [ ] Support automatic fallbacks to a smaller model if the default is unavailable.
+- 9.1 [x] Expose a `model` command to list available Ollama models and switch the active one at runtime.
+- 9.2 [x] Add a health check that verifies connectivity to `spring.ai.ollama.base-url` before starting a session.
+- 9.3 [x] Support automatic fallbacks to a smaller model if the default is unavailable.
 
 ## 10) UX polish and docs
 - 10.1 [ ] Add streaming progress indicators and clear sectioned output for edits/reviews/search.
