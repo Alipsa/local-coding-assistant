@@ -32,11 +32,15 @@ class ModelRegistry {
     @Value('${spring.ai.ollama.base-url:http://localhost:11434}') String baseUrl,
     @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis
   ) {
+    this(baseUrl, timeoutMillis, HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)).build())
+  }
+
+  ModelRegistry(String baseUrl, long timeoutMillis, HttpClient httpClient) {
     this.baseUrl = baseUrl
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
     this.timeout = Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)
-    this.client = HttpClient.newBuilder().connectTimeout(this.timeout).build()
+    this.client = httpClient
   }
 
   List<String> listModels() {
@@ -45,8 +49,7 @@ class ModelRegistry {
       return List.of()
     }
     try {
-      HttpRequest request = HttpRequest.newBuilder(tagsUri).timeout(timeout).GET().build()
-      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString())
+      HttpResponse<String> response = fetchTags()
       if (response.statusCode() >= 200 && response.statusCode() < 300) {
         Map parsed = (Map) new JsonSlurper().parseText(response.body())
         Object modelsObj = parsed != null ? parsed.get("models") : null
@@ -74,20 +77,29 @@ class ModelRegistry {
     }
     List<String> models = listModels()
     if (models.isEmpty()) {
-      return true // assume available when listing failed to avoid blocking usage
+      return false
     }
     models.any { it.equalsIgnoreCase(modelName.trim()) }
   }
 
   Health checkHealth() {
     try {
-      HttpRequest request = HttpRequest.newBuilder(tagsUri).timeout(timeout).GET().build()
-      HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding())
-      boolean ok = response.statusCode() >= 200 && response.statusCode() < 500
+      HttpResponse<Void> response = fetchHealth()
+      boolean ok = response.statusCode() >= 200 && response.statusCode() < 300
       return new Health(ok, ok ? "reachable" : "received status ${response.statusCode()}".toString())
     } catch (Exception e) {
       return new Health(false, e.message ?: e.class.simpleName)
     }
+  }
+
+  protected HttpResponse<String> fetchTags() throws Exception {
+    HttpRequest request = HttpRequest.newBuilder(tagsUri).timeout(timeout).GET().build()
+    client.send(request, HttpResponse.BodyHandlers.ofString())
+  }
+
+  protected HttpResponse<Void> fetchHealth() throws Exception {
+    HttpRequest request = HttpRequest.newBuilder(tagsUri).timeout(timeout).GET().build()
+    client.send(request, HttpResponse.BodyHandlers.discarding())
   }
 
   @Canonical

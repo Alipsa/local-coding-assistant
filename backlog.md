@@ -50,7 +50,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - Your FileEditingTool locates the unique original code block string and replaces it. This is far more robust than line numbers for local models.
 - 4.5 [x] Avoid unified diffs for generation. Instead, use Search and Replace Blocks.
 - 4.6 [x] Ensure the output is parsable. 
-  - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colors for High/Medium/Low severity).  
+  - If the agent outputs a review, try to parse it into an object (File, Line, Severity, Comment) so you can render it nicely in the CLI (e.g., using ANSI colours for High/Medium/Low severity).  
 
 ## 5) Code search and context building
 - 5.1 [x] Integrate ripgrep-like search (respect .gitignore) to gather snippets for prompts.
@@ -62,7 +62,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - Before sending the prompt, calculate the token count of: System Prompt + User Prompt + File A + File B. If it exceeds the limit, you must auto-summarize or drop the least relevant file before hitting the API.
   
 ## 6) Web search augmentation
-- 6.1 [x] Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitization/snippet trimming.
+- 6.1 [x] Enhance `WebSearchTool` with headless mode options, timeouts, result limits, and basic HTML sanitisation/snippet trimming.
 - 6.2 [x] Add a CLI/agent flag to enable/disable web search, plus offline fallback messaging.
 - 6.3 [x] Cache recent queries for reuse in the same session; allow selecting search provider if available.
 - 6.4 [x] Make web search outputs usable by the agent (structured snippets) and add tests for parsing/formatting.
@@ -157,7 +157,7 @@ Prevent the agent from performing destructive or unintended actions on the local
 Improve the agent’s ability to write and review code with security in mind.
 
 - **14.2.1 [ ] Dedicated Security Persona**  
-  Add a specialized "Security Reviewer" persona/prompt that focuses on:
+  Add a specialised "Security Reviewer" persona/prompt that focuses on:
   - Common vulnerabilities (OWASP Top 10 style): injection, insecure deserialization,
     hardcoded secrets, insecure crypto, etc.
   - Misconfigurations in frameworks and libraries (e.g., default credentials, wide-open CORS).
@@ -166,10 +166,9 @@ Improve the agent’s ability to write and review code with security in mind.
   The CLI should expose this mode via a flag (e.g., `review --security`).
 
 - **14.2.2 [ ] Integrate Static Analysis (SAST) [Optional / pluggable]**  
-  Enhance the `/review` command with an optional static analysis step (e.g., Semgrep with
-  a default ruleset):
+  Enhance the `/review` command with an optional static analysis step (e.g., semgrep with a default ruleset):
   - Run the SAST tool on the files/diffs under review.
-  - Parse and summarize findings (rules, severity, locations).
+  - Parse and summarise findings (rules, severity, locations).
   - Present them together with the LLM-based review for better coverage.
 
 - **14.2.3 [ ] Secret Detection Before Commit**  
@@ -246,7 +245,7 @@ Define clear modes for how the REST API is exposed:
 #### 14.3.5 Input Validation
 
 - **14.3.5.1 [ ] Validate CLI & API Inputs**  
-  Apply rigorous validation and sanitization to:
+  Apply rigorous validation and sanitisation to:
   - CLI arguments (paths, command names, flags).
   - REST request payloads and query parameters.
   - Any input that could be used to build shell commands or file paths.
@@ -269,12 +268,8 @@ Uphold the "local-first" promise and protect user data.
   - No code, prompts, project data, or metadata is sent to third-party cloud services.
   - All inference happens via locally-running Ollama models or other local runtimes.
 
-- **14.4.2 [ ] No Telemetry by Default**  
-  Do not collect or transmit any usage data or telemetry without explicit user opt-in.  
-  If telemetry is ever added:
-  - Make it disabled by default.
-  - Document exactly what is collected.
-  - Provide a clear configuration toggle.
+- **14.4.2 [ ] No Telemetry**  
+  Do not collect or transmit any usage data or telemetry.
 
 - **14.4.3 [ ] Log Sanitization**  
   Review logging across the project to ensure that:
@@ -387,7 +382,7 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
 
 * **15.5.1 [ ] Respect existing confirmation prompts**
 
-  * Batch mode must still honor confirmation gates from:
+  * Batch mode must still honour confirmation gates from:
 
     * Destructive filesystem operations.
     * Git operations (`apply`, `commit`, `push`).
@@ -470,12 +465,12 @@ java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
       * Semicolon-separated sequence.
       * `--batch-file` usage.
       * CI/automation scenarios.
-    * Explanation of exit codes and confirmation behavior.
+    * Explanation of exit codes and confirmation behaviour.
     * Safety cautions when combining `--yes` with destructive commands.
 
 * **16 [ ] Add support for AGENTS.md**
   * If an AGENTS.md file is present in the project root, load its contents and provide it as context to the agent.
-  * This allows users to define custom agent behaviors, guidelines, or constraints specific to their project.
+  * This allows users to define custom agent behaviours, guidelines, or constraints specific to their project.
   * Document the expected format and usage of AGENTS.md in the project documentation.
   
 * **17 [ ] Tutorials and examples**

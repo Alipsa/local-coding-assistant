@@ -65,7 +65,7 @@ class CommandRunner {
       logPath = createLogPath()
     } catch (IOException e) {
       logPath = null
-      log.warn("Failed to prepare log path for command {}", command, e)
+      log.debug("Failed to prepare log path for command {}", command, e)
     }
     Instant started = Instant.now()
     boolean timedOut = false

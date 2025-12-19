@@ -38,7 +38,7 @@ class SessionState {
     this.defaultMaxTokens = defaultMaxTokens
     this.defaultSystemPrompt = defaultSystemPrompt
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
-    this.fallbackModel = fallbackModel
+    this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
   }
 
   SessionSettings update(

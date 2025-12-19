@@ -1101,7 +1101,7 @@ ${renderReview(summary, minSeverity, false)}
 
   private String ensureOllamaHealth() {
     ModelRegistry.Health health = modelRegistry.checkHealth()
-    if (health != null && !health.reachable) {
+    if (!health.reachable) {
       return "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
     }
     null
@@ -1114,14 +1114,16 @@ ${renderReview(summary, minSeverity, false)}
   private ModelResolution resolveModel(String requested, List<String> available) {
     String desired = requested != null ? requested : sessionState.getDefaultModel()
     boolean canCheck = available != null && !available.isEmpty()
-    boolean desiredOk = !canCheck || available.any { it.equalsIgnoreCase(desired) }
+    String matchedDesired = canCheck ? available.find { it.equalsIgnoreCase(desired) } : desired
+    boolean desiredOk = !canCheck || matchedDesired != null
     if (desiredOk) {
-      return new ModelResolution(desired, false, requested ?: desired)
+      return new ModelResolution(matchedDesired ?: desired, false, requested ?: desired)
     }
     String fallback = sessionState.getFallbackModel()
-    boolean fallbackOk = fallback != null && (!canCheck || available.any { it.equalsIgnoreCase(fallback) })
+    String matchedFallback = (fallback != null && canCheck) ? available.find { it.equalsIgnoreCase(fallback) } : fallback
+    boolean fallbackOk = fallback != null && (!canCheck || matchedFallback != null)
     if (fallbackOk) {
-      return new ModelResolution(fallback, true, desired)
+      return new ModelResolution(matchedFallback ?: fallback, true, desired)
     }
     new ModelResolution(desired, false, desired)
   }
