@@ -77,10 +77,10 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
   - A "Dirty State" warning. If the user asks for a refactor but the git tree is dirty, warn them: "You have uncommitted changes. I recommend committing before I apply patches."
    
 ## 8) Command execution and diagnostics
-- 8.1 [ ] Provide a `run` command to execute project scripts/tests with captured logs and exit codes.
-- 8.2 [ ] Allow the agent to request runs (with a confirmation gate) and feed summarized output back into the conversation.
-- 8.3 [ ] Add timeouts and output truncation to avoid runaway executions.
-- 8.4 [ ] If the current directory is not a git repo
+- 8.1 [x] Provide a `run` command to execute project scripts/tests with captured logs and exit codes.
+- 8.2 [x] Allow the agent to request runs (with a confirmation gate) and feed summarized output back into the conversation.
+- 8.3 [x] Add timeouts and output truncation to avoid runaway executions.
+- 8.4 [x] If the current directory is not a git repo
   - commands like `status`, `diff`, and `commit-suggest` should gracefully inform the user that git operations are unavailable.
   - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N/a]
 
