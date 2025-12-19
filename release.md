@@ -1,5 +1,58 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 0.9.0, 2025-12-19
+- Fixed resolveModel NPE risk by guarding case-insensitive comparisons when the desired model is null.
+- Strengthened ModelRegistry caching concurrency: health caching now uses a single synchronized fetch/update to avoid redundant calls; listModels already double-checks with synchronized reads/writes.
+- Hardened ModelRegistry concurrency: cache reads/writes for models and health now use double-check locking to avoid redundant parallel fetches, reducing duplicate Ollama calls under contention.
+- Improved ModelRegistry resilience and performance:
+  - Added null check for base URL, cache TTLs for models and health, and synchronized/volatile cache updates.
+  - listModels now caches results with TTL, logs at info when serving stale cache after failures, and returns cached data only when available.
+  - checkHealth caches health responses with a short TTL to reduce redundant calls.
+  - Adjusted constructor signatures accordingly and updated usages.
+  - Added targeted tests: ResolveModelSpec exercises resolveModel branches; ModelRegistrySpec now covers caching, failure fallbacks, and error handling.
+- Reduced duplicate health/model lookups: chat, review, and commitSuggest now reuse a single model list per call (calling health only when the list is empty).
+- Added a TTL cache to ModelRegistry model listings to avoid repeated Ollama requests; availability checks now use the cached list.
+- Added focused tests: ResolveModelSpec covers resolveModel edge cases; ModelRegistrySpec covers caching/error paths.
+- Tightened Ollama health checks to treat only 2xx as reachable, simplified health handling, and made model resolution case-insensitive while returning the actual matched casing. Fallback model config now treats empty values as “no fallback.” - Hardened model availability logic to avoid assuming availability when listings fail.
+- Added ModelRegistrySpec covering health, listing, and availability behavior; updated tests to align with new model/fallback handling.
+- Added Groovy JSON dependency for model listing.
+-  Cleaned ModelRegistry test harness and ensured new behavior is covered.
+- Added runtime model controls: new model CLI command to list/set session models with fallback awareness, and health command to check Ollama connectivity. Chat/review/commit flows now verify Ollama health and auto-fallback to the configured smaller model when the requested/default model isn’t available, with user-visible notes.
+- Introduced ModelRegistry for Ollama health/model discovery, wired into session handling, and surfaced fallback model configuration (assistant.llm.fallback-model) plus JSON dependency.
+- Enhanced CommandRunner documentation/logic, strengthened truncation handling, and expanded tests for edge cases (empty command, logging failures, timeout cleanup). Added broader ShellCommands tests for model/health behaviors and adjusted SessionState for fallback support.
+- Added a groovy and ollama badge to the readme
+- Use explicit getMessage() method calls per code review feedback
+- Distinguish IOException sources in StreamCollector catch block
+- Clarified CommandRunner’s behavior and tightened robustness: added documentation about bash -lc usage and caller validation, made log-path/process creation overridable for tests, and corrected the StreamCollector error handling bug (now flags truncation properly).
+- Expanded CommandRunnerSpec coverage: checks truncation flag, empty-command validation, log-path failure handling, log header/footer content, and timeout cleanup via a fake process; updated imports accordingly.
+-  Fixed constructor mismatch by threading the new CommandRunner stub through CodeSearchCommandSpec, importing the runner, and rebuilding the test setup
+- Command execution and diagnostics -
+  -  Provide a `run` command to execute project scripts/tests with captured logs and exit codes.
+  - Allow the agent to request runs (with a confirmation gate) and feed summarized output back into the conversation. -
+  - Add timeouts and output truncation to avoid runaway executions.
+  - If the current directory is not a git repo - commands like `status`, `diff`, and `commit-suggest` should gracefully inform the user that git operations are unavailable.
+  - Require Interactive Confirmation. The CLI should print the command: > Agent wants to run: 'rm -rf ./build'. Allow? [y/N/a]
+- GitTool now uses UTF-8 for git process I/O, caches repo existence with a lock to avoid repeated checks, and uses a dedicated runGitNoCheck helper to prevent recursion. Added a note about per-thread usage.
+- Added path traversal rejection tests and stageHunks error-path tests; extended stageFiles traversal coverage.
+- Adjusted dirty warning comment; updated tests accordingly.
+- Removed unnecessary import in GitToolSpec.
+- Refactored isGitRepo to use the git command through the shared helpers without recursion; added an opt-out flag for repo checks in runGitWithInput.
+- Clarified 1-based hunk indexing with a comment and made dirty/staged checks explicitly test for non-empty output.
+- Updated warning message to neutral wording and added rationale comment for direct stdout.
+- Neutralized dirty-state warning and generalized commit prompt to “current project.”
+- GitTool now tolerates missing roots by falling back to normalized paths, and validatePath always returns a normalized relative path (no traversal leak).
+- Test helper runGit now fails fast on non-zero exits.
+- Added ShellCommands tests for git status/diff/apply/push flows, including confirmation behavior.
+- Expanded GitToolSpec to cover multiple hunk staging, file staging, applyPatch check/cached, and push; tweaked expectations to avoid silent failures.
+- Hardened src/main/groovy/se/alipsa/lca/tools/GitTool.groovy: constructor now tolerates missing project roots by falling back to normalized absolute path; validatePath always returns a normalized relative path (even for non-existent files) to avoid traversal; isGitRepo callers still safe.
+- Updated src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy to reject non-1-based hunk indexes instead of silently ignoring them.
+- Expanded tests in src/test/groovy/se/alipsa/lca/tools/GitToolSpec.groovy: cover staging multiple/out-of-order hunks, staging files, applyPatch check/cached behaviors, and push to a local bare remote.
+- Ensured constructor overload compatibility remains intact via the GitTool resolver addition earlier.
+- Introduced src/main/groovy/se/alipsa/lca/tools/GitTool.groovy to wrap git status/diff/apply/stage/push with path safety and repo detection.
+- Extended src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy with /status, /diff, /git-apply, /stage, /commit-suggest, and /git-push, plus dirty-state warnings and guarded confirmations before applying patches or pushing.
+-  Added Spock coverage for git wrappers and shell wiring in src/test/groovy/se/alipsa/lca/tools/GitToolSpec.groovy and src/test/groovy/se/alipsa/lca/shell/ShellCommandsSpec.groovy.
+- Fixed constructor mismatch by adding a GitTool-aware overload with backward compatibility, routed legacy constructor usage through it, and added a safe project-root resolver. Updated CodeSearchCommandSpec to compile via the restored signature.
+
 ## Version 0.7.0 - Git-aware operations
 - 7.1 Add commands for `status`, `diff`, and `apply` that the agent can call or chain into prompts.
 - 7.2 Support staging selected hunks/files after an edit command (with confirmation).
