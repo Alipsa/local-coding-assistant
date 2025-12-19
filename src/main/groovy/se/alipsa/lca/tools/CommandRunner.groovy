@@ -204,6 +204,7 @@ class CommandRunner {
 
   @CompileStatic
   private static class StreamCollector implements Runnable {
+    private static final Logger log = LoggerFactory.getLogger(StreamCollector)
     private final InputStream stream
     private final BufferedWriter logWriter
     private final String label
@@ -231,12 +232,17 @@ class CommandRunner {
         String line
         while ((line = reader.readLine()) != null) {
           String formatted = "[${label}] ${line}${System.lineSeparator()}".toString()
-          synchronized (logWriter) {
-            logWriter.write(formatted)
+          try {
+            synchronized (logWriter) {
+              logWriter.write(formatted)
+            }
+          } catch (IOException e) {
+            log.warn("Failed to write to log file for label '{}': {}", label, e.message)
           }
           appendVisible(formatted)
         }
-      } catch (IOException ignored) {
+      } catch (IOException e) {
+        log.warn("Stream reading interrupted for label '{}': {}", label, e.message)
         truncated = true
       }
     }
