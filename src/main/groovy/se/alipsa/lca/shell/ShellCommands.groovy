@@ -1114,7 +1114,7 @@ ${renderReview(summary, minSeverity, false)}
   protected ModelResolution resolveModel(String requested, List<String> available) {
     String desired = requested != null ? requested : sessionState.getDefaultModel()
     boolean canCheck = available != null && !available.isEmpty()
-    String matchedDesired = canCheck ? available.find { it.equalsIgnoreCase(desired) } : desired
+    String matchedDesired = (canCheck && desired != null) ? available.find { it != null && it.equalsIgnoreCase(desired) } : desired
     boolean desiredOk = !canCheck || matchedDesired != null
     if (desiredOk) {
       return new ModelResolution(matchedDesired ?: desired, false, requested ?: desired)

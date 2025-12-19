@@ -132,23 +132,19 @@ class ModelRegistry {
       if (cachedHealth != null && (nowMillis() - healthCachedAt) < healthTtlMillis) {
         return cachedHealth
       }
-    }
-    try {
-      HttpResponse<Void> response = fetchHealth()
-      boolean ok = response.statusCode() >= 200 && response.statusCode() < 300
-      Health health = new Health(ok, ok ? "reachable" : "received status ${response.statusCode()}".toString())
-      synchronized (this) {
+      try {
+        HttpResponse<Void> response = fetchHealth()
+        boolean ok = response.statusCode() >= 200 && response.statusCode() < 300
+        Health health = new Health(ok, ok ? "reachable" : "received status ${response.statusCode()}".toString())
         cachedHealth = health
-        healthCachedAt = now
-      }
-      return health
-    } catch (Exception e) {
-      Health health = new Health(false, e.message ?: e.class.simpleName)
-      synchronized (this) {
+        healthCachedAt = nowMillis()
+        return health
+      } catch (Exception e) {
+        Health health = new Health(false, e.message ?: e.class.simpleName)
         cachedHealth = health
-        healthCachedAt = now
+        healthCachedAt = nowMillis()
+        return health
       }
-      return health
     }
   }
 
