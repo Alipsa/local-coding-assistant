@@ -18,7 +18,7 @@ import java.nio.file.Path
 
 class CodeSearchCommandSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback")
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback")
   CodingAssistantAgent agent = Mock()
   FileEditingTool fileEditingTool = Stub()
   CodeSearchTool codeSearchTool = Mock()

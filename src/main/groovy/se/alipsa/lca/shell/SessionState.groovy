@@ -21,6 +21,7 @@ class SessionState {
   private final Integer defaultMaxTokens
   private final String defaultSystemPrompt
   private final boolean defaultWebSearchEnabled
+  private final boolean localOnly
   private final String fallbackModel
 
   SessionState(
@@ -30,6 +31,7 @@ class SessionState {
     @Value('${assistant.llm.max-tokens:0}') Integer defaultMaxTokens,
     @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
     @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled,
+    @Value('${assistant.local-only:true}') boolean localOnly,
     @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel
   ) {
     this.defaultModel = defaultModel
@@ -38,6 +40,7 @@ class SessionState {
     this.defaultMaxTokens = defaultMaxTokens
     this.defaultSystemPrompt = defaultSystemPrompt
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
+    this.localOnly = localOnly
     this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
   }
 
@@ -106,11 +109,18 @@ class SessionState {
   }
 
   boolean isWebSearchEnabled(String sessionId) {
+    if (localOnly) {
+      return false
+    }
     SessionSettings settings = getOrCreate(sessionId)
     if (settings.webSearchEnabled != null) {
       return settings.webSearchEnabled
     }
     defaultWebSearchEnabled
+  }
+
+  boolean isLocalOnly() {
+    localOnly
   }
 
   private LlmOptions buildOptions(

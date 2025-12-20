@@ -66,11 +66,11 @@ class ShellCommandControllerSpec extends Specification {
     when:
     def response = mvc.perform(post("/api/cli/git-push")
       .contentType(MediaType.APPLICATION_JSON)
-      .content(JsonOutput.toJson([force: true, confirm: false])))
+      .content(JsonOutput.toJson([force: true, confirm: true])))
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.gitPush(true, false) >> "pushed"
+    1 * commands.gitPush(true, true) >> "pushed"
   }
 
   def "tree endpoint maps query params"() {
@@ -94,5 +94,16 @@ class ShellCommandControllerSpec extends Specification {
     then:
     response.andExpect(status().isOk())
     1 * commands.chat("draft", "s1", PersonaMode.ARCHITECT, null, null, null, null, null) >> "sent"
+  }
+
+  def "run endpoint requires confirmation"() {
+    when:
+    def response = mvc.perform(post("/api/cli/run")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([command: "echo hi"])))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * commands.runCommand(_, _, _, _, _, _)
   }
 }

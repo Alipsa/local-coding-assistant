@@ -20,6 +20,7 @@ class CodingAssistantAgentSpec extends Specification {
     0.65d,
     0.25d,
     true,
+    false,
     fileEditingTool,
     webSearchTool,
     codeSearchTool
@@ -248,5 +249,29 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     1 * codeSearchTool.search("q", List.of("p"), 2, 5) >> hits
     result == hits
+  }
+
+  def "local-only mode skips web search"() {
+    given:
+    WebSearchTool searchTool = Mock(WebSearchTool)
+    CodingAssistantAgent localAgent = new CodingAssistantAgent(
+      220,
+      180,
+      "test-model",
+      0.65d,
+      0.25d,
+      true,
+      true,
+      fileEditingTool,
+      searchTool,
+      codeSearchTool
+    )
+
+    when:
+    def result = localAgent.search("query")
+
+    then:
+    result == []
+    0 * searchTool.search(_, _)
   }
 }

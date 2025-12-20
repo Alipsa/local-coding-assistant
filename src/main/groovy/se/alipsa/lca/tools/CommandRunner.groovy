@@ -5,6 +5,7 @@ import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import se.alipsa.lca.tools.LogSanitizer
 
 import java.io.BufferedReader
 import java.io.BufferedWriter
@@ -65,7 +66,7 @@ class CommandRunner {
       logPath = createLogPath()
     } catch (IOException e) {
       logPath = null
-      log.debug("Failed to prepare log path for command {}", command, e)
+      log.debug("Failed to prepare log path for command {}", LogSanitizer.sanitize(command), e)
     }
     Instant started = Instant.now()
     boolean timedOut = false
@@ -73,23 +74,26 @@ class CommandRunner {
     BufferedWriter logWriter = null
     try {
       logWriter = prepareWriter(logPath)
-      writeHeader(logWriter, command, started)
+      writeHeader(logWriter, LogSanitizer.sanitize(command), started)
       process = startProcess(command)
       AtomicInteger remaining = new AtomicInteger(outputLimit)
+      AtomicInteger remainingLog = new AtomicInteger(outputLimit)
       StringBuffer visibleOutput = new StringBuffer()
       StreamCollector outCollector = new StreamCollector(
         process.getInputStream(),
         logWriter,
         "OUT",
         visibleOutput,
-        remaining
+        remaining,
+        remainingLog
       )
       StreamCollector errCollector = new StreamCollector(
         process.getErrorStream(),
         logWriter,
         "ERR",
         visibleOutput,
-        remaining
+        remaining,
+        remainingLog
       )
       Thread outThread = new Thread(outCollector)
       Thread errThread = new Thread(errCollector)
@@ -119,7 +123,7 @@ class CommandRunner {
         logPath
       )
     } catch (IOException e) {
-      log.warn("Command execution failed: {}", command, e)
+      log.warn("Command execution failed: {}", LogSanitizer.sanitize(command), e)
       return new CommandResult(false, timedOut, -1, e.message ?: e.class.simpleName, false, logPath)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt()
@@ -210,6 +214,7 @@ class CommandRunner {
     private final String label
     private final StringBuffer visibleOutput
     private final AtomicInteger remainingVisible
+    private final AtomicInteger remainingLog
     volatile boolean truncated = false
 
     StreamCollector(
@@ -217,13 +222,15 @@ class CommandRunner {
       BufferedWriter logWriter,
       String label,
       StringBuffer visibleOutput,
-      AtomicInteger remainingVisible
+      AtomicInteger remainingVisible,
+      AtomicInteger remainingLog
     ) {
       this.stream = stream
       this.logWriter = logWriter
       this.label = label
       this.visibleOutput = visibleOutput
       this.remainingVisible = remainingVisible
+      this.remainingLog = remainingLog
     }
 
     @Override
@@ -232,9 +239,10 @@ class CommandRunner {
         String line
         while ((line = reader.readLine()) != null) {
           String formatted = "[${label}] ${line}${System.lineSeparator()}".toString()
+          String sanitized = LogSanitizer.sanitize(formatted)
           try {
             synchronized (logWriter) {
-              logWriter.write(formatted)
+              writeLogLimited(sanitized)
             }
           } catch (IOException e) {
             log.warn("Failed to write to log file for label '{}': {}", label, e.getMessage())
@@ -260,6 +268,24 @@ class CommandRunner {
         if (toTake < formatted.length() || after <= 0) {
           truncated = true
         }
+      }
+    }
+
+    private void writeLogLimited(String formatted) throws IOException {
+      if (remainingLog == null) {
+        logWriter.write(formatted)
+        return
+      }
+      int remaining = remainingLog.get()
+      if (remaining <= 0) {
+        truncated = true
+        return
+      }
+      int toTake = Math.min(remaining, formatted.length())
+      logWriter.write(formatted, 0, toTake)
+      int after = remainingLog.addAndGet(-toTake)
+      if (toTake < formatted.length() || after <= 0) {
+        truncated = true
       }
     }
   }

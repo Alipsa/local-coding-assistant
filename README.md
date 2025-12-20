@@ -45,11 +45,14 @@ Spring Shell exposes the commands.
   Patterns are glob-like and applied relative to the repo (for example: `.env`, `*.pem`, `credentials.*`, `build/`).
 - Configure command execution policy with `assistant.command.allowlist` and `assistant.command.denylist`
   in `src/main/resources/application.properties` (comma-separated prefixes like `mvn*,git*`).
+- Local-only mode (`assistant.local-only=true`) disables remote REST access and web search unless you opt in.
 - REST access is local-only by default; configure `assistant.rest.remote.enabled`, `assistant.rest.api-key`,
   `assistant.rest.require-https`, and `assistant.rest.rate-limit.per-minute` in
-  `src/main/resources/application.properties` if needed.
+  `src/main/resources/application.properties` if needed. Optional OIDC settings live under
+  `assistant.rest.oidc.*`, and scope enforcement uses `assistant.rest.scope.read` / `assistant.rest.scope.write`.
 - Optional static analysis for reviews uses `assistant.sast.command` (for example:
   `semgrep --config auto --json {paths}`).
+- No telemetry is collected or sent; logs are sanitized to redact common secrets.
 
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.

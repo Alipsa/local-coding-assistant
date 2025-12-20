@@ -28,7 +28,7 @@ import java.nio.file.Path
 
 class ShellCommandsSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback-model")
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback-model")
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   FileEditingTool fileEditingTool = Mock()
@@ -190,6 +190,14 @@ class ShellCommandsSpec extends Specification {
     out.contains("Results: 2")
     out.contains("1. T1 - http://example.com")
     out.contains("S1")
+  }
+
+  def "search rejects blank query"() {
+    when:
+    commands.search("  ", 5, "default", "duckduckgo", 15000L, true, null)
+
+    then:
+    thrown(IllegalArgumentException)
   }
 
   def "edit returns edited text when send is false"() {

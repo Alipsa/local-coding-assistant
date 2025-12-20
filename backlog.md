@@ -123,7 +123,7 @@ The measures below aim to:
 
 Prevent the agent from performing destructive or unintended actions on the local system.
 
-- **14.1.1 [ ] Interactive Confirmation for Destructive Operations**  
+- **14.1.1 [x] Interactive Confirmation for Destructive Operations**  
   Implement a strict confirmation gate (`[y/N/a]`) for any command that:
   - Modifies the file system in a destructive way (`rm`, `mv`, `cp -r`, etc.),
   - Applies git changes (`git apply`, `git commit`, `git push`),
@@ -210,13 +210,13 @@ Define clear modes for how the REST API is exposed:
   - Keys stored in a configuration file or environment variable.
   - The ability to generate/revoke keys.
 
-- **14.3.2.2 [ ] OAuth2/OIDC (Optional)**  
+- **14.3.2.2 [x] OAuth2/OIDC (Optional)**  
   For interactive, user-facing remote UIs, consider integrating OAuth2/OIDC via Spring Security
   so that:
   - Users authenticate through a standard identity provider.
   - Roles/authorities can be mapped to fine-grained permissions.
 
-- **14.3.2.3 [ ] Scope-Based Authorization**  
+- **14.3.2.3 [x] Scope-Based Authorization**  
   Implement a scope or permission model that can be applied both to API keys and OIDC users:
   - Example scopes:
     - `file:read`, `file:write`
@@ -245,7 +245,7 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.5 Input Validation
 
-- **14.3.5.1 [ ] Validate CLI & API Inputs**  
+- **14.3.5.1 [x] Validate CLI & API Inputs**  
   Apply rigorous validation and sanitisation to:
   - CLI arguments (paths, command names, flags).
   - REST request payloads and query parameters.
@@ -264,15 +264,15 @@ Define clear modes for how the REST API is exposed:
 
 Uphold the "local-first" promise and protect user data.
 
-- **14.4.1 [ ] Guarantee Local-Only Operation**  
+- **14.4.1 [x] Guarantee Local-Only Operation**  
   Explicitly document and test that:
   - No code, prompts, project data, or metadata is sent to third-party cloud services.
   - All inference happens via locally-running Ollama models or other local runtimes.
 
-- **14.4.2 [ ] No Telemetry**  
+- **14.4.2 [x] No Telemetry**  
   Do not collect or transmit any usage data or telemetry.
 
-- **14.4.3 [ ] Log Sanitization**  
+- **14.4.3 [x] Log Sanitization**  
   Review logging across the project to ensure that:
   - Logs do not include large code blocks, prompt bodies, or agent responses by default.
   - Logs explicitly avoid storing secrets or sensitive content.

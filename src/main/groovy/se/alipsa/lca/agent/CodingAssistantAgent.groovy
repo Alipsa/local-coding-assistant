@@ -121,6 +121,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   protected final double craftTemperature
   protected final double reviewTemperature
   protected final boolean webSearchEnabledDefault
+  protected final boolean localOnly
   protected final LlmOptions craftLlmOptions
   protected final LlmOptions reviewLlmOptions
   private final FileEditingTool fileEditingAgent
@@ -134,6 +135,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,
+    @Value('${assistant.local-only:true}') boolean localOnly,
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent,
     CodeSearchTool codeSearchTool
@@ -144,6 +146,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.craftTemperature = craftTemperature
     this.reviewTemperature = reviewTemperature
     this.webSearchEnabledDefault = webSearchEnabledDefault
+    this.localOnly = localOnly
     this.craftLlmOptions = LlmOptions.withModel(llmModel).withTemperature(craftTemperature)
     this.reviewLlmOptions = LlmOptions.withModel(llmModel).withTemperature(reviewTemperature)
     this.fileEditingAgent = fileEditingAgent
@@ -292,6 +295,9 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   @Action(description = "Search the web for a given query with options")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query, WebSearchTool.SearchOptions options) {
+    if (localOnly) {
+      return []
+    }
     WebSearchTool.SearchOptions resolved = WebSearchTool.withDefaults(options, webSearchEnabledDefault)
     webSearchAgent.search(query, resolved)
   }

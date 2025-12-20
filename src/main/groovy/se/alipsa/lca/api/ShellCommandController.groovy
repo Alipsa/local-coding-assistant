@@ -3,12 +3,14 @@ package se.alipsa.lca.api
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.springframework.http.MediaType
+import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.shell.ShellCommands
@@ -94,6 +96,7 @@ class ShellCommandController {
     @RequestParam(name = "headless", defaultValue = "true") boolean headless,
     @RequestParam(name = "enableWebSearch", required = false) Boolean enableWebSearch
   ) {
+    requireValue(query, "query")
     requireMin(limit, 1, "limit")
     requireMin(timeoutMillis, 1, "timeoutMillis")
     shellCommands.search(query, limit, session, provider, timeoutMillis, headless, enableWebSearch)
@@ -109,6 +112,7 @@ class ShellCommandController {
     @RequestParam(name = "maxChars", defaultValue = "8000") int maxChars,
     @RequestParam(name = "maxTokens", defaultValue = "0") int maxTokens
   ) {
+    requireValue(query, "query")
     requireMin(context, 0, "context")
     requireMin(limit, 1, "limit")
     requireMin(maxChars, 0, "maxChars")
@@ -150,6 +154,7 @@ class ShellCommandController {
     @RequestParam(name = "paths", required = false) List<String> paths,
     @RequestParam(name = "stat", defaultValue = "false") boolean stat
   ) {
+    requireMin(context, 0, "context")
     shellCommands.gitDiff(staged, context, paths, stat)
   }
 
@@ -158,12 +163,14 @@ class ShellCommandController {
     boolean cached = request.cached != null ? request.cached : false
     boolean check = request.check != null ? request.check : true
     boolean confirm = request.confirm != null ? request.confirm : false
+    requireConfirmation(confirm, "git apply")
     shellCommands.gitApply(request.patch, request.patchFile, cached, check, confirm)
   }
 
   @PostMapping(path = "/stage", consumes = MediaType.APPLICATION_JSON_VALUE)
   String stage(@RequestBody StageRequest request) {
     boolean confirm = request.confirm != null ? request.confirm : false
+    requireConfirmation(confirm, "stage")
     shellCommands.stage(request.paths, request.file, request.hunks, confirm)
   }
 
@@ -187,6 +194,7 @@ class ShellCommandController {
   String gitPush(@RequestBody GitPushRequest request) {
     boolean force = request.force != null ? request.force : false
     boolean confirm = request.confirm != null ? request.confirm : false
+    requireConfirmation(confirm, "git push")
     shellCommands.gitPush(force, confirm)
   }
 
@@ -212,6 +220,7 @@ class ShellCommandController {
     requireMin(maxOutputChars, 1, "maxOutputChars")
     boolean confirm = request.confirm != null ? request.confirm : false
     boolean agentRequested = request.agentRequested != null ? request.agentRequested : false
+    requireConfirmation(confirm, "run command")
     shellCommands.runCommand(command, timeoutMillis, maxOutputChars, session, confirm, agentRequested)
   }
 
@@ -219,6 +228,9 @@ class ShellCommandController {
   String apply(@RequestBody ApplyPatchRequest request) {
     boolean dryRun = request.dryRun != null ? request.dryRun : true
     boolean confirm = request.confirm != null ? request.confirm : false
+    if (!dryRun) {
+      requireConfirmation(confirm, "apply patch")
+    }
     shellCommands.applyPatch(request.patch, request.patchFile, dryRun, confirm)
   }
 
@@ -227,6 +239,9 @@ class ShellCommandController {
     String filePath = requireValue(request.filePath, "filePath")
     boolean dryRun = request.dryRun != null ? request.dryRun : true
     boolean confirm = request.confirm != null ? request.confirm : false
+    if (!dryRun) {
+      requireConfirmation(confirm, "apply blocks")
+    }
     shellCommands.applyBlocks(filePath, request.blocks, request.blocksFile, dryRun, confirm)
   }
 
@@ -234,6 +249,10 @@ class ShellCommandController {
   String revert(@RequestBody RevertRequest request) {
     String filePath = requireValue(request.filePath, "filePath")
     boolean dryRun = request.dryRun != null ? request.dryRun : false
+    boolean confirm = request.confirm != null ? request.confirm : false
+    if (!dryRun) {
+      requireConfirmation(confirm, "revert")
+    }
     shellCommands.revert(filePath, dryRun)
   }
 
@@ -244,6 +263,7 @@ class ShellCommandController {
     Integer end = request.end
     String symbol = request.symbol
     int padding = request.padding != null ? request.padding : 2
+    requireMin(padding, 0, "padding")
     shellCommands.context(filePath, start, end, symbol, padding)
   }
 
@@ -268,6 +288,15 @@ class ShellCommandController {
   private static void requireMin(long value, long min, String field) {
     if (value < min) {
       throw new IllegalArgumentException("${field} must be >= ${min}")
+    }
+  }
+
+  private static void requireConfirmation(boolean confirmed, String action) {
+    if (!confirmed) {
+      throw new ResponseStatusException(
+        HttpStatus.BAD_REQUEST,
+        "Confirmation required for ${action}. Set confirm=true to proceed."
+      )
     }
   }
 
@@ -403,6 +432,7 @@ class ShellCommandController {
   static class RevertRequest {
     String filePath
     Boolean dryRun
+    Boolean confirm
   }
 
   @Canonical

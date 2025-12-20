@@ -34,6 +34,7 @@ import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.SecretScanner
 import se.alipsa.lca.tools.SastTool
+import se.alipsa.lca.tools.LogSanitizer
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -211,6 +212,7 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
   ) {
+    requireNonBlank(prompt, "prompt")
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
@@ -266,6 +268,7 @@ class ShellCommands {
     @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security,
     @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast
   ) {
+    requireNonBlank(prompt, "prompt")
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     String health = ensureOllamaHealth()
     if (health != null) {
@@ -312,6 +315,8 @@ class ShellCommands {
     if (!Files.exists(reviewLogPath)) {
       return "No reviews logged yet."
     }
+    requireMin(limit, 1, "limit")
+    requireMin(page, 1, "page")
     Instant sinceInstant = parseInstant(since)
     List<LogEntry> entries = loadLogEntries(pathFilter, minSeverity, sinceInstant)
     if (entries.isEmpty()) {
@@ -346,10 +351,16 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Run browser in headless mode") boolean headless,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override web search enablement (true/false)") Boolean enableWebSearch
   ) {
+    requireNonBlank(query, "query")
+    requireMin(limit, 1, "limit")
+    requireMin(timeoutMillis, 1, "timeoutMillis")
     boolean defaultEnabled = sessionState.isWebSearchEnabled(session)
     Boolean overrideEnabled = enableWebSearch
     boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
     if (!allowed) {
+      if (sessionState.isLocalOnly()) {
+        return "Web search is disabled in local-only mode. Set assistant.local-only=false to enable."
+      }
       return "Web search is disabled for this session. " +
         "Enable globally in application.properties with assistant.web-search.enabled=true, " +
         "or enable for this request by passing --enable-web-search true."
@@ -400,6 +411,11 @@ class ShellCommands {
     @ShellOption(defaultValue = "8000", help = "Max chars when packing") int maxChars,
     @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens
   ) {
+    requireNonBlank(query, "query")
+    requireMin(context, 0, "context")
+    requireMin(limit, 1, "limit")
+    requireMin(maxChars, 0, "maxChars")
+    requireMin(maxTokens, 0, "maxTokens")
     printProgressStart("Repository search")
     List<CodeSearchTool.SearchHit> hits = codeSearchTool.search(query, paths, context, limit)
     printProgressDone("Repository search")
@@ -470,6 +486,7 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "Paths to include") List<String> paths,
     @ShellOption(defaultValue = "false", help = "Show stats instead of full patch") boolean stat
   ) {
+    requireMin(context, 0, "context")
     GitTool.GitResult result = gitTool.diff(staged, paths, context, stat)
     formatGitResult("Diff", result)
   }
@@ -774,6 +791,7 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Preview changes without writing") boolean dryRun,
     @ShellOption(defaultValue = "true", help = "Ask for confirmation before writing changes") boolean confirm
   ) {
+    requireNonBlank(filePath, "filePath")
     String body = resolvePatchBody(blocks, blocksFile)
     String title = dryRun ? "Edit Preview" : "Edit Result"
     if (dryRun) {
@@ -816,6 +834,7 @@ class ShellCommands {
     @ShellOption(help = "File path relative to project root") String filePath,
     @ShellOption(defaultValue = "false", help = "Preview the restore without writing") boolean dryRun
   ) {
+    requireNonBlank(filePath, "filePath")
     printProgressStart("Edit revert")
     String output = formatEditResult(fileEditingTool.revertLatestBackup(filePath, dryRun))
     printProgressDone("Edit revert")
@@ -833,6 +852,8 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Symbol to locate instead of line numbers") String symbol,
     @ShellOption(defaultValue = "2", help = "Padding lines around the selection") int padding
   ) {
+    requireNonBlank(filePath, "filePath")
+    requireMin(padding, 0, "padding")
     FileEditingTool.TargetedEditContext ctx
     if (symbol != null && symbol.trim()) {
       ctx = fileEditingTool.contextBySymbol(filePath, symbol, padding)
@@ -854,6 +875,8 @@ class ShellCommands {
     @ShellOption(defaultValue = "false", help = "Show directories only") boolean dirsOnly,
     @ShellOption(defaultValue = "2000", help = "Maximum entries to render (0 for unlimited)") int maxEntries
   ) {
+    requireMin(depth, -1, "depth")
+    requireMin(maxEntries, 0, "maxEntries")
     printProgressStart("Repository tree")
     TreeTool.TreeResult result = treeTool.buildTree(depth, dirsOnly, maxEntries)
     printProgressDone("Repository tree")
@@ -1050,6 +1073,19 @@ class ShellCommands {
     }
   }
 
+  private static String requireNonBlank(String value, String field) {
+    if (value == null || value.trim().isEmpty()) {
+      throw new IllegalArgumentException("${field} must not be blank")
+    }
+    value
+  }
+
+  private static void requireMin(long value, long min, String field) {
+    if (value < min) {
+      throw new IllegalArgumentException("${field} must be >= ${min}")
+    }
+  }
+
   @CompileStatic
   protected Instant nowInstant() {
     Instant.now()
@@ -1077,17 +1113,19 @@ class ShellCommands {
       if (parent != null) {
         Files.createDirectories(parent)
       }
+      String sanitizedPrompt = LogSanitizer.sanitize(prompt)
       List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
+      String rendered = LogSanitizer.sanitize(renderReview(summary, minSeverity, false))
       String entry = """
 === Review ===
-Prompt: ${prompt}
+Prompt: ${sanitizedPrompt}
 Paths: ${paths ? paths.join(", ") : "none"}
 Staged: ${staged}
 Timestamp: ${nowInstant()}
 Findings: ${filtered.size()} (min ${minSeverity})
 Tests: ${summary.tests.size()}
 ---
-${renderReview(summary, minSeverity, false)}
+${rendered}
 ---
 """
       Files.writeString(
