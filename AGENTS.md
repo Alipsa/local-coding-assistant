@@ -8,4 +8,4 @@
 - Indent with 2 spaces. Max line length is 120 characters.
 - Follow existing code style and conventions.
 - Write unit tests for all new functionality (use Spock 2.4).
-- Always run all test with `./mvnw test` after a feature is fully implemented or a bugfix completed to ensure there are no regressions.
+- Always run all tests with `./mvnw test` after a feature is fully implemented or a bugfix completed to ensure there are no regressions.
