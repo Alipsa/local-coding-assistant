@@ -15,7 +15,7 @@ Spring Shell exposes the commands.
   (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
 - Ollama-first configuration using `qwen3-coder:30b` (see `src/main/resources/application.properties`).
 - Helper scripts for launching the shell (`scripts/shell.sh`) and installing a DeepSeek model locally (`deepseek.sh`).
-- Documentation stubs for Ollama setup (`docs/llm-docs.md`) and A2A interop (`docs/a2a.md`).
+- Documentation stub for Ollama setup (`docs/llm-docs.md`).
 
 ## Getting started
 1. Install Java 21 and ensure the Ollama daemon is running.
@@ -32,7 +32,6 @@ Spring Shell exposes the commands.
   - `assistant.llm.model`, `assistant.llm.temperature.craft`, `assistant.llm.temperature.review`
   - `assistant.llm.max-tokens`, `assistant.system-prompt`
   - `snippetWordCount`, `reviewWordCount`
-- For agent-to-agent (A2A) interoperability, follow `docs/a2a.md`.
 
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.

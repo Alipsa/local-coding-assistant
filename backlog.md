@@ -96,7 +96,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 
 ## 11) Remove A2A (Agent-to-Agent Interoperability)
 
-- 11.1 [ ] A2A is not needed for this application and should be removed to reduce complexity.
+- 11.1 [x] A2A is not needed for this application and should be removed to reduce complexity.
   Remove all A2A-related code, documentation, and configuration from the project
   to streamline the codebase and focus on single-agent functionality.
 
