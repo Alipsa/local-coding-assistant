@@ -90,9 +90,9 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 - 9.3 [x] Support automatic fallbacks to a smaller model if the default is unavailable.
 
 ## 10) UX polish and docs
-- 10.1 [ ] Add streaming progress indicators and clear sectioned output for edits/reviews/search.
-- 10.2 [ ] Document all commands, options, and expected workflows in `README.md` and `docs/`.
-- 10.3 [ ] Provide quickstart examples showing edit/review/search/git flows end-to-end.
+- 10.1 [x] Add streaming progress indicators and clear sectioned output for edits/reviews/search.
+- 10.2 [x] Document all commands, options, and expected workflows in `README.md` and `docs/`.
+- 10.3 [x] Provide quickstart examples showing edit/review/search/git flows end-to-end.
 
 ## 11) Remove A2A (Agent-to-Agent Interoperability)
 
