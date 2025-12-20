@@ -1,9 +1,14 @@
 ![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Groovy](https://img.shields.io/badge/groovy-4298B8.svg?style=for-the-badge&logo=apachegroovy&logoColor=white)
 ![Spring](https://img.shields.io/badge/spring-%236DB33F.svg?style=for-the-badge&logo=spring&logoColor=white)
-![Ollama](https://img.shields.io/badge/ollama-000000.svg?style=for-the-badge&logo=ollama&logoColor=white) 
-[![Maven Central](https://img.shields.io/maven-central/v/se.alipsa.lca/local-coding-assistant.svg?style=for-the-badge)](https://search.maven.org/artifact/se.alipsa.lca/local-coding-assistant)
-[![Javadoc](https://javadoc.io/badge2/se.alipsa.lca/local-coding-assistant/javadoc.svg?style=for-the-badge)](https://javadoc.io/doc/se.alipsa.lca/local-coding-assistant)
+![Ollama](https://img.shields.io/badge/ollama-000000.svg?style=for-the-badge&logo=ollama&logoColor=white)
+[![Maven Central][maven-badge]][maven-link]
+[![Javadoc][javadoc-badge]][javadoc-link]
+
+[maven-badge]: https://img.shields.io/maven-central/v/se.alipsa.lca/local-coding-assistant.svg?style=for-the-badge
+[maven-link]: https://search.maven.org/artifact/se.alipsa.lca/local-coding-assistant
+[javadoc-badge]: https://javadoc.io/badge2/se.alipsa.lca/local-coding-assistant/javadoc.svg?style=for-the-badge
+[javadoc-link]: https://javadoc.io/doc/se.alipsa.lca/local-coding-assistant
 
 # Local Coding Assistant
 
@@ -37,6 +42,7 @@ Spring Shell exposes the commands.
 
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.
+REST usage is documented in `docs/rest.md`.
 
 - `chat` (`/chat`): Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.

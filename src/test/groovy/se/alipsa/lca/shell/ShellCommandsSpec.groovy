@@ -563,7 +563,7 @@ class ShellCommandsSpec extends Specification {
     }
 
     when:
-    def out = cmds.gitPush(false)
+    def out = cmds.gitPush(false, true)
 
     then:
     out.contains("pushed")
