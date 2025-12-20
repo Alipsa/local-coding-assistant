@@ -105,7 +105,7 @@ Why: When a user asks "Where is the authentication logic?", the agent cannot see
 - 12.1 [x] Create a tool that dumps the directory structure (respecting .gitignore) into the context so the agent can "see" the project layout.
 
 ## 13) REST integration
-Make sure the REST interface can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
+Make sure the REST interface (localhost access) can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
 overlap between CLI and REST functionality. 
 
 ## 14) Security Hardening
