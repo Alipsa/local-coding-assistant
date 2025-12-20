@@ -107,6 +107,7 @@ Why: When a user asks "Where is the authentication logic?", the agent cannot see
 ## 13) REST integration
 Make sure the REST interface (localhost access) can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
 overlap between CLI and REST functionality. 
+- 13.1 [x] Provide REST endpoints for all CLI commands with shared logic and update REST documentation/tests.
 
 ## 14) Security Hardening
 

@@ -565,14 +565,20 @@ class ShellCommands {
 
   @ShellMethod(key = ["git-push", "/git-push"], value = "Push the current branch with confirmation.")
   String gitPush(
-    @ShellOption(defaultValue = "false", help = "Use --force-with-lease") boolean force
+    @ShellOption(defaultValue = "false", help = "Use --force-with-lease") boolean force,
+    @ShellOption(defaultValue = "true", help = "Ask for confirmation before pushing") boolean confirm
   ) {
     if (!gitTool.isGitRepo()) {
       return "Not a git repository."
     }
-    ConfirmChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
-    if (choice != ConfirmChoice.YES && choice != ConfirmChoice.ALL) {
-      return "Push canceled."
+    if (confirm && !applyAllConfirmed) {
+      ConfirmChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
+      if (choice != ConfirmChoice.YES && choice != ConfirmChoice.ALL) {
+        return "Push canceled."
+      }
+      if (choice == ConfirmChoice.ALL) {
+        applyAllConfirmed = true
+      }
     }
     GitTool.GitResult result = gitTool.push(force)
     formatGitResult("Push", result)
