@@ -35,11 +35,11 @@ class TreeTool {
     }
     List<String> files = result.output?.readLines()?.findAll { it != null && !it.trim().isEmpty() } ?: List.of()
     TreeNode root = new TreeNode(".", true)
-    boolean truncated = false
+    boolean truncatedBuild = false
     int added = 0
     for (String path : files) {
       if (entryLimit > 0 && added >= entryLimit) {
-        truncated = true
+        truncatedBuild = true
         break
       }
       TreeNode current = root
@@ -54,22 +54,21 @@ class TreeTool {
           current.children.put(name, child)
           added++
           if (entryLimit > 0 && added >= entryLimit) {
-            truncated = true
+            truncatedBuild = true
             break
           }
         }
         current = child
       }
-      if (truncated) {
+      if (truncatedBuild) {
         break
       }
     }
     StringBuilder output = new StringBuilder()
     int[] rendered = new int[] { 0 }
     renderTree(root, output, 0, depthLimit, entryLimit, rendered)
-    if (entryLimit > 0 && rendered[0] >= entryLimit) {
-      truncated = true
-    }
+    boolean truncatedRender = entryLimit > 0 && rendered[0] >= entryLimit
+    boolean truncated = truncatedBuild || truncatedRender
     String text = output.toString().stripTrailing()
     new TreeResult(true, true, truncated, rendered[0], text, null)
   }
