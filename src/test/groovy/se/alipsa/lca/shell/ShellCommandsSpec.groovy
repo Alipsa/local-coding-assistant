@@ -127,6 +127,7 @@ class ShellCommandsSpec extends Specification {
     )
 
     then:
+    response.contains("=== Review ===")
     response.contains("[High] src/App.groovy:10 - bug")
     !response.contains("\u001B[")
     response.contains("Tests:")
@@ -178,7 +179,9 @@ class ShellCommandsSpec extends Specification {
       opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
       opts.webSearchEnabled
     }) >> results
-    out.contains("T1 - http://example.com")
+    out.contains("=== Web Search ===")
+    out.contains("Results: 2")
+    out.contains("1. T1 - http://example.com")
     out.contains("S1")
   }
 
@@ -217,6 +220,7 @@ class ShellCommandsSpec extends Specification {
     def output = commands.applyPatch("patch body", null, true, true)
 
     then:
+    output.contains("=== Edit Preview ===")
     output.contains("Dry run")
     output.contains("f.txt")
     output.contains("preview")
@@ -236,6 +240,7 @@ class ShellCommandsSpec extends Specification {
     def message = commands.revert("f.txt", false)
 
     then:
+    message.contains("=== Edit Result ===")
     message.contains("Restored f.txt")
     message.contains("backups/f.txt.1.bak")
   }
@@ -322,6 +327,7 @@ class ShellCommandsSpec extends Specification {
       null,
       List.of()
     )
+    result.contains("=== Edit Preview ===")
     result.contains("Dry run")
   }
 
