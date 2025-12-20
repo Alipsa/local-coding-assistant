@@ -1,7 +1,9 @@
 ![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Groovy](https://img.shields.io/badge/groovy-4298B8.svg?style=for-the-badge&logo=apachegroovy&logoColor=white)
 ![Spring](https://img.shields.io/badge/spring-%236DB33F.svg?style=for-the-badge&logo=spring&logoColor=white)
-![Ollama](https://img.shields.io/badge/ollama-000000.svg?style=for-the-badge&logo=ollama&logoColor=white)
+![Ollama](https://img.shields.io/badge/ollama-000000.svg?style=for-the-badge&logo=ollama&logoColor=white) 
+[![Maven Central](https://img.shields.io/maven-central/v/se.alipsa.lca/local-coding-assistant.svg?style=for-the-badge)](https://search.maven.org/artifact/se.alipsa.lca/local-coding-assistant)
+[![Javadoc](https://javadoc.io/badge2/se.alipsa.lca/local-coding-assistant/javadoc.svg?style=for-the-badge)](https://javadoc.io/doc/se.alipsa.lca/local-coding-assistant)
 
 # Local Coding Assistant
 
