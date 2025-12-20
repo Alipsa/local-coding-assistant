@@ -244,6 +244,26 @@ six
     cachedDiff.contains("cached staged")
   }
 
+  def "listFiles includes tracked and untracked but not ignored"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve(".gitignore"), "ignored/\n")
+    Files.createDirectories(tempDir.resolve("ignored"))
+    Files.writeString(tempDir.resolve("ignored/skip.txt"), "skip")
+    Files.writeString(tempDir.resolve("tracked.txt"), "tracked")
+    Files.writeString(tempDir.resolve("notes.txt"), "notes")
+    runGit("add", "tracked.txt")
+
+    when:
+    def result = gitTool.listFiles()
+
+    then:
+    result.success
+    result.output.contains("tracked.txt")
+    result.output.contains("notes.txt")
+    !result.output.contains("ignored/skip.txt")
+  }
+
   def "push succeeds to local bare remote"() {
     given:
     initRepo()

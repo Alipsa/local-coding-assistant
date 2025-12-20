@@ -182,6 +182,10 @@ class GitTool {
     runGit(cmd)
   }
 
+  GitResult listFiles() {
+    runGit(List.of("ls-files", "--others", "--cached", "--exclude-standard"))
+  }
+
   private void addPathArgs(List<String> cmd, List<String> paths) {
     if (paths == null || paths.isEmpty()) {
       return

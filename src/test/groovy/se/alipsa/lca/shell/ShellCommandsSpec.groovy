@@ -17,6 +17,7 @@ import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ModelRegistry
+import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
 import spock.lang.TempDir
@@ -681,5 +682,41 @@ class ShellCommandsSpec extends Specification {
 
     expect:
     cmds.health().contains("unreachable")
+  }
+
+  def "tree formats repository output"() {
+    given:
+    TreeTool treeTool = Stub() {
+      buildTree(3, false, 100) >> new TreeTool.TreeResult(
+        true,
+        true,
+        false,
+        2,
+        ".\n  src/\n    App.groovy",
+        null
+      )
+    }
+    ShellCommands treeCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      commandRunner,
+      modelRegistry,
+      tempDir.resolve("tree.log").toString(),
+      treeTool
+    )
+
+    when:
+    def out = treeCommands.tree(3, false, 100)
+
+    then:
+    out.contains("=== Repository Tree ===")
+    out.contains("src/")
   }
 }
