@@ -49,6 +49,15 @@ class Personas {
         + "coverage notes."
     )
 
+  static final RoleGoalBackstory SECURITY_REVIEWER = RoleGoalBackstory
+    .withRole("Security Reviewer")
+    .andGoal(
+      "Identify security vulnerabilities, unsafe defaults, and data handling risks in proposed changes"
+    )
+    .andBackstory(
+      "Focuses on OWASP-style risks, secrets handling, validation gaps, and unsafe system interactions."
+    )
+
   static final RoleGoalBackstory ARCHITECT = RoleGoalBackstory
     .withRole("Software Architect")
     .andGoal("Explain design trade-offs and guide structural changes for the local coding assistant")
@@ -159,16 +168,29 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     LlmOptions llmOverride,
     String systemPromptOverride
   ) {
+    reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, Personas.REVIEWER)
+  }
+
+  @Action
+  ReviewedCodeSnippet reviewCode(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    Ai ai,
+    LlmOptions llmOverride,
+    String systemPromptOverride,
+    RoleGoalBackstory reviewerPersona
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     LlmOptions options = llmOverride ?: reviewLlmOptions
-    String reviewPrompt = buildReviewPrompt(userInput, codeSnippet, systemPromptOverride)
+    RoleGoalBackstory reviewer = reviewerPersona ?: Personas.REVIEWER
+    String reviewPrompt = buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
     String review = ai
       .withLlm(options)
-      .withPromptContributor(Personas.REVIEWER)
+      .withPromptContributor(reviewer)
       .generateText(reviewPrompt)
     String formattedReview = enforceReviewFormat(review)
 
-    new ReviewedCodeSnippet(codeSnippet, formattedReview, Personas.REVIEWER)
+    new ReviewedCodeSnippet(codeSnippet, formattedReview, reviewer)
   }
 
   @Action
@@ -318,15 +340,18 @@ Notes:
   protected String buildReviewPrompt(
     UserInput userInput,
     CodeSnippet codeSnippet,
-    String systemPromptOverride
+    String systemPromptOverride,
+    RoleGoalBackstory reviewerPersona
   ) {
     String extraSystem = systemPromptOverride?.trim()
+    boolean securityFocus = reviewerPersona == Personas.SECURITY_REVIEWER
     """
 You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
 Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
 Reference likely target files or layers and call out missing Spock coverage.
 Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
+${securityFocus ? "Focus on secrets, injection risks, auth bypasses, insecure defaults, and data exposure." : ""}
 Format findings as bullet lines using: [Severity] file:line - comment (severity: High/Medium/Low; file may be 'general').
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Limit narrative to ${reviewWordCount} words.

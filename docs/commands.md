@@ -31,6 +31,7 @@ Options:
 - `--min-severity`: Minimum severity (`LOW`, `MEDIUM`, `HIGH`).
 - `--no-color`: Disable ANSI colors.
 - `--log-review`: Persist review summary to log.
+- `--security`: Focus on security risks in the review.
 - `--session`, `--model`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
 
 ## reviewlog (/reviewlog)
@@ -139,6 +140,8 @@ Draft an imperative commit message from staged changes.
 Options:
 - `--session`, `--model`, `--temperature`, `--max-tokens`.
 - `--hint`: Optional guidance for the commit message.
+- `--secret-scan`: Scan staged diff for secrets before suggesting.
+- `--allow-secrets`: Allow suggestion even if secrets are detected.
 
 ## git-push (/git-push)
 Push the current branch with confirmation.

@@ -111,7 +111,7 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -127,6 +127,7 @@ class ShellCommandsSpec extends Specification {
       false,
       ReviewSeverity.LOW,
       true,
+      false,
       false
     )
 
@@ -144,7 +145,8 @@ class ShellCommandsSpec extends Specification {
         opts.getTemperature() == 0.2d &&
         opts.getMaxTokens() == 1024
       },
-      "system"
+      "system",
+      _
     ) >> reviewed
   }
 
@@ -274,11 +276,11 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [Low] general - note\nTests:\n- test",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
 
     when:
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
 
     then:
     Files.exists(tempDir.resolve("reviews.log"))
@@ -342,9 +344,9 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
 
     when:
     def out = commands.reviewLog(ReviewSeverity.HIGH, "src/App.groovy", 5, 1, null, true)
@@ -361,7 +363,7 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
     def instants = [java.time.Instant.parse("2025-01-01T00:00:00Z"), java.time.Instant.parse("2025-01-01T00:00:10Z")].iterator()
     ShellCommands clocked = new ShellCommands(
@@ -380,8 +382,8 @@ class ShellCommandsSpec extends Specification {
         instants.hasNext() ? instants.next() : java.time.Instant.now()
       }
     }
-    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
-    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
+    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
 
     when:
     def out = clocked.reviewLog(ReviewSeverity.LOW, null, 1, 2, "2025-01-01T00:00:05Z", true)
@@ -424,10 +426,37 @@ class ShellCommandsSpec extends Specification {
     }
 
     when:
-    def message = commitCommands.commitSuggest("default", null, 0.5d, 512, "focus on bugfix")
+    def message = commitCommands.commitSuggest("default", null, 0.5d, 512, "focus on bugfix", true, false)
 
     then:
     message.contains("Subject")
+  }
+
+  def "commitSuggest blocks when secrets are detected"() {
+    given:
+    def stagedDiff = new GitTool.GitResult(true, true, 0, "AKIA1234567890ABCDEF\n", "")
+    GitTool repoGit = Mock()
+    _ * repoGit.isGitRepo() >> true
+    _ * repoGit.hasStagedChanges() >> true
+    _ * repoGit.stagedDiff() >> stagedDiff
+    ShellCommands commitCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      commandRunner,
+      modelRegistry,
+      tempDir.resolve("commit.log").toString()
+    )
+
+    when:
+    def message = commitCommands.commitSuggest("default", null, null, null, null, true, false)
+
+    then:
+    message.contains("Potential secrets detected")
+    0 * ai.withLlm(_)
   }
 
   def "stage cancels when user declines confirmation"() {

@@ -131,7 +131,7 @@ Prevent the agent from performing destructive or unintended actions on the local
 
   This builds on items `7.5` and `8.4`: the agent can *propose* actions, but the user must confirm them.
 
-- **14.1.2 [ ] Filesystem Access Control**  
+- **14.1.2 [x] Filesystem Access Control**  
   Strictly limit file I/O to the current project root (or a configured workspace root).  
   Add support for an `.aiexclude` file (similar to `.gitignore`) to prevent the agent from
   reading or touching sensitive files such as:
@@ -139,7 +139,7 @@ Prevent the agent from performing destructive or unintended actions on the local
   - `~/.ssh`, keychains, OS config directories
   - IDE config files or any path explicitly excluded by the user.
 
-- **14.1.3 [ ] Command Execution Safety**  
+- **14.1.3 [x] Command Execution Safety**  
   For the `/run` and other execution-related commands:
   - Start by enforcing:
     - Explicit confirmation before execution.
@@ -157,7 +157,7 @@ Prevent the agent from performing destructive or unintended actions on the local
 
 Improve the agent’s ability to write and review code with security in mind.
 
-- **14.2.1 [ ] Dedicated Security Persona**  
+- **14.2.1 [x] Dedicated Security Persona**  
   Add a specialised "Security Reviewer" persona/prompt that focuses on:
   - Common vulnerabilities (OWASP Top 10 style): injection, insecure deserialization,
     hardcoded secrets, insecure crypto, etc.
@@ -172,7 +172,7 @@ Improve the agent’s ability to write and review code with security in mind.
   - Parse and summarise findings (rules, severity, locations).
   - Present them together with the LLM-based review for better coverage.
 
-- **14.2.3 [ ] Secret Detection Before Commit**  
+- **14.2.3 [x] Secret Detection Before Commit**  
   Before running `commit-suggest` or any commit helper:
   - Scan the staged diff for likely secrets (API keys, tokens, passwords).
   - If a potential secret is detected:
@@ -204,7 +204,7 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.2 Authentication & Authorization (REST)
 
-- **14.3.2.1 [ ] API Key Authentication**  
+- **14.3.2.1 [x] API Key Authentication**  
   For machine-to-machine usage (e.g., remote tools or scripts), support simple API key
   authentication with:
   - Keys stored in a configuration file or environment variable.
@@ -233,11 +233,11 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.4 Protection Against Abuse
 
-- **14.3.4.1 [ ] Rate Limiting & Throttling**  
+- **14.3.4.1 [x] Rate Limiting & Throttling**  
   Implement rate limiting for remote requests to prevent accidental or malicious
   denial-of-service scenarios.
 
-- **14.3.4.2 [ ] Audit Logging for Remote Operations**  
+- **14.3.4.2 [x] Audit Logging for Remote Operations**  
   Maintain an audit log for all operations invoked via remote REST:
   - Caller identity (API key or authenticated user).
   - Operation type (file read/write, git, run).

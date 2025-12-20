@@ -14,6 +14,7 @@ import org.springframework.shell.standard.ShellOption
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.agent.Personas
 import se.alipsa.lca.review.ReviewFinding
 import se.alipsa.lca.review.ReviewParser
 import se.alipsa.lca.review.ReviewSeverity
@@ -31,6 +32,7 @@ import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
+import se.alipsa.lca.tools.SecretScanner
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -60,6 +62,7 @@ class ShellCommands {
   private final CommandPolicy commandPolicy
   private final ModelRegistry modelRegistry
   private final TreeTool treeTool
+  private final SecretScanner secretScanner
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -157,6 +160,7 @@ class ShellCommands {
     this.commandPolicy = commandPolicy != null ? commandPolicy : new CommandPolicy("", "")
     this.modelRegistry = modelRegistry
     this.treeTool = treeTool != null ? treeTool : new TreeTool(resolveProjectRoot(fileEditingTool), gitTool)
+    this.secretScanner = new SecretScanner()
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -251,7 +255,8 @@ class ShellCommands {
     @ShellOption(defaultValue = "false", help = "Include staged git diff") boolean staged,
     @ShellOption(defaultValue = "LOW", help = "Minimum severity to display/log: LOW, MEDIUM, HIGH") ReviewSeverity minSeverity,
     @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
-    @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
+    @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview,
+    @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security
   ) {
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     String health = ensureOllamaHealth()
@@ -269,7 +274,8 @@ class ShellCommands {
       new CodeSnippet(reviewPayload),
       ai,
       reviewOptions,
-      system
+      system,
+      security ? Personas.SECURITY_REVIEWER : Personas.REVIEWER
     )
     printProgressDone("Review")
     ReviewSummary summary = ReviewParser.parse(result.review)
@@ -546,7 +552,9 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Optional guidance for the commit message") String hint
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Optional guidance for the commit message") String hint,
+    @ShellOption(defaultValue = "true", help = "Scan staged diff for secrets") boolean secretScan,
+    @ShellOption(defaultValue = "false", help = "Allow commit suggestion even if secrets are detected") boolean allowSecrets
   ) {
     if (!gitTool.isGitRepo()) {
       return "Not a git repository; cannot suggest a commit message."
@@ -558,6 +566,14 @@ class ShellCommands {
     if (!diff.success) {
       return formatGitResult("Staged diff", diff)
     }
+    List<SecretScanner.SecretFinding> findings = secretScan ? secretScanner.scan(diff.output ?: "") : List.of()
+    if (!findings.isEmpty() && !allowSecrets) {
+      String details = findings.collect { finding ->
+        "- ${finding.label} at line ${finding.line}: ${finding.maskedValue}"
+      }.join("\n")
+      return "Potential secrets detected in staged changes.\n${details}\n" +
+        "Remove secrets or re-run with --allow-secrets true to proceed."
+    }
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
@@ -565,7 +581,8 @@ class ShellCommands {
     ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(session, resolution.chosen, temperature, null, maxTokens, null, null)
     LlmOptions options = sessionState.craftOptions(settings)
-    String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings))
+    String secretNote = !findings.isEmpty() ? "User acknowledged potential secrets in staged diff." : null
+    String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings), secretNote)
     String message = ai.withLlm(options).generateText(prompt)
     if (resolution.fallbackUsed) {
       message = "Note: using fallback model ${resolution.chosen}.\n" + (message ?: "")
@@ -1277,7 +1294,7 @@ ${renderReview(summary, minSeverity, false)}
     indexes
   }
 
-  private static String buildCommitPrompt(String diff, String hint, String systemPrompt) {
+  private static String buildCommitPrompt(String diff, String hint, String systemPrompt, String secretNote) {
     StringBuilder builder = new StringBuilder()
     builder.append(
       "You are crafting a git commit message for staged changes in the current project.\n"
@@ -1288,6 +1305,9 @@ ${renderReview(summary, minSeverity, false)}
     builder.append("Use American English and mention tests if added or missing.\n")
     if (systemPrompt != null && systemPrompt.trim()) {
       builder.append("System guidance: ").append(systemPrompt.trim()).append("\n")
+    }
+    if (secretNote != null && secretNote.trim()) {
+      builder.append("Security note: ").append(secretNote.trim()).append("\n")
     }
     if (hint != null && hint.trim()) {
       builder.append("User notes: ").append(hint.trim()).append("\n")

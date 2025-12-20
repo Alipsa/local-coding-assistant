@@ -109,6 +109,23 @@ class CodingAssistantAgentSpec extends Specification {
     review.review.contains("Tests:")
   }
 
+  def "reviewCode uses security reviewer persona when requested"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("Check for security issues.")
+    def snippet = new CodingAssistantAgent.CodeSnippet("Implementation: // code")
+
+    when:
+    def review = agent.reviewCode(userInput, snippet, ai, null, null, Personas.SECURITY_REVIEWER)
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(Personas.SECURITY_REVIEWER) >> runner
+    1 * runner.generateText({ it.contains("secrets") || it.contains("injection") }) >> "Findings:\n- High general - secret\nTests:\n- test"
+    review.reviewer == Personas.SECURITY_REVIEWER
+  }
+
   def "craftCode adds structured sections when missing"() {
     given:
     Ai ai = Mock(Ai)

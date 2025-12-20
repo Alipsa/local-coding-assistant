@@ -8,6 +8,9 @@ Notes:
   to opt into safety prompts where supported.
 - `/edit` does not launch an editor. It either echoes the supplied `seed` or forwards
   it to `/chat` when `send` is true.
+- Remote access is blocked by default. Enable with `assistant.rest.remote.enabled=true`.
+- If `assistant.rest.api-key` is set, include the `X-API-Key` header (or `Authorization: Bearer ...`).
+- Optional rate limiting uses `assistant.rest.rate-limit.per-minute`.
 
 ## Examples
 
@@ -21,6 +24,12 @@ Review:
 ```
 POST /api/cli/review
 {"prompt":"Check error handling","paths":["src/main/groovy"]}
+```
+
+Security review:
+```
+POST /api/cli/review
+{"prompt":"Look for injection risks","paths":["src/main/groovy"],"security":true}
 ```
 
 Codesearch:

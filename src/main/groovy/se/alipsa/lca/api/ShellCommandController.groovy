@@ -49,6 +49,7 @@ class ShellCommandController {
     boolean staged = request.staged != null ? request.staged : false
     boolean noColor = request.noColor != null ? request.noColor : false
     boolean logReview = request.logReview != null ? request.logReview : true
+    boolean security = request.security != null ? request.security : false
     List<String> paths = request.paths != null ? request.paths : List.<String>of()
     shellCommands.review(
       request.code ?: "",
@@ -62,7 +63,8 @@ class ShellCommandController {
       staged,
       severity,
       noColor,
-      logReview
+      logReview,
+      security
     )
   }
 
@@ -158,7 +160,17 @@ class ShellCommandController {
   @PostMapping(path = "/commit-suggest", consumes = MediaType.APPLICATION_JSON_VALUE)
   String commitSuggest(@RequestBody CommitSuggestRequest request) {
     String session = request.session ?: "default"
-    shellCommands.commitSuggest(session, request.model, request.temperature, request.maxTokens, request.hint)
+    boolean secretScan = request.secretScan != null ? request.secretScan : true
+    boolean allowSecrets = request.allowSecrets != null ? request.allowSecrets : false
+    shellCommands.commitSuggest(
+      session,
+      request.model,
+      request.temperature,
+      request.maxTokens,
+      request.hint,
+      secretScan,
+      allowSecrets
+    )
   }
 
   @PostMapping(path = "/git-push", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -267,6 +279,7 @@ class ShellCommandController {
     ReviewSeverity minSeverity
     Boolean noColor
     Boolean logReview
+    Boolean security
   }
 
   @Canonical
@@ -315,6 +328,8 @@ class ShellCommandController {
     Double temperature
     Integer maxTokens
     String hint
+    Boolean secretScan
+    Boolean allowSecrets
   }
 
   @Canonical
