@@ -212,7 +212,7 @@ class ShellCommands {
     if (health != null) {
       return health
     }
-    printProgressStart("Reviewing")
+    printProgressStart("Review")
     ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
@@ -293,7 +293,7 @@ class ShellCommands {
         "Enable globally in application.properties with assistant.web-search.enabled=true, " +
         "or enable for this request by passing --enable-web-search true."
     }
-    printProgressStart("Searching web")
+    printProgressStart("Web search")
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
         provider: WebSearchTool.providerFrom(provider),
@@ -310,10 +310,10 @@ class ShellCommands {
       results = codingAssistantAgent.search(query, options)
     } catch (Exception e) {
       results = []
-      printProgressDone("Search")
+      printProgressDone("Web search")
       return "Web search unavailable: ${e.message ?: e.class.simpleName}"
     }
-    printProgressDone("Search")
+    printProgressDone("Web search")
     if (results == null || results.isEmpty()) {
       return formatSection("Web Search", "No web results.")
     }
@@ -339,9 +339,9 @@ class ShellCommands {
     @ShellOption(defaultValue = "8000", help = "Max chars when packing") int maxChars,
     @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens
   ) {
-    printProgressStart("Searching repository")
+    printProgressStart("Repository search")
     List<CodeSearchTool.SearchHit> hits = codeSearchTool.search(query, paths, context, limit)
-    printProgressDone("Code search")
+    printProgressDone("Repository search")
     if (hits.isEmpty()) {
       return formatSection("Code Search", "No matches found.")
     }
@@ -649,24 +649,25 @@ class ShellCommands {
   ) {
     String body = resolvePatchBody(patch, patchFile)
     String title = dryRun ? "Edit Preview" : "Edit Result"
-    printProgressStart(dryRun ? "Previewing edits" : "Applying edits")
     if (dryRun) {
+      printProgressStart("Edit preview")
       String output = formatPatchResult(fileEditingTool.applyPatch(body, true))
       printProgressDone("Edit preview")
       return formatSection(title, output)
     }
     boolean shouldConfirm = confirm && !applyAllConfirmed
     if (shouldConfirm) {
+      printProgressStart("Edit preview")
       FileEditingTool.PatchResult preview = fileEditingTool.applyPatch(body, true)
       String previewText = formatPatchResult(preview)
       if (preview.hasConflicts) {
         printProgressDone("Edit preview")
         return formatSection("Edit Preview", previewText)
       }
+      printProgressDone("Edit preview")
       println(previewText)
       ConfirmChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
       if (choice == ConfirmChoice.NO) {
-        printProgressDone("Edit preview")
         return formatSection("Edit Result", "Patch application canceled.")
       }
       if (choice == ConfirmChoice.ALL) {
@@ -674,6 +675,7 @@ class ShellCommands {
       }
     }
     warnDirtyWorkspace()
+    printProgressStart("Edit apply")
     FileEditingTool.PatchResult result = fileEditingTool.applyPatch(body, false)
     printProgressDone("Edit apply")
     formatSection(title, formatPatchResult(result))
@@ -692,24 +694,25 @@ class ShellCommands {
   ) {
     String body = resolvePatchBody(blocks, blocksFile)
     String title = dryRun ? "Edit Preview" : "Edit Result"
-    printProgressStart(dryRun ? "Previewing edits" : "Applying edits")
     if (dryRun) {
+      printProgressStart("Edit preview")
       String output = formatSearchReplaceResult(fileEditingTool.applySearchReplaceBlocks(filePath, body, true))
       printProgressDone("Edit preview")
       return formatSection(title, output)
     }
     boolean shouldConfirm = confirm && !applyAllConfirmed
     if (shouldConfirm) {
+      printProgressStart("Edit preview")
       FileEditingTool.SearchReplaceResult preview = fileEditingTool.applySearchReplaceBlocks(filePath, body, true)
       String previewText = formatSearchReplaceResult(preview)
       if (preview.hasConflicts) {
         printProgressDone("Edit preview")
         return formatSection("Edit Preview", previewText)
       }
+      printProgressDone("Edit preview")
       println(previewText)
       ConfirmChoice choice = confirmAction("Apply blocks to ${filePath}?")
       if (choice == ConfirmChoice.NO) {
-        printProgressDone("Edit preview")
         return formatSection("Edit Result", "Block application canceled.")
       }
       if (choice == ConfirmChoice.ALL) {
@@ -717,6 +720,7 @@ class ShellCommands {
       }
     }
     warnDirtyWorkspace()
+    printProgressStart("Edit apply")
     FileEditingTool.SearchReplaceResult result = fileEditingTool.applySearchReplaceBlocks(filePath, body, false)
     printProgressDone("Edit apply")
     formatSection(title, formatSearchReplaceResult(result))
@@ -730,9 +734,9 @@ class ShellCommands {
     @ShellOption(help = "File path relative to project root") String filePath,
     @ShellOption(defaultValue = "false", help = "Preview the restore without writing") boolean dryRun
   ) {
-    printProgressStart("Reverting file")
+    printProgressStart("Edit revert")
     String output = formatEditResult(fileEditingTool.revertLatestBackup(filePath, dryRun))
-    printProgressDone("Revert")
+    printProgressDone("Edit revert")
     formatSection("Edit Result", output)
   }
 

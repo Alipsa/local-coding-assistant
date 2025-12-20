@@ -1,12 +1,13 @@
 # Command Reference
 
 All commands are available as `command` or `/command`. Options use Spring Shell naming (kebab-case).
+Examples use named options for consistency.
 
 ## chat (/chat)
 Send a prompt to the assistant.
 
 Usage:
-`chat <prompt>`
+`chat --prompt "<text>"`
 
 Options:
 - `--session`: Session id for persisting options.
@@ -21,7 +22,7 @@ Options:
 Request a structured review with findings and tests.
 
 Usage:
-`review <prompt> [--code <code>]`
+`review --prompt "<text>" [--code "<code>"]`
 
 Options:
 - `--prompt`: Review request or guidance.
@@ -47,7 +48,7 @@ Options:
 Run web search through the agent tool.
 
 Usage:
-`search <query>`
+`search --query "<text>"`
 
 Options:
 - `--limit`: Number of results to show.
@@ -61,7 +62,7 @@ Options:
 Search repository files with ripgrep and optional context packing.
 
 Usage:
-`codesearch <query>`
+`codesearch --query "<pattern>"`
 
 Options:
 - `--paths`: Paths or globs to search (repeatable).
@@ -115,7 +116,7 @@ Options:
 Apply a patch using `git apply` with confirmation.
 
 Usage:
-`gitapply [--patch <text>] [--patch-file <path>]`
+`gitapply [--patch "<text>"] [--patch-file <path>]`
 
 Options:
 - `--patch-file`: Patch file relative to project root.
@@ -160,7 +161,7 @@ Check connectivity to the Ollama base URL.
 Execute a project command with timeout and truncation.
 
 Usage:
-`run <command>`
+`run --command "<command>"`
 
 Options:
 - `--timeout-millis`: Timeout in milliseconds.
@@ -173,7 +174,7 @@ Options:
 Apply a unified diff patch with optional dry run and backups.
 
 Usage:
-`apply [--patch <text>] [--patch-file <path>]`
+`apply [--patch "<text>"] [--patch-file <path>]`
 
 Options:
 - `--patch-file`: Patch file relative to project root.

@@ -74,7 +74,7 @@ Edit flow:
 ```
 /context --file-path src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy \
   --symbol review
-/chat "Update the review output header to include timestamps."
+/chat --prompt "Update the review output header to include timestamps."
 /applyBlocks --file-path src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy \
   --blocks "<blocks>"
 ```

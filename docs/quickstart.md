@@ -7,7 +7,7 @@ These examples show end-to-end flows for editing, reviewing, searching, and git 
 /status
 /context --file-path src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy \
   --symbol review
-/chat "Rewrite the review header to include a timestamp and keep existing sections."
+/chat --prompt "Rewrite the review header to include a timestamp and keep existing sections."
 /applyBlocks --file-path src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy \
   --blocks "<<<<SEARCH\n...\n====\n...\n>>>>"
 ```
