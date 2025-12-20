@@ -11,7 +11,6 @@ import java.nio.file.Paths
 @CompileStatic
 class TreeTool {
 
-  private final Path projectRoot
   private final GitTool gitTool
 
   TreeTool() {
@@ -19,8 +18,8 @@ class TreeTool {
   }
 
   TreeTool(Path projectRoot, GitTool gitTool) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
-    this.gitTool = gitTool
+    Path root = projectRoot != null ? projectRoot.toAbsolutePath().normalize() : Paths.get(".").toAbsolutePath().normalize()
+    this.gitTool = gitTool != null ? gitTool : new GitTool(root)
   }
 
   TreeResult buildTree(int maxDepth, boolean directoriesOnly, int maxEntries) {
