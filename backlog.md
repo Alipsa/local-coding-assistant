@@ -166,7 +166,7 @@ Improve the agent’s ability to write and review code with security in mind.
 
   The CLI should expose this mode via a flag (e.g., `review --security`).
 
-- **14.2.2 [ ] Integrate Static Analysis (SAST) [Optional / pluggable]**  
+- **14.2.2 [x] Integrate Static Analysis (SAST) [Optional / pluggable]**  
   Enhance the `/review` command with an optional static analysis step (e.g., semgrep with a default ruleset):
   - Run the SAST tool on the files/diffs under review.
   - Parse and summarise findings (rules, severity, locations).
@@ -226,7 +226,7 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.3 Transport Security (TLS)
 
-- **14.3.3.1 [ ] Enforce HTTPS for Remote Mode**
+- **14.3.3.1 [x] Enforce HTTPS for Remote Mode**
   - Require TLS for all REST traffic when running in remote mode.
   - Provide documentation and helper scripts for generating self-signed certificates
     for local dev and testing.

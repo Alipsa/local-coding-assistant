@@ -19,7 +19,7 @@ class RestSecurityFilterSpec extends Specification {
 
   def "blocks remote access when disabled"() {
     given:
-    RestSecurityFilter filter = new RestSecurityFilter(false, "", 0)
+    RestSecurityFilter filter = new RestSecurityFilter(false, false, "", 0)
     MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).addFilters(filter).build()
 
     expect:
@@ -31,7 +31,7 @@ class RestSecurityFilterSpec extends Specification {
 
   def "requires api key when configured"() {
     given:
-    RestSecurityFilter filter = new RestSecurityFilter(true, "secret", 0)
+    RestSecurityFilter filter = new RestSecurityFilter(true, false, "secret", 0)
     MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).addFilters(filter).build()
 
     expect:
@@ -47,7 +47,7 @@ class RestSecurityFilterSpec extends Specification {
 
   def "rate limits when configured"() {
     given:
-    RestSecurityFilter filter = new RestSecurityFilter(true, "", 2)
+    RestSecurityFilter filter = new RestSecurityFilter(true, false, "", 2)
     MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).addFilters(filter).build()
 
     when:
@@ -59,9 +59,32 @@ class RestSecurityFilterSpec extends Specification {
     third.andExpect(status().isTooManyRequests())
   }
 
+  def "requires https when enabled"() {
+    given:
+    RestSecurityFilter filter = new RestSecurityFilter(true, true, "", 0)
+    MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).addFilters(filter).build()
+
+    expect:
+    mvc.perform(get("/api/cli/health")
+      .with(remoteAddr("10.0.0.2")))
+      .andExpect(status().isForbidden())
+
+    mvc.perform(get("/api/cli/health")
+      .with(remoteAddr("10.0.0.2"))
+      .with(secure(true)))
+      .andExpect(status().isOk())
+  }
+
   private static RequestPostProcessor remoteAddr(String addr) {
     return { request ->
       request.remoteAddr = addr
+      request
+    } as RequestPostProcessor
+  }
+
+  private static RequestPostProcessor secure(boolean value) {
+    return { request ->
+      request.secure = value
       request
     } as RequestPostProcessor
   }

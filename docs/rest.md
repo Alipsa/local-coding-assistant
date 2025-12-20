@@ -9,6 +9,7 @@ Notes:
 - `/edit` does not launch an editor. It either echoes the supplied `seed` or forwards
   it to `/chat` when `send` is true.
 - Remote access is blocked by default. Enable with `assistant.rest.remote.enabled=true`.
+- HTTPS is required for remote access by default; disable with `assistant.rest.require-https=false` only for local dev.
 - If `assistant.rest.api-key` is set, include the `X-API-Key` header (or `Authorization: Bearer ...`).
 - Optional rate limiting uses `assistant.rest.rate-limit.per-minute`.
 
@@ -30,6 +31,12 @@ Security review:
 ```
 POST /api/cli/review
 {"prompt":"Look for injection risks","paths":["src/main/groovy"],"security":true}
+```
+
+SAST-enabled review:
+```
+POST /api/cli/review
+{"prompt":"Run checks","paths":["src/main/groovy"],"sast":true}
 ```
 
 Codesearch:

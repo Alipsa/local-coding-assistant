@@ -57,6 +57,7 @@ class ShellCommandControllerSpec extends Specification {
       ReviewSeverity.HIGH,
       true,
       false,
+      false,
       false
     ) >> "review"
   }

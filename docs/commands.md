@@ -32,6 +32,7 @@ Options:
 - `--no-color`: Disable ANSI colors.
 - `--log-review`: Persist review summary to log.
 - `--security`: Focus on security risks in the review.
+- `--sast`: Run optional static analysis (requires `assistant.sast.command`).
 - `--session`, `--model`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
 
 ## reviewlog (/reviewlog)

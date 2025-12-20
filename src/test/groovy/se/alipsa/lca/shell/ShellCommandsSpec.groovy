@@ -128,6 +128,7 @@ class ShellCommandsSpec extends Specification {
       ReviewSeverity.LOW,
       true,
       false,
+      false,
       false
     )
 
@@ -280,7 +281,7 @@ class ShellCommandsSpec extends Specification {
     fileEditingTool.readFile(_) >> "content"
 
     when:
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
     then:
     Files.exists(tempDir.resolve("reviews.log"))
@@ -346,7 +347,7 @@ class ShellCommandsSpec extends Specification {
     )
     agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
     when:
     def out = commands.reviewLog(ReviewSeverity.HIGH, "src/App.groovy", 5, 1, null, true)
@@ -382,8 +383,8 @@ class ShellCommandsSpec extends Specification {
         instants.hasNext() ? instants.next() : java.time.Instant.now()
       }
     }
-    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
-    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false)
+    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
+    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
     when:
     def out = clocked.reviewLog(ReviewSeverity.LOW, null, 1, 2, "2025-01-01T00:00:05Z", true)
@@ -742,7 +743,8 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       tempDir.resolve("tree.log").toString(),
-      treeTool
+      treeTool,
+      null
     )
 
     when:

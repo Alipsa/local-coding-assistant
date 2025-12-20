@@ -46,7 +46,10 @@ Spring Shell exposes the commands.
 - Configure command execution policy with `assistant.command.allowlist` and `assistant.command.denylist`
   in `src/main/resources/application.properties` (comma-separated prefixes like `mvn*,git*`).
 - REST access is local-only by default; configure `assistant.rest.remote.enabled`, `assistant.rest.api-key`,
-  and `assistant.rest.rate-limit.per-minute` in `src/main/resources/application.properties` if needed.
+  `assistant.rest.require-https`, and `assistant.rest.rate-limit.per-minute` in
+  `src/main/resources/application.properties` if needed.
+- Optional static analysis for reviews uses `assistant.sast.command` (for example:
+  `semgrep --config auto --json {paths}`).
 
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.
@@ -55,7 +58,7 @@ REST usage is documented in `docs/rest.md`.
 - `chat` (`/chat`): Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.
 - `review` (`/review`): Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
-  `--min-severity`, `--no-color`, `--log-review`, `--security`, plus model/temperature overrides.
+  `--min-severity`, `--no-color`, `--log-review`, `--security`, `--sast`, plus model/temperature overrides.
 - `reviewlog` (`/reviewlog`): Show recent review entries. Options: `--min-severity`, `--path-filter`, `--limit`,
   `--page`, `--since`, `--no-color`.
 - `search` (`/search`): Web search through the agent tool. Options: `--limit`, `--provider`, `--timeout-millis`,

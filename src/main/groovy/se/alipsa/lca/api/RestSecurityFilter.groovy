@@ -24,16 +24,19 @@ class RestSecurityFilter extends OncePerRequestFilter {
   private static final long WINDOW_MILLIS = 60_000L
 
   private final boolean remoteEnabled
+  private final boolean requireHttps
   private final String apiKey
   private final int maxPerMinute
   private final Map<String, RequestCounter> counters = new ConcurrentHashMap<>()
 
   RestSecurityFilter(
     @Value('${assistant.rest.remote.enabled:false}') boolean remoteEnabled,
+    @Value('${assistant.rest.require-https:true}') boolean requireHttps,
     @Value('${assistant.rest.api-key:}') String apiKey,
     @Value('${assistant.rest.rate-limit.per-minute:0}') int maxPerMinute
   ) {
     this.remoteEnabled = remoteEnabled
+    this.requireHttps = requireHttps
     this.apiKey = apiKey != null ? apiKey.trim() : ""
     this.maxPerMinute = Math.max(0, maxPerMinute)
   }
@@ -53,6 +56,11 @@ class RestSecurityFilter extends OncePerRequestFilter {
     String addr = request.getRemoteAddr()
     if (!remoteEnabled && !isLocal(addr)) {
       deny(response, HttpServletResponse.SC_FORBIDDEN, "Remote REST access is disabled.")
+      audit(request, response)
+      return
+    }
+    if (remoteEnabled && requireHttps && !request.isSecure()) {
+      deny(response, HttpServletResponse.SC_FORBIDDEN, "HTTPS is required for remote REST access.")
       audit(request, response)
       return
     }

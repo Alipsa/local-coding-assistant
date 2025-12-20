@@ -50,6 +50,7 @@ class ShellCommandController {
     boolean noColor = request.noColor != null ? request.noColor : false
     boolean logReview = request.logReview != null ? request.logReview : true
     boolean security = request.security != null ? request.security : false
+    boolean sast = request.sast != null ? request.sast : false
     List<String> paths = request.paths != null ? request.paths : List.<String>of()
     shellCommands.review(
       request.code ?: "",
@@ -64,7 +65,8 @@ class ShellCommandController {
       severity,
       noColor,
       logReview,
-      security
+      security,
+      sast
     )
   }
 
@@ -77,6 +79,8 @@ class ShellCommandController {
     @RequestParam(name = "since", required = false) String since,
     @RequestParam(name = "noColor", defaultValue = "false") boolean noColor
   ) {
+    requireMin(limit, 1, "limit")
+    requireMin(page, 1, "page")
     shellCommands.reviewLog(minSeverity, pathFilter, limit, page, since, noColor)
   }
 
@@ -90,6 +94,8 @@ class ShellCommandController {
     @RequestParam(name = "headless", defaultValue = "true") boolean headless,
     @RequestParam(name = "enableWebSearch", required = false) Boolean enableWebSearch
   ) {
+    requireMin(limit, 1, "limit")
+    requireMin(timeoutMillis, 1, "timeoutMillis")
     shellCommands.search(query, limit, session, provider, timeoutMillis, headless, enableWebSearch)
   }
 
@@ -103,6 +109,10 @@ class ShellCommandController {
     @RequestParam(name = "maxChars", defaultValue = "8000") int maxChars,
     @RequestParam(name = "maxTokens", defaultValue = "0") int maxTokens
   ) {
+    requireMin(context, 0, "context")
+    requireMin(limit, 1, "limit")
+    requireMin(maxChars, 0, "maxChars")
+    requireMin(maxTokens, 0, "maxTokens")
     shellCommands.codeSearch(query, paths, context, limit, pack, maxChars, maxTokens)
   }
 
@@ -198,6 +208,8 @@ class ShellCommandController {
     String session = request.session ?: "default"
     long timeoutMillis = request.timeoutMillis != null ? request.timeoutMillis : 60000L
     int maxOutputChars = request.maxOutputChars != null ? request.maxOutputChars : 8000
+    requireMin(timeoutMillis, 1, "timeoutMillis")
+    requireMin(maxOutputChars, 1, "maxOutputChars")
     boolean confirm = request.confirm != null ? request.confirm : false
     boolean agentRequested = request.agentRequested != null ? request.agentRequested : false
     shellCommands.runCommand(command, timeoutMillis, maxOutputChars, session, confirm, agentRequested)
@@ -241,6 +253,8 @@ class ShellCommandController {
     @RequestParam(name = "dirsOnly", defaultValue = "false") boolean dirsOnly,
     @RequestParam(name = "maxEntries", defaultValue = "2000") int maxEntries
   ) {
+    requireMin(depth, -1, "depth")
+    requireMin(maxEntries, 0, "maxEntries")
     shellCommands.tree(depth, dirsOnly, maxEntries)
   }
 
@@ -249,6 +263,12 @@ class ShellCommandController {
       throw new IllegalArgumentException("Missing required field: ${field}")
     }
     value
+  }
+
+  private static void requireMin(long value, long min, String field) {
+    if (value < min) {
+      throw new IllegalArgumentException("${field} must be >= ${min}")
+    }
   }
 
   @Canonical
@@ -280,6 +300,7 @@ class ShellCommandController {
     Boolean noColor
     Boolean logReview
     Boolean security
+    Boolean sast
   }
 
   @Canonical

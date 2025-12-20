@@ -1,0 +1,109 @@
+package se.alipsa.lca.tools
+
+import groovy.json.JsonSlurper
+import groovy.transform.Canonical
+import groovy.transform.CompileStatic
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Component
+
+@Component
+@CompileStatic
+class SastTool {
+
+  private final CommandRunner commandRunner
+  private final CommandPolicy commandPolicy
+  private final String command
+  private final long timeoutMillis
+  private final int maxOutputChars
+
+  SastTool(
+    CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
+    @Value('${assistant.sast.command:}') String command,
+    @Value('${assistant.sast.timeout-millis:60000}') long timeoutMillis,
+    @Value('${assistant.sast.max-output-chars:8000}') int maxOutputChars
+  ) {
+    this.commandRunner = commandRunner
+    this.commandPolicy = commandPolicy
+    this.command = command != null ? command.trim() : ""
+    this.timeoutMillis = timeoutMillis > 0 ? timeoutMillis : 60000L
+    this.maxOutputChars = maxOutputChars > 0 ? maxOutputChars : 8000
+  }
+
+  SastResult run(List<String> paths) {
+    if (!command) {
+      return new SastResult(false, false, "SAST command not configured.", List.of())
+    }
+    List<String> targets = paths != null ? paths.findAll { it != null && it.trim() } : List.of()
+    if (targets.isEmpty()) {
+      return new SastResult(false, false, "No paths provided for SAST scan.", List.of())
+    }
+    String finalCommand = resolveCommand(command, targets)
+    CommandPolicy.Decision decision = commandPolicy.evaluate(finalCommand)
+    if (!decision.allowed) {
+      return new SastResult(false, false, decision.message ?: "SAST command blocked by policy.", List.of())
+    }
+    CommandRunner.CommandResult result = commandRunner.run(finalCommand, timeoutMillis, maxOutputChars)
+    if (!result.success) {
+      String message = result.output ?: "SAST command failed."
+      return new SastResult(false, true, message, List.of())
+    }
+    List<SastFinding> findings = parseFindings(result.output ?: "")
+    new SastResult(true, true, null, findings)
+  }
+
+  private static String resolveCommand(String command, List<String> targets) {
+    String joined = targets.join(" ")
+    if (command.contains("{paths}")) {
+      return command.replace("{paths}", joined)
+    }
+    command + " " + joined
+  }
+
+  private static List<SastFinding> parseFindings(String output) {
+    String trimmed = output != null ? output.trim() : ""
+    if (!trimmed) {
+      return List.of()
+    }
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        def parsed = new JsonSlurper().parseText(trimmed)
+        List<Map> results = parsed instanceof Map ? (List<Map>) parsed.results : List.of()
+        if (results != null) {
+          return results.collect { Map entry ->
+            String checkId = entry.check_id ?: "rule"
+            String path = entry.path ?: "unknown"
+            def start = entry.start instanceof Map ? entry.start : [:]
+            Integer line = start.line instanceof Number ? ((Number) start.line).intValue() : null
+            def extra = entry.extra instanceof Map ? entry.extra : [:]
+            String severity = extra.severity ?: "LOW"
+            new SastFinding(severity.toString().toUpperCase(), path, line, checkId)
+          }
+        }
+      } catch (Exception ignored) {
+        // fall through to line parsing
+      }
+    }
+    return trimmed.readLines()
+      .findAll { it != null && it.trim() }
+      .collect { new SastFinding("INFO", "unknown", null, it.trim()) }
+  }
+
+  @Canonical
+  @CompileStatic
+  static class SastFinding {
+    String severity
+    String path
+    Integer line
+    String rule
+  }
+
+  @Canonical
+  @CompileStatic
+  static class SastResult {
+    boolean success
+    boolean ran
+    String message
+    List<SastFinding> findings
+  }
+}

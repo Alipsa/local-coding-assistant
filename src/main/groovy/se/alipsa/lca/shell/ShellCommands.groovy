@@ -33,6 +33,7 @@ import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.SecretScanner
+import se.alipsa.lca.tools.SastTool
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -63,6 +64,7 @@ class ShellCommands {
   private final ModelRegistry modelRegistry
   private final TreeTool treeTool
   private final SecretScanner secretScanner
+  private final SastTool sastTool
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -94,6 +96,7 @@ class ShellCommands {
       commandPolicy,
       modelRegistry,
       reviewLogPath,
+      null,
       null
     )
   }
@@ -127,6 +130,7 @@ class ShellCommands {
       commandPolicy,
       modelRegistry,
       reviewLogPath,
+      null,
       null
     )
   }
@@ -145,7 +149,8 @@ class ShellCommands {
     CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
     String reviewLogPath,
-    TreeTool treeTool
+    TreeTool treeTool,
+    SastTool sastTool
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -161,6 +166,7 @@ class ShellCommands {
     this.modelRegistry = modelRegistry
     this.treeTool = treeTool != null ? treeTool : new TreeTool(resolveProjectRoot(fileEditingTool), gitTool)
     this.secretScanner = new SecretScanner()
+    this.sastTool = sastTool != null ? sastTool : new SastTool(this.commandRunner, this.commandPolicy, "", 60000L, 8000)
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -189,6 +195,7 @@ class ShellCommands {
       new CommandPolicy("", ""),
       modelRegistry,
       reviewLogPath,
+      null,
       null
     )
   }
@@ -256,7 +263,8 @@ class ShellCommands {
     @ShellOption(defaultValue = "LOW", help = "Minimum severity to display/log: LOW, MEDIUM, HIGH") ReviewSeverity minSeverity,
     @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview,
-    @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security
+    @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security,
+    @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast
   ) {
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     String health = ensureOllamaHealth()
@@ -280,10 +288,11 @@ class ShellCommands {
     printProgressDone("Review")
     ReviewSummary summary = ReviewParser.parse(result.review)
     String rendered = renderReview(summary, severityThreshold, !noColor)
+    String sastBlock = buildSastBlock(sast, paths)
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
-    String output = formatSection("Review", rendered)
+    String output = formatSection("Review", rendered + sastBlock)
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (logReview) {
       writeReviewLog(prompt, summary, paths, staged, severityThreshold)
@@ -1184,6 +1193,27 @@ ${renderReview(summary, minSeverity, false)}
   private static String formatSection(String title, String body) {
     String content = body ?: ""
     "=== ${title} ===\n${content}".stripTrailing()
+  }
+
+  private String buildSastBlock(boolean enabled, List<String> paths) {
+    if (!enabled) {
+      return ""
+    }
+    SastTool.SastResult result = sastTool.run(paths)
+    if (!result.ran) {
+      return "\n\nSAST:\n- " + (result.message ?: "SAST not run.")
+    }
+    if (result.findings == null || result.findings.isEmpty()) {
+      return "\n\nSAST:\n- No findings"
+    }
+    String details = result.findings.collect { SastTool.SastFinding finding ->
+      String location = finding.path ?: "unknown"
+      if (finding.line != null) {
+        location += ":" + finding.line
+      }
+      "- [${finding.severity}] ${location} - ${finding.rule}"
+    }.join("\n")
+    "\n\nSAST:\n" + details
   }
 
   private static void printProgressStart(String label) {

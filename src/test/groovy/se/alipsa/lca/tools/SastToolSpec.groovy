@@ -1,0 +1,49 @@
+package se.alipsa.lca.tools
+
+import spock.lang.Specification
+
+class SastToolSpec extends Specification {
+
+  def "parses semgrep style json output"() {
+    given:
+    CommandRunner runner = Stub() {
+      run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, """
+{
+  "results": [
+    {
+      "check_id": "RULE1",
+      "path": "src/App.groovy",
+      "start": {"line": 12},
+      "extra": {"severity": "HIGH"}
+    }
+  ]
+}
+""", false, null)
+    }
+    CommandPolicy policy = new CommandPolicy("", "")
+    SastTool tool = new SastTool(runner, policy, "semgrep --json {paths}", 1000L, 2000)
+
+    when:
+    def result = tool.run(["src/App.groovy"])
+
+    then:
+    result.success
+    result.findings.size() == 1
+    result.findings.first().severity == "HIGH"
+    result.findings.first().rule == "RULE1"
+  }
+
+  def "reports when command is not configured"() {
+    given:
+    CommandRunner runner = Stub()
+    CommandPolicy policy = new CommandPolicy("", "")
+    SastTool tool = new SastTool(runner, policy, "", 1000L, 2000)
+
+    when:
+    def result = tool.run(["src/App.groovy"])
+
+    then:
+    !result.ran
+    result.message.contains("not configured")
+  }
+}
