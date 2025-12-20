@@ -216,3 +216,14 @@ Options:
 - `--end`: End line (1-based) when using ranges.
 - `--symbol`: Symbol to locate instead of line numbers.
 - `--padding`: Padding lines around the selection.
+
+## tree (/tree)
+Show repository tree (respects `.gitignore` when available).
+
+Usage:
+`tree [--depth <n>] [--dirs-only] [--max-entries <n>]`
+
+Options:
+- `--depth`: Max depth (`-1` for unlimited).
+- `--dirs-only`: Show directories only.
+- `--max-entries`: Maximum entries to render (`0` for unlimited).

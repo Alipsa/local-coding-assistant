@@ -21,6 +21,7 @@ These examples show end-to-end flows for editing, reviewing, searching, and git 
 
 ## Search flow
 ```
+/tree --depth 3
 /codesearch --query "applyPatch" --paths src/main/groovy
 /search --query "Spring Shell command examples" --limit 3
 ```

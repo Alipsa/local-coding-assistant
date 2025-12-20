@@ -29,6 +29,7 @@ import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.ModelRegistry
+import se.alipsa.lca.tools.TreeTool
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -56,6 +57,7 @@ class ShellCommands {
   private final ContextBudgetManager contextBudgetManager
   private final CommandRunner commandRunner
   private final ModelRegistry modelRegistry
+  private final TreeTool treeTool
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -102,6 +104,38 @@ class ShellCommands {
     ModelRegistry modelRegistry,
     @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
   ) {
+    this(
+      codingAssistantAgent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      codeSearchTool,
+      contextPacker,
+      contextBudgetManager,
+      commandRunner,
+      modelRegistry,
+      reviewLogPath,
+      null
+    )
+  }
+
+  ShellCommands(
+    CodingAssistantAgent codingAssistantAgent,
+    Ai ai,
+    SessionState sessionState,
+    EditorLauncher editorLauncher,
+    FileEditingTool fileEditingTool,
+    GitTool gitTool,
+    CodeSearchTool codeSearchTool,
+    ContextPacker contextPacker,
+    ContextBudgetManager contextBudgetManager,
+    CommandRunner commandRunner,
+    ModelRegistry modelRegistry,
+    String reviewLogPath,
+    TreeTool treeTool
+  ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
     this.sessionState = sessionState
@@ -113,6 +147,7 @@ class ShellCommands {
     this.contextBudgetManager = contextBudgetManager
     this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
     this.modelRegistry = modelRegistry
+    this.treeTool = treeTool != null ? treeTool : new TreeTool(resolveProjectRoot(fileEditingTool), gitTool)
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -761,6 +796,31 @@ class ShellCommands {
       ctx = fileEditingTool.contextByRange(filePath, start, end, padding)
     }
     "Context ${ctx.filePath}:${ctx.startLine}-${ctx.endLine} of ${ctx.totalLines}\n${ctx.snippet}"
+  }
+
+  @ShellMethod(
+    key = ["tree", "/tree"],
+    value = "Show repository tree (respects .gitignore when available)."
+  )
+  String tree(
+    @ShellOption(defaultValue = "4", help = "Max depth (-1 for unlimited)") int depth,
+    @ShellOption(defaultValue = "false", help = "Show directories only") boolean dirsOnly,
+    @ShellOption(defaultValue = "2000", help = "Maximum entries to render (0 for unlimited)") int maxEntries
+  ) {
+    printProgressStart("Repository tree")
+    TreeTool.TreeResult result = treeTool.buildTree(depth, dirsOnly, maxEntries)
+    printProgressDone("Repository tree")
+    if (!result.repoPresent) {
+      return "Not a git repository."
+    }
+    if (!result.success) {
+      return result.message ?: "Unable to build repository tree."
+    }
+    String body = result.treeText ?: ""
+    if (result.truncated) {
+      body = body + "\n... (truncated; increase --max-entries or --depth)"
+    }
+    formatSection("Repository Tree", body)
   }
 
   private static final int MAX_PASTE_CHARS = 500_000

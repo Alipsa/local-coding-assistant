@@ -29,9 +29,10 @@ Notes:
 - The log stores the structured output without ANSI color codes.
 
 ## Search and context workflow
-1. Use `/codesearch` for local ripgrep-powered search.
-2. If web search is enabled, use `/search` for external references.
-3. Pack matches with `--pack` to build a single context blob.
+1. Use `/tree` to understand the project layout quickly.
+2. Use `/codesearch` for local ripgrep-powered search.
+3. If web search is enabled, use `/search` for external references.
+4. Pack matches with `--pack` to build a single context blob.
 
 Notes:
 - Search output includes counts and result numbering.

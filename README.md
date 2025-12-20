@@ -65,6 +65,7 @@ Detailed command documentation lives in `docs/commands.md`, with workflows in `d
   `--confirm`.
 - `revert` (`/revert`): Restore from the latest patch backup. Options: `--dry-run`.
 - `context` (`/context`): Show targeted edit context. Options: `--start`, `--end`, `--symbol`, `--padding`.
+- `tree` (`/tree`): Show repository tree (respects `.gitignore`). Options: `--depth`, `--dirs-only`, `--max-entries`.
 
 ## Quickstart examples
 Full end-to-end flows are in `docs/quickstart.md`.

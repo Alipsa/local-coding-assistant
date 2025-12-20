@@ -102,7 +102,7 @@ Enforce Structured Output (JSON or XML tags) for tool usage. Local models strugg
 
 ## 12) The "Tree" Representation
 Why: When a user asks "Where is the authentication logic?", the agent cannot see the file structure unless you provide it.
-- 12.1 [ ] Create a tool that dumps the directory structure (respecting .gitignore) into the context so the agent can "see" the project layout.
+- 12.1 [x] Create a tool that dumps the directory structure (respecting .gitignore) into the context so the agent can "see" the project layout.
 
 ## 13) REST integration
 Make sure the REST interface can do all the things that the cli can do. Try to keep things DRY as there is quite a lot of
