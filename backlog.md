@@ -284,7 +284,7 @@ Uphold the "local-first" promise and protect user data.
 Why: Enable scripted use and CI-style end-to-end tests by running a sequence of commands non-interactively and then exiting. Example:
 
 ```bash
-java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
+java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
   -c "status; review --paths src/main/java; commit-suggest"
 ```
 

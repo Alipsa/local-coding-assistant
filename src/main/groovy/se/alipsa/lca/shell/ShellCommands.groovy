@@ -26,6 +26,7 @@ import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.PackedContext
 import se.alipsa.lca.tools.CommandRunner
+import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.ModelRegistry
@@ -56,6 +57,7 @@ class ShellCommands {
   private final ContextPacker contextPacker
   private final ContextBudgetManager contextBudgetManager
   private final CommandRunner commandRunner
+  private final CommandPolicy commandPolicy
   private final ModelRegistry modelRegistry
   private final TreeTool treeTool
   private final Path reviewLogPath
@@ -71,6 +73,7 @@ class ShellCommands {
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
     CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
     String reviewLogPath
   ) {
@@ -85,36 +88,7 @@ class ShellCommands {
       contextPacker,
       contextBudgetManager,
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
-      modelRegistry,
-      reviewLogPath
-    )
-  }
-
-  ShellCommands(
-    CodingAssistantAgent codingAssistantAgent,
-    Ai ai,
-    SessionState sessionState,
-    EditorLauncher editorLauncher,
-    FileEditingTool fileEditingTool,
-    GitTool gitTool,
-    CodeSearchTool codeSearchTool,
-    ContextPacker contextPacker,
-    ContextBudgetManager contextBudgetManager,
-    CommandRunner commandRunner,
-    ModelRegistry modelRegistry,
-    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
-  ) {
-    this(
-      codingAssistantAgent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      gitTool,
-      codeSearchTool,
-      contextPacker,
-      contextBudgetManager,
-      commandRunner,
+      commandPolicy,
       modelRegistry,
       reviewLogPath,
       null
@@ -132,6 +106,40 @@ class ShellCommands {
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
     CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
+    ModelRegistry modelRegistry,
+    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
+  ) {
+    this(
+      codingAssistantAgent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      codeSearchTool,
+      contextPacker,
+      contextBudgetManager,
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      reviewLogPath,
+      null
+    )
+  }
+
+  ShellCommands(
+    CodingAssistantAgent codingAssistantAgent,
+    Ai ai,
+    SessionState sessionState,
+    EditorLauncher editorLauncher,
+    FileEditingTool fileEditingTool,
+    GitTool gitTool,
+    CodeSearchTool codeSearchTool,
+    ContextPacker contextPacker,
+    ContextBudgetManager contextBudgetManager,
+    CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
     String reviewLogPath,
     TreeTool treeTool
@@ -146,6 +154,7 @@ class ShellCommands {
     this.contextPacker = contextPacker
     this.contextBudgetManager = contextBudgetManager
     this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
+    this.commandPolicy = commandPolicy != null ? commandPolicy : new CommandPolicy("", "")
     this.modelRegistry = modelRegistry
     this.treeTool = treeTool != null ? treeTool : new TreeTool(resolveProjectRoot(fileEditingTool), gitTool)
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
@@ -173,8 +182,10 @@ class ShellCommands {
       new ContextPacker(),
       new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
+      new CommandPolicy("", ""),
       modelRegistry,
-      reviewLogPath
+      reviewLogPath,
+      null
     )
   }
 
@@ -651,6 +662,10 @@ class ShellCommands {
     String trimmed = command != null ? command.trim() : ""
     if (!trimmed) {
       throw new IllegalArgumentException("Command must not be empty.")
+    }
+    CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
+    if (!decision.allowed) {
+      return decision.message ?: "Command blocked by policy."
     }
     boolean shouldConfirm = (agentRequested || confirm) && !applyAllConfirmed
     if (shouldConfirm) {

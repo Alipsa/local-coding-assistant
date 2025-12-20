@@ -12,6 +12,7 @@ import se.alipsa.lca.tools.GitTool
 import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.CommandRunner
+import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
@@ -43,6 +44,7 @@ class ShellCommandsSpec extends Specification {
   CommandRunner commandRunner = Stub() {
     run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, "", false, null)
   }
+  CommandPolicy commandPolicy = new CommandPolicy("", "")
   ModelRegistry modelRegistry = Stub() {
     listModels() >> ["default-model", "fallback-model", "custom-model"]
     isModelAvailable(_) >> true
@@ -64,6 +66,7 @@ class ShellCommandsSpec extends Specification {
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
       commandRunner,
+      commandPolicy,
       modelRegistry,
       tempDir.resolve("reviews.log").toString()
     )
@@ -707,6 +710,7 @@ class ShellCommandsSpec extends Specification {
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
       commandRunner,
+      commandPolicy,
       modelRegistry,
       tempDir.resolve("tree.log").toString(),
       treeTool

@@ -62,4 +62,14 @@ class CodeSearchToolSpec extends Specification {
     expect:
     tool.search("match", List.of(), 1, 5).isEmpty()
   }
+
+  def "respects aiexclude patterns"() {
+    given:
+    Files.writeString(tempDir.resolve(".aiexclude"), "secret.txt\n")
+    Files.writeString(tempDir.resolve("secret.txt"), "match")
+    CodeSearchTool tool = new CodeSearchTool(tempDir)
+
+    expect:
+    tool.search("match", List.of(), 0, 5).isEmpty()
+  }
 }

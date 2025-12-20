@@ -98,6 +98,19 @@ class TreeToolSpec extends Specification {
     !result.treeText.contains("App.groovy")
   }
 
+  def "tree respects aiexclude patterns"() {
+    given:
+    Files.writeString(tempDir.resolve(".aiexclude"), "docs/\n")
+    TreeTool treeTool = buildStubTreeTool()
+
+    when:
+    def result = treeTool.buildTree(3, false, 0)
+
+    then:
+    !result.treeText.contains("docs/")
+    !result.treeText.contains("guide.md")
+  }
+
   def "tree truncates when max entries is set"() {
     given:
     TreeTool treeTool = buildStubTreeTool()

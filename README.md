@@ -40,6 +40,12 @@ Spring Shell exposes the commands.
   - `assistant.llm.max-tokens`, `assistant.system-prompt`
   - `snippetWordCount`, `reviewWordCount`
 
+## Safety
+- Add a `.aiexclude` file at the project root to block the assistant from reading or modifying sensitive files.
+  Patterns are glob-like and applied relative to the repo (for example: `.env`, `*.pem`, `credentials.*`, `build/`).
+- Configure command execution policy with `assistant.command.allowlist` and `assistant.command.denylist`
+  in `src/main/resources/application.properties` (comma-separated prefixes like `mvn*,git*`).
+
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.
 REST usage is documented in `docs/rest.md`.
