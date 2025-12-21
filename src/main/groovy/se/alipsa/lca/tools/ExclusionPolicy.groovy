@@ -118,10 +118,10 @@ class ExclusionPolicy {
     if (anchored) {
       return normalized == dirName || normalized.startsWith(dirName + "/")
     }
-    if (normalized == dirName || normalized.startsWith(dirName + "/")) {
+    if (normalized == dirName || normalized.startsWith(dirName + "/") || normalized.endsWith("/" + dirName)) {
       return true
     }
-    normalized.contains("/" + dirName + "/")
+    return normalized.contains("/" + dirName + "/")
   }
 
   private String toGlob(String pattern, boolean anchored) {
