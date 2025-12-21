@@ -170,7 +170,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
         provided = auth.substring("Bearer ".length())
       }
     }
-    provided != null && provided.trim() == apiKey
+    provided != null && provided.trim().equals(apiKey)
   }
 
   private static String extractBearerToken(HttpServletRequest request) {
