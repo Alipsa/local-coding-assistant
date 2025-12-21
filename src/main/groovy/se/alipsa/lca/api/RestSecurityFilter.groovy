@@ -184,7 +184,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
   private boolean allowRate(String addr) {
     String key = addr ?: "unknown"
     long now = System.currentTimeMillis()
-    RequestCounter counter = counters.get(key, { new RequestCounter(now, 0) })
+    RequestCounter counter = counters.get(key, k -> new RequestCounter(now, 0))
     synchronized (counter) {
       if (now - counter.windowStart >= WINDOW_MILLIS) {
         counter.windowStart = now
