@@ -250,11 +250,6 @@
             <artifactId>groovy-groovydoc</artifactId>
             <version>${groovy.version}</version>
           </dependency>
-          <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy-templates</artifactId>
-            <version>${groovy.version}</version>
-          </dependency>
         </dependencies>
       </plugin>
       <plugin>
