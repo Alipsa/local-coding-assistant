@@ -15,6 +15,7 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 
+import java.net.InetAddress
 import java.nio.file.Path
 import java.time.Duration
 import java.util.LinkedHashSet
@@ -26,7 +27,8 @@ import java.util.Locale
 class RestSecurityFilter extends OncePerRequestFilter {
 
   private static final Logger log = LoggerFactory.getLogger(RestSecurityFilter)
-  private static final long WINDOW_MILLIS = 60_000L
+  private static final Duration WINDOW_DURATION = Duration.ofMinutes(1)
+  private static final long WINDOW_NANOS = WINDOW_DURATION.toNanos()
   private static final int MAX_CACHE_SIZE = 10_000
 
   private final boolean localOnly
@@ -38,7 +40,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
   private final Set<String> requiredReadScopes
   private final Set<String> requiredWriteScopes
   private final OidcTokenValidator oidcValidator
-  private final Cache<String, RequestCounter> counters
+  private final Cache<String, RequestWindow> counters
 
   RestSecurityFilter(
     @Value('${assistant.local-only:true}') boolean localOnly,
@@ -183,28 +185,24 @@ class RestSecurityFilter extends OncePerRequestFilter {
 
   private boolean allowRate(String addr) {
     String key = addr ?: "unknown"
-    long now = System.currentTimeMillis()
-    // Use Caffeine's asMap().compute() for atomic check-and-update
-    RequestCounter result = counters.asMap().compute(key, (k, existing) -> {
-      if (existing == null) {
-        // First request for this key
-        return new RequestCounter(now, 1)
-      }
-      // Check if we need to reset the window
-      if (now - existing.windowStart >= WINDOW_MILLIS) {
-        return new RequestCounter(now, 1)
-      }
-      // Increment within the same window
-      return new RequestCounter(existing.windowStart, existing.count + 1)
-    })
-    return result.count <= maxPerMinute
+    long now = System.nanoTime()
+    RequestWindow window = counters.get(
+      key,
+      { String ignored -> new RequestWindow(now) } as java.util.function.Function<String, RequestWindow>
+    )
+    window.tryAcquire(now, WINDOW_NANOS, maxPerMinute)
   }
 
   private static boolean isLocal(String addr) {
-    if (addr == null) {
+    if (addr == null || addr.trim().isEmpty()) {
       return false
     }
-    return addr == "127.0.0.1" || addr == "::1" || addr == "0:0:0:0:0:0:0:1"
+    try {
+      InetAddress inet = InetAddress.getByName(addr)
+      return inet.isLoopbackAddress()
+    } catch (Exception ignored) {
+      return false
+    }
   }
 
   private static boolean isReadRequest(String method) {
@@ -261,13 +259,23 @@ class RestSecurityFilter extends OncePerRequestFilter {
   }
 
   @CompileStatic
-  private static class RequestCounter {
-    final long windowStart
-    final int count
+  private static class RequestWindow {
+    private long windowStartNanos
+    private int count
 
-    RequestCounter(long windowStart, int count) {
-      this.windowStart = windowStart
-      this.count = count
+    RequestWindow(long windowStartNanos) {
+      this.windowStartNanos = windowStartNanos
+      this.count = 0
+    }
+
+    synchronized boolean tryAcquire(long now, long windowNanos, int maxPerMinute) {
+      long elapsed = now - windowStartNanos
+      if (elapsed < 0 || elapsed >= windowNanos) {
+        windowStartNanos = now
+        count = 0
+      }
+      count++
+      return count <= maxPerMinute
     }
   }
 }

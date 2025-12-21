@@ -1249,7 +1249,9 @@ ${rendered}
       if (finding.line != null) {
         location += ":" + finding.line
       }
-      "- [${finding.severity}] ${location} - ${finding.rule}"
+      String sanitizedLocation = LogSanitizer.sanitize(location)
+      String sanitizedRule = LogSanitizer.sanitize(finding.rule ?: "rule")
+      "- [${finding.severity}] ${sanitizedLocation} - ${sanitizedRule}"
     }.join("\n")
     "\n\nSAST:\n" + details
   }

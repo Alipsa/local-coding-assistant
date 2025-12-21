@@ -45,4 +45,28 @@ class CommandPolicySpec extends Specification {
     then:
     allowed.allowed
   }
+
+  def "wildcard patterns respect command boundaries"() {
+    given:
+    CommandPolicy policy = new CommandPolicy("git*", "")
+
+    when:
+    def allowed = policy.evaluate("git push")
+
+    then:
+    allowed.allowed
+
+    when:
+    def blocked = policy.evaluate("gitty status")
+
+    then:
+    !blocked.allowed
+    blocked.message.contains("allowlist")
+
+    when:
+    def denied = policy.evaluate("legitimate")
+
+    then:
+    !denied.allowed
+  }
 }

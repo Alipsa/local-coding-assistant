@@ -20,6 +20,7 @@ import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
+import se.alipsa.lca.tools.SastTool
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -468,6 +469,38 @@ class ShellCommandsSpec extends Specification {
     0 * ai.withLlm(_)
   }
 
+  def "commitSuggest proceeds when allowSecrets is enabled"() {
+    given:
+    def stagedDiff = new GitTool.GitResult(true, true, 0, "AKIA1234567890ABCDEF\n", "")
+    GitTool repoGit = Mock()
+    _ * repoGit.isGitRepo() >> true
+    _ * repoGit.hasStagedChanges() >> true
+    _ * repoGit.stagedDiff() >> stagedDiff
+    PromptRunner promptRunner = Mock()
+    ShellCommands commitCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      commandRunner,
+      modelRegistry,
+      tempDir.resolve("commit.log").toString()
+    )
+    ai.withLlm(_ as LlmOptions) >> { LlmOptions opts -> promptRunner }
+    promptRunner.generateText(_ as String) >> { String prompt ->
+      assert prompt.contains("User acknowledged potential secrets in staged diff.")
+      "Subject: Allowed"
+    }
+
+    when:
+    def message = commitCommands.commitSuggest("default", null, null, null, null, true, true)
+
+    then:
+    message.contains("Subject: Allowed")
+  }
+
   def "stage cancels when user declines confirmation"() {
     given:
     GitTool repoGit = Mock()
@@ -518,6 +551,45 @@ class ShellCommandsSpec extends Specification {
 
     then:
     out.contains("clean")
+  }
+
+  def "buildSastBlock sanitizes findings"() {
+    given:
+    SastTool sastTool = Stub() {
+      run(_ as List<String>) >> new SastTool.SastResult(
+        true,
+        true,
+        null,
+        [new SastTool.SastFinding("HIGH", "src/apiKey=secret.txt", 42, "token=token-value-1234567890")]
+      )
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("sast.log").toString(),
+      null,
+      sastTool
+    )
+    def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
+    method.accessible = true
+
+    when:
+    String block = method.invoke(cmds, true, ["src"])
+
+    then:
+    block.contains("SAST:")
+    !block.contains("secret")
+    block.contains("REDACTED")
   }
 
   def "gitDiff uses git tool output"() {

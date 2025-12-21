@@ -1,17 +1,23 @@
 package se.alipsa.lca.api
 
+import groovy.transform.Canonical
 import groovy.transform.CompileStatic
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
+import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import se.alipsa.lca.tools.WebSearchTool
 
 @RestController
 @RequestMapping("/api/search")
+@Validated
 @CompileStatic
 class WebSearchController {
 
@@ -30,44 +36,40 @@ class WebSearchController {
   }
 
   @GetMapping
-  List<WebSearchTool.SearchResult> search(
-    @RequestParam String query,
-    @RequestParam(defaultValue = "5") int limit,
-    @RequestParam(defaultValue = "duckduckgo") String provider,
-    @RequestParam(defaultValue = "15000") long timeoutMillis,
-    @RequestParam(defaultValue = "true") boolean headless,
-    @RequestParam(required = false) Boolean enabled
-  ) {
+  List<WebSearchTool.SearchResult> search(@Valid @ModelAttribute SearchRequest request) {
     if (localOnly) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Web search is disabled in local-only mode.")
     }
-    requireNonBlank(query, "query")
-    requireMin(limit, 1, "limit")
-    requireMin(timeoutMillis, 1, "timeoutMillis")
     boolean defaultEnabled = webSearchEnabledDefault
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
-        provider: WebSearchTool.providerFrom(provider),
-        limit: limit,
-        headless: headless,
-        timeoutMillis: timeoutMillis,
-        webSearchEnabled: enabled
-    ),
-    defaultEnabled
-  )
-    webSearchAgent.search(query, options)
+        provider: WebSearchTool.providerFrom(request.provider),
+        limit: request.limit,
+        headless: request.headless,
+        timeoutMillis: request.timeoutMillis,
+        webSearchEnabled: request.enabled
+      ),
+      defaultEnabled
+    )
+    webSearchAgent.search(request.query, options)
   }
 
-  private static void requireMin(long value, long min, String field) {
-    if (value < min) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "${field} must be >= ${min}")
-    }
-  }
+  @Canonical
+  @CompileStatic
+  static class SearchRequest {
+    @NotBlank
+    String query
 
-  private static String requireNonBlank(String value, String field) {
-    if (value == null || value.trim().isEmpty()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "${field} must not be blank")
-    }
-    value
+    @Min(1L)
+    int limit = 5
+
+    @NotBlank
+    String provider = "duckduckgo"
+
+    @Min(1L)
+    long timeoutMillis = 15000L
+
+    boolean headless = true
+    Boolean enabled
   }
 }

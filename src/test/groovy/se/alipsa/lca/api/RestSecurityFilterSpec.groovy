@@ -103,6 +103,17 @@ class RestSecurityFilterSpec extends Specification {
       .andExpect(status().isForbidden())
   }
 
+  def "treats ipv6 mapped loopback as local"() {
+    given:
+    RestSecurityFilter filter = buildFilter(localOnly: true, remoteEnabled: true)
+    MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).addFilters(filter).build()
+
+    expect:
+    mvc.perform(get("/api/cli/health")
+      .with(remoteAddr("::ffff:127.0.0.1")))
+      .andExpect(status().isOk())
+  }
+
   def "accepts oidc tokens and enforces scopes"() {
     given:
     RSAKey key = new RSAKeyGenerator(2048).keyID("kid").generate()

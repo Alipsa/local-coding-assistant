@@ -63,6 +63,20 @@ class CommandPolicy {
     // For patterns containing '*', interpret them as simple globs where:
     // - '*' matches any sequence of characters (possibly empty)
     // The glob is applied to the entire command string.
+    int wildcardIndex = rule.indexOf('*')
+    if (wildcardIndex > 0) {
+      String prefix = rule.substring(0, wildcardIndex)
+      if (!trimmed.startsWith(prefix)) {
+        return false
+      }
+      if (prefix.length() < trimmed.length()) {
+        char lastPrefixChar = prefix.charAt(prefix.length() - 1)
+        char boundaryChar = trimmed.charAt(prefix.length())
+        if (Character.isLetterOrDigit(lastPrefixChar) && Character.isLetterOrDigit(boundaryChar)) {
+          return false
+        }
+      }
+    }
     StringBuilder regex = new StringBuilder("^")
     String specials = '''.^$+?{}[]|()\\-'''
     for (int i = 0; i < rule.length(); i++) {

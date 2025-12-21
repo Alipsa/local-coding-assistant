@@ -5,6 +5,11 @@ import groovy.transform.CompileStatic
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.Collection
+import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ConcurrentHashMap
+import java.util.regex.Pattern
 
 
 @CompileStatic
@@ -12,6 +17,22 @@ class LogSanitizer {
 
   // Minimum length for Base64 strings to reduce false positives
   private static final int MIN_BASE64_LENGTH = 20
+  private static final int DEFAULT_MIN_CONFIDENCE = 2
+  private static final Set<String> PLACEHOLDER_VALUES = Set.of(
+    "example",
+    "sample",
+    "demo",
+    "test",
+    "testing",
+    "value",
+    "placeholder",
+    "changeme",
+    "your_api_key",
+    "your_token"
+  )
+  private static final Set<String> IGNORED_VALUES = ConcurrentHashMap.newKeySet()
+  private static final CopyOnWriteArrayList<Pattern> IGNORED_VALUE_PATTERNS = new CopyOnWriteArrayList<>()
+  private static volatile int minSecretConfidence = DEFAULT_MIN_CONFIDENCE
 
   /**
    * Sanitizes a string by redacting secrets and sensitive data.
@@ -48,27 +69,62 @@ class LogSanitizer {
     
     // Apply standard patterns
     sanitized = sanitized.replaceAll(
-      /(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\s*[:=]\s*([^\s"']+)/
+      /(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\s*([:=])\s*([^\s"']+)/
     ) { List<String> match ->
       String key = match[1]  // Group 1
-      String value = match[2]  // Group 2
+      String delimiter = match[2]  // Group 2
+      String value = match[3]  // Group 3
       // Don't re-redact if already redacted
-      if (value == "REDACTED") {
+      if (value == "REDACTED" || !looksLikeSecretValue(value, key)) {
         return match[0]  // Return full match unchanged
       }
-      return "${key}=REDACTED"
+      return "${key}${delimiter}REDACTED"
     }
     sanitized = sanitized.replaceAll(
-      /(?i)Authorization:\s*Bearer\s+[A-Za-z0-9\-_.]+/,
+      /(?i)Authorization:\s*Bearer\s+[A-Za-z0-9\-_.]{16,}/,
       "Authorization: Bearer REDACTED"
     )
-    sanitized = sanitized.replaceAll(/(?i)Bearer\s+[A-Za-z0-9\-_.]+/, "Bearer REDACTED")
+    sanitized = sanitized.replaceAll(/(?i)Bearer\s+[A-Za-z0-9\-_.]{16,}/, "Bearer REDACTED")
     sanitized = sanitized.replaceAll(/\bghp_[A-Za-z0-9]{16,}\b/, "REDACTED")
     sanitized = sanitized.replaceAll(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/, "REDACTED")
     sanitized = sanitized.replaceAll(/\bAKIA[0-9A-Z]{16}\b/, "REDACTED")
     sanitized = sanitized.replaceAll(/\bASIA[0-9A-Z]{16}\b/, "REDACTED")
     
     sanitized
+  }
+
+  static void configureMinConfidence(int minConfidence) {
+    if (minConfidence > 0) {
+      minSecretConfidence = minConfidence
+    }
+  }
+
+  static void configureIgnoredValues(Collection<String> values) {
+    IGNORED_VALUES.clear()
+    if (values != null) {
+      values.each { String v ->
+        if (v != null && !v.trim().isEmpty()) {
+          IGNORED_VALUES.add(v.trim().toLowerCase(Locale.ROOT))
+        }
+      }
+    }
+  }
+
+  static void configureIgnoredValuePatterns(Collection<String> patterns) {
+    IGNORED_VALUE_PATTERNS.clear()
+    if (patterns != null) {
+      patterns.each { String p ->
+        if (p != null && !p.trim().isEmpty()) {
+          IGNORED_VALUE_PATTERNS.add(Pattern.compile(p))
+        }
+      }
+    }
+  }
+
+  static void resetConfiguration() {
+    minSecretConfidence = DEFAULT_MIN_CONFIDENCE
+    IGNORED_VALUES.clear()
+    IGNORED_VALUE_PATTERNS.clear()
   }
   
   /**
@@ -129,12 +185,17 @@ class LogSanitizer {
     }
     
     // Check for key=value patterns with secret-like keys
-    if (text =~ /(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\s*[:=]/) {
-      return true
+    def kvMatcher = text =~ /(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\s*[:=]\s*([^\s"']+)/
+    if (kvMatcher.find()) {
+      String value = kvMatcher.group(2)
+      String key = kvMatcher.group(1)
+      if (looksLikeSecretValue(value, key)) {
+        return true
+      }
     }
     
     // Check for Bearer tokens
-    if (text =~ /(?i)(Authorization:\s*)?Bearer\s+[A-Za-z0-9\-_.]{10,}/) {
+    if (text =~ /(?i)(Authorization:\s*)?Bearer\s+[A-Za-z0-9\-_.]{16,}/) {
       return true
     }
     
@@ -155,5 +216,73 @@ class LogSanitizer {
     }
     
     return false
+  }
+
+  private static boolean looksLikeSecretValue(String value, String keyHint = null) {
+    if (value == null) {
+      return false
+    }
+    String trimmed = value.trim()
+    if (trimmed.isEmpty()) {
+      return false
+    }
+    if (ignoredValue(trimmed)) {
+      return false
+    }
+    if (trimmed.length() < 8) {
+      return false
+    }
+    String normalizedKey = keyHint != null ? keyHint.toLowerCase(Locale.ROOT) : null
+    boolean strongKeyHint = normalizedKey != null &&
+      (normalizedKey.contains("password") || normalizedKey.contains("secret") || normalizedKey.contains("token") || normalizedKey.contains("key"))
+    int score = 0
+    if (trimmed.length() >= 12) {
+      score++
+    }
+    if (trimmed.length() >= 16) {
+      score++
+    }
+    boolean hasLower = trimmed =~ /[a-z]/
+    boolean hasUpper = trimmed =~ /[A-Z]/
+    boolean hasDigit = trimmed =~ /\d/
+    boolean hasSymbol = trimmed =~ /[^A-Za-z0-9]/
+    if (strongKeyHint) {
+      int hintScore = 0
+      if (hasDigit || hasSymbol) {
+        hintScore++
+      }
+      if (trimmed.length() >= 10) {
+        hintScore++
+      }
+      if (hasLower && hasUpper) {
+        hintScore++
+      }
+      if (hintScore >= 2) {
+        return true
+      }
+    }
+    if (hasLower && hasUpper) {
+      score++
+    }
+    if (hasDigit) {
+      score++
+    }
+    if (hasSymbol) {
+      score++
+    }
+    score >= minSecretConfidence
+  }
+
+  private static boolean ignoredValue(String trimmed) {
+    String lower = trimmed.toLowerCase(Locale.ROOT)
+    if (PLACEHOLDER_VALUES.contains(lower) || IGNORED_VALUES.contains(lower)) {
+      return true
+    }
+    for (Pattern pattern : IGNORED_VALUE_PATTERNS) {
+      if (pattern.matcher(trimmed).find()) {
+        return true
+      }
+    }
+    false
   }
 }

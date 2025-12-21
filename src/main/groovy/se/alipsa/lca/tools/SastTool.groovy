@@ -42,7 +42,13 @@ class SastTool {
     if (targets.isEmpty()) {
       return new SastResult(false, false, "No paths provided for SAST scan.", List.of())
     }
-    String finalCommand = resolveCommand(command, targets)
+    String finalCommand
+    try {
+      finalCommand = resolveCommand(command, targets)
+    } catch (IllegalArgumentException e) {
+      String reason = e.message ?: "Unsafe argument provided to SAST command."
+      return new SastResult(false, false, reason, List.of())
+    }
     CommandPolicy.Decision decision = commandPolicy.evaluate(finalCommand)
     if (!decision.allowed) {
       return new SastResult(false, false, decision.message ?: "SAST command blocked by policy.", List.of())
@@ -77,6 +83,12 @@ class SastTool {
     }
     if (arg.indexOf((int)('\u0000' as char)) >= 0) {
       throw new IllegalArgumentException("Shell arguments cannot contain null bytes")
+    }
+    for (int i = 0; i < arg.length(); i++) {
+      char ch = arg.charAt(i)
+      if (Character.isISOControl(ch)) {
+        throw new IllegalArgumentException("Shell arguments cannot contain control characters")
+      }
     }
     String value = arg
     // Escape backslash, double quote, dollar and backtick for safe use inside double quotes.

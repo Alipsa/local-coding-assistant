@@ -8,14 +8,24 @@ import java.util.Base64
 
 class LogSanitizerSpec extends Specification {
 
+  def cleanup() {
+    LogSanitizer.resetConfiguration()
+  }
+
   def "redacts common secret patterns"() {
     expect:
-    LogSanitizer.sanitize("apiKey=abc123") == "apiKey=REDACTED"
-    LogSanitizer.sanitize("Authorization: Bearer token-value") == "Authorization: Bearer REDACTED"
-    LogSanitizer.sanitize("Bearer token-value") == "Bearer REDACTED"
+    LogSanitizer.sanitize("apiKey=abc123XYZ987") == "apiKey=REDACTED"
+    LogSanitizer.sanitize("Authorization: Bearer token-value-123456") == "Authorization: Bearer REDACTED"
+    LogSanitizer.sanitize("Bearer token-value-123456") == "Bearer REDACTED"
     LogSanitizer.sanitize("ghp_abcdefghijklmnopqrstuvwxyz123456") == "REDACTED"
     LogSanitizer.sanitize("github_pat_abcdef1234567890") == "REDACTED"
     LogSanitizer.sanitize("AKIAABCDEFGHIJKLMNOP") == "REDACTED"
+  }
+
+  def "ignores low confidence placeholder values"() {
+    expect:
+    LogSanitizer.sanitize("api_key=example") == "api_key=example"
+    LogSanitizer.sanitize("token=testuser") == "token=testuser"
   }
   
   def "redacts URL-encoded secrets"() {
@@ -135,7 +145,7 @@ class LogSanitizerSpec extends Specification {
   
   def "handles mixed encoded and plain text"() {
     given:
-    String plainSecret = "apiKey=plain123"
+    String plainSecret = "apiKey=plain123secret"
     String encodedSecret = URLEncoder.encode("password=encoded456", StandardCharsets.UTF_8.toString())
     String input = "${plainSecret} and ${encodedSecret}"
     
@@ -144,5 +154,24 @@ class LogSanitizerSpec extends Specification {
     
     then:
     result == "apiKey=REDACTED and REDACTED"
+  }
+
+  def "ignores configured values and patterns to reduce false positives"() {
+    given:
+    LogSanitizer.configureIgnoredValues(["publictoken"])
+    LogSanitizer.configureIgnoredValuePatterns(["^doc-example-.*"])
+
+    expect:
+    LogSanitizer.sanitize("api_key=publictoken") == "api_key=publictoken"
+    LogSanitizer.sanitize("token=doc-example-123456") == "token=doc-example-123456"
+  }
+
+  def "raises confidence threshold to avoid marginal matches"() {
+    given:
+    LogSanitizer.configureMinConfidence(3)
+
+    expect:
+    LogSanitizer.sanitize("token=short123") == "token=short123"
+    LogSanitizer.sanitize("token=LongTokenValue123456!") == "token=REDACTED"
   }
 }

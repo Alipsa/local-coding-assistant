@@ -68,4 +68,20 @@ error: critical issue found
     result.findings.every { it.severity == "INFO" }
     result.findings.any { it.rule.contains("malformed") }
   }
+
+  def "rejects control characters in arguments"() {
+    given:
+    CommandRunner runner = Mock()
+    CommandPolicy policy = new CommandPolicy("", "")
+    SastTool tool = new SastTool(runner, policy, "sast-tool {paths}", 1000L, 2000)
+
+    when:
+    def result = tool.run(["src/\nmain"])
+
+    then:
+    !result.ran
+    !result.success
+    result.message.contains("control characters")
+    0 * runner.run(_, _, _)
+  }
 }

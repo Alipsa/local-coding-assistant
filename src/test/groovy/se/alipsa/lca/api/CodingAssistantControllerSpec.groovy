@@ -5,6 +5,7 @@ import com.embabel.agent.domain.io.UserInput
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.Personas
 import spock.lang.Specification
@@ -16,7 +17,15 @@ class CodingAssistantControllerSpec extends Specification {
 
   CodingAssistantAgent agent = Mock(CodingAssistantAgent)
   Ai ai = Mock(Ai)
-  MockMvc mvc = MockMvcBuilders.standaloneSetup(new CodingAssistantController(agent, ai)).build()
+  LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
+  MockMvc mvc
+
+  def setup() {
+    validator.afterPropertiesSet()
+    mvc = MockMvcBuilders.standaloneSetup(new CodingAssistantController(agent, ai))
+      .setValidator(validator)
+      .build()
+  }
 
   def "generateAndReviewCode wires Ai through to agent actions"() {
     given:
@@ -25,12 +34,23 @@ class CodingAssistantControllerSpec extends Specification {
 
     when:
     def response = mvc.perform(post("/api/code/generateAndReview")
-      .contentType(MediaType.TEXT_PLAIN)
-      .content("write a search command"))
+      .contentType(MediaType.APPLICATION_JSON)
+      .content('{"prompt":"write a search command"}'))
 
     then:
     response.andExpect(status().isOk()).andReturn()
     1 * agent.craftCode({ UserInput ui -> ui.getContent() == "write a search command" }, ai) >> crafted
     1 * agent.reviewCode({ UserInput ui -> ui.getContent() == "write a search command" }, crafted, ai) >> reviewed
+  }
+
+  def "generateAndReviewCode rejects blank prompts"() {
+    when:
+    def response = mvc.perform(post("/api/code/generateAndReview")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content('{"prompt":" "}'))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * agent.craftCode(_, _, _)
   }
 }

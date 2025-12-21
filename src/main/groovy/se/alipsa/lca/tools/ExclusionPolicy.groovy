@@ -110,11 +110,24 @@ class ExclusionPolicy {
       return true
     }
     String glob = toGlob(pattern, anchored)
+    if (dirOnly && !glob.endsWith("/**")) {
+      glob = glob + "/**"
+    }
     PathMatcher matcher = matcherFor(glob)
     matcher.matches(Paths.get(normalized))
   }
 
   private boolean containsDirSegment(String normalized, String dirName, boolean anchored) {
+    if (dirName.startsWith("**/")) {
+      return containsDirSegment(normalized, dirName.substring(3), false)
+    }
+    if (containsWildcard(dirName)) {
+      String glob = toGlob(dirName, anchored)
+      if (!glob.endsWith("/**")) {
+        glob = glob + "/**"
+      }
+      return matcherFor(glob).matches(Paths.get(normalized))
+    }
     if (anchored) {
       return normalized == dirName || normalized.startsWith(dirName + "/")
     }
@@ -126,6 +139,9 @@ class ExclusionPolicy {
 
   private String toGlob(String pattern, boolean anchored) {
     if (anchored) {
+      return pattern
+    }
+    if (pattern.startsWith("**/")) {
       return pattern
     }
     return "**/" + pattern
