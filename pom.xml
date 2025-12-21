@@ -89,12 +89,6 @@
       <artifactId>groovy-json</artifactId>
       <version>${groovy.version}</version>
     </dependency>
-
-    <!--dependency>
-      <groupId>org.springframework.ai</groupId>
-      <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-      <version>1.0.0-M6</version>
-    </dependency-->
     <dependency>
       <groupId>com.embabel.agent</groupId>
       <artifactId>embabel-agent-starter-ollama</artifactId>
@@ -233,12 +227,35 @@
             <goals>
               <goal>compile</goal>
               <goal>compileTests</goal>
+              <goal>groovydoc-jar</goal>
             </goals>
+          </execution>
+          <execution>
+            <id>site-groovydoc</id>
+            <phase>site</phase> <goals>
+            <goal>groovydoc</goal>
+          </goals>
+            <configuration>
+              <groovyDocOutputDirectory>${project.reporting.outputDirectory}/gapidocs</groovyDocOutputDirectory>
+            </configuration>
           </execution>
         </executions>
         <configuration>
+          <includeClasspath>PROJECT_AND_PLUGIN</includeClasspath>
           <targetBytecode>${java.version}</targetBytecode>
         </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-groovydoc</artifactId>
+            <version>${groovy.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-templates</artifactId>
+            <version>${groovy.version}</version>
+          </dependency>
+        </dependencies>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -280,87 +297,8 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-antrun-plugin</artifactId>
-        <version>3.2.0</version>
-
-        <executions>
-
-          <!-- A) Generate GroovyDoc for package/deploy -->
-          <execution>
-            <id>groovydoc-generate</id>
-            <phase>prepare-package</phase>
-            <goals><goal>run</goal></goals>
-            <configuration>
-              <target name="groovydoc-generate">
-                <taskdef name="groovydoc"
-                         classname="org.codehaus.groovy.ant.Groovydoc"
-                         classpathref="maven.plugin.classpath"/>
-
-                <mkdir dir="${project.build.directory}/groovydoc"/>
-
-                <groovydoc
-                    destdir="${project.build.directory}/groovydoc"
-                    use="true"
-                    private="false"
-                    windowtitle="${project.name} ${project.version} API"
-                    doctitle="${project.name} ${project.version} API"
-                    sourcepath="${project.basedir}/src/main/groovy${path.separator}${project.basedir}/src/main/java"
-                />
-              </target>
-            </configuration>
-          </execution>
-
-          <!-- B) Copy GroovyDoc into the site output for mvn site -->
-          <execution>
-            <id>groovydoc-copy-to-site</id>
-            <phase>pre-site</phase>
-            <goals><goal>run</goal></goals>
-            <configuration>
-              <target name="groovydoc-copy-to-site">
-                <mkdir dir="${project.reporting.outputDirectory}/groovydoc"/>
-                <copy todir="${project.reporting.outputDirectory}/groovydoc" overwrite="true">
-                  <fileset dir="${project.build.directory}/groovydoc"/>
-                </copy>
-              </target>
-            </configuration>
-          </execution>
-
-        </executions>
-
-        <dependencies>
-          <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy</artifactId>
-            <version>${groovy.version}</version>
-          </dependency>
-          <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy-groovydoc</artifactId>
-            <version>${groovy.version}</version>
-          </dependency>
-          <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy-ant</artifactId>
-            <version>${groovy.version}</version>
-          </dependency>
-        </dependencies>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.5.0</version>
-        <executions>
-          <execution>
-            <id>groovydoc-jar</id>
-            <phase>package</phase>
-            <goals><goal>jar</goal></goals>
-            <configuration>
-              <classifier>javadoc</classifier>
-              <classesDirectory>${project.build.directory}/groovydoc</classesDirectory>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -384,6 +322,18 @@
 
   <reporting>
     <plugins>
+      <plugin>
+        <groupId>org.codehaus.gmavenplus</groupId>
+        <artifactId>gmavenplus-plugin</artifactId>
+        <version>4.2.1</version>
+        <reportSets>
+          <reportSet>
+            <reports>
+              <report>groovydoc</report>
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-project-info-reports-plugin</artifactId>
