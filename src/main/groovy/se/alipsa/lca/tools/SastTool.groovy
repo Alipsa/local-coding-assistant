@@ -3,12 +3,16 @@ package se.alipsa.lca.tools
 import groovy.json.JsonSlurper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 @Component
 @CompileStatic
 class SastTool {
+
+  private static final Logger log = LoggerFactory.getLogger(SastTool)
 
   private final CommandRunner commandRunner
   private final CommandPolicy commandPolicy
@@ -102,8 +106,8 @@ class SastTool {
             new SastFinding(severity.toString().toUpperCase(), path, line, checkId)
           }
         }
-      } catch (Exception ignored) {
-        // fall through to line parsing
+      } catch (Exception e) {
+        log.warn("Failed to parse SAST output as JSON (falling back to line parsing)", e)
       }
     }
     return trimmed.readLines()
