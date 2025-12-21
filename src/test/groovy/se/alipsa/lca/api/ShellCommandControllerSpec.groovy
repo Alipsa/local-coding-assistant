@@ -124,7 +124,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isBadRequest())
-    0 * commands.revert(_, _)
+    0 * commands.revert(_, _, _)
   }
 
   def "chat requires non-blank prompt"() {

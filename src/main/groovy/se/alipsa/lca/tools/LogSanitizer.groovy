@@ -94,9 +94,10 @@ class LogSanitizer {
   }
 
   static void configureMinConfidence(int minConfidence) {
-    if (minConfidence > 0) {
-      minSecretConfidence = minConfidence
+    if (minConfidence < 0) {
+      throw new IllegalArgumentException("Minimum confidence must be >= 0")
     }
+    minSecretConfidence = minConfidence
   }
 
   static void configureIgnoredValues(Collection<String> values) {

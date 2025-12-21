@@ -232,7 +232,7 @@ class ShellCommandController {
     String filePath = request.filePath
     boolean dryRun = request.dryRun != null ? request.dryRun : false
     boolean confirm = request.confirm != null ? request.confirm : false
-    shellCommands.revert(filePath, dryRun)
+    shellCommands.revert(filePath, dryRun, confirm)
   }
 
   @PostMapping(path = "/context", consumes = MediaType.APPLICATION_JSON_VALUE)

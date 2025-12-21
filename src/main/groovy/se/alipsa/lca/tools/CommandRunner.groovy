@@ -77,7 +77,7 @@ class CommandRunner {
       writeHeader(logWriter, LogSanitizer.sanitize(command), started)
       process = startProcess(command)
       AtomicInteger remaining = new AtomicInteger(outputLimit)
-      AtomicInteger remainingLog = new AtomicInteger(outputLimit)
+      AtomicInteger remainingLogCapacity = new AtomicInteger(outputLimit)
       StringBuffer visibleOutput = new StringBuffer()
       StreamCollector outCollector = new StreamCollector(
         process.getInputStream(),
@@ -85,7 +85,7 @@ class CommandRunner {
         "OUT",
         visibleOutput,
         remaining,
-        remainingLog
+        remainingLogCapacity
       )
       StreamCollector errCollector = new StreamCollector(
         process.getErrorStream(),
@@ -93,7 +93,7 @@ class CommandRunner {
         "ERR",
         visibleOutput,
         remaining,
-        remainingLog
+        remainingLogCapacity
       )
       Thread outThread = new Thread(outCollector)
       Thread errThread = new Thread(errCollector)
@@ -214,7 +214,7 @@ class CommandRunner {
     private final String label
     private final StringBuffer visibleOutput
     private final AtomicInteger remainingVisible
-    private final AtomicInteger remainingLog
+    private final AtomicInteger remainingLogCapacity
     volatile boolean truncated = false
 
     StreamCollector(
@@ -223,14 +223,14 @@ class CommandRunner {
       String label,
       StringBuffer visibleOutput,
       AtomicInteger remainingVisible,
-      AtomicInteger remainingLog
+      AtomicInteger remainingLogCapacity
     ) {
       this.stream = stream
       this.logWriter = logWriter
       this.label = label
       this.visibleOutput = visibleOutput
       this.remainingVisible = remainingVisible
-      this.remainingLog = remainingLog
+      this.remainingLogCapacity = remainingLogCapacity
     }
 
     @Override
@@ -272,18 +272,18 @@ class CommandRunner {
     }
 
     private void writeLogLimited(String formatted) throws IOException {
-      if (remainingLog == null) {
+      if (remainingLogCapacity == null) {
         logWriter.write(formatted)
         return
       }
-      int remaining = remainingLog.get()
+      int remaining = remainingLogCapacity.get()
       if (remaining <= 0) {
         truncated = true
         return
       }
       int toTake = Math.min(remaining, formatted.length())
       logWriter.write(formatted, 0, toTake)
-      int after = remainingLog.addAndGet(-toTake)
+      int after = remainingLogCapacity.addAndGet(-toTake)
       if (toTake < formatted.length() || after <= 0) {
         truncated = true
       }

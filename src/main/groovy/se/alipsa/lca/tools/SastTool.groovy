@@ -90,13 +90,13 @@ class SastTool {
         throw new IllegalArgumentException("Shell arguments cannot contain control characters")
       }
     }
-    String value = arg
+    String escaped = arg
     // Escape backslash, double quote, dollar and backtick for safe use inside double quotes.
-    value = value.replace("\\", "\\\\")
-    value = value.replace('"', '\\"')
-    value = value.replace('$', '\\$')
-    value = value.replace('`', '\\`')
-    return '"' + value + '"'
+    escaped = escaped.replace("\\", "\\\\")
+    escaped = escaped.replace('"', '\\"')
+    escaped = escaped.replace('$', '\\$')
+    escaped = escaped.replace('`', '\\`')
+    return '"' + escaped + '"'
   }
   private static List<SastFinding> parseFindings(String output) {
     String trimmed = output != null ? output.trim() : ""

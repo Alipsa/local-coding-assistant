@@ -834,7 +834,14 @@ class ShellCommands {
     @ShellOption(help = "File path relative to project root") String filePath,
     @ShellOption(defaultValue = "false", help = "Preview the restore without writing") boolean dryRun
   ) {
+    revert(filePath, dryRun, true)
+  }
+
+  String revert(String filePath, boolean dryRun, boolean confirm) {
     requireNonBlank(filePath, "filePath")
+    if (!dryRun && !confirm) {
+      return "Revert canceled: confirmation required."
+    }
     printProgressStart("Edit revert")
     String output = formatEditResult(fileEditingTool.revertLatestBackup(filePath, dryRun))
     printProgressDone("Edit revert")

@@ -106,15 +106,13 @@ class ExclusionPolicy {
       }
       return false
     }
-    if (dirOnly && containsDirSegment(normalized, pattern, anchored)) {
-      return true
-    }
+    boolean dirMatch = dirOnly && containsDirSegment(normalized, pattern, anchored)
     String glob = toGlob(pattern, anchored)
     if (dirOnly && !glob.endsWith("/**")) {
       glob = glob + "/**"
     }
     PathMatcher matcher = matcherFor(glob)
-    matcher.matches(Paths.get(normalized))
+    dirMatch || matcher.matches(Paths.get(normalized))
   }
 
   private boolean containsDirSegment(String normalized, String dirName, boolean anchored) {
