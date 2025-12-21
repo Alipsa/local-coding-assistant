@@ -11,7 +11,7 @@ class SecretScanner {
 
   private static final List<Rule> RULES = List.of(
     new Rule("AWS Access Key", Pattern.compile("\\bAKIA[0-9A-Z]{16}\\b")),
-    new Rule("AWS Secret Key", Pattern.compile("(?i)aws_secret_access_key\\s*[:=]\\s*([A-Za-z0-9/+=]{40})")),
+    new Rule("AWS Secret Key", Pattern.compile("(?i)\\baws_secret_access_key\\b\\s*[:=]\\s*(?:['\"])?([A-Za-z0-9/+=]{40})(?:['\"])?.*$")),
     new Rule("GitHub Token", Pattern.compile("\\bghp_[A-Za-z0-9]{36}\\b")),
     new Rule("Private Key", Pattern.compile("-----BEGIN (?:RSA|EC|PRIVATE) KEY-----"))
   )
