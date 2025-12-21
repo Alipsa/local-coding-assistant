@@ -53,13 +53,30 @@ class SastTool {
   }
 
   private static String resolveCommand(String command, List<String> targets) {
-    String joined = targets.join(" ")
+    // Escape each target so that any shell metacharacters are treated as literal path characters
+    List<String> safeTargets = targets.collect { String t -> escapeShellArg(t) }
+    String joined = safeTargets.join(" ")
     if (command.contains("{paths}")) {
       return command.replace("{paths}", joined)
     }
-    command + " " + joined
+    return command + " " + joined
   }
 
+  /**
+   * Escape a single value so it can be safely used as a shell argument.
+   * Uses single-quoting and escapes any embedded single quotes with the standard
+   * POSIX pattern: '\'' -> '\'"\'"'\'
+   */
+  private static String escapeShellArg(String arg) {
+    if (arg == null) {
+      return "''"
+    }
+    String value = arg
+    // Close the existing quote, insert an escaped single quote, and reopen the quote.
+    // This transforms e.g. abc'def into 'abc'"'"'def'
+    value = value.replace("'", "'\"'\"'")
+    return "'" + value + "'"
+  }
   private static List<SastFinding> parseFindings(String output) {
     String trimmed = output != null ? output.trim() : ""
     if (!trimmed) {
