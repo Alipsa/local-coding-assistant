@@ -263,27 +263,26 @@ class RestSecurityFilter extends OncePerRequestFilter {
   }
 
   @CompileStatic
-  private static class RequestWindow {
-    private long windowStartNanos
-    private int count
+    private static class RequestWindow {
+      private long windowStartNanos
+      private int count
 
-    RequestWindow(long windowStartNanos) {
-      this.windowStartNanos = windowStartNanos
-      this.count = 0
-    }
+      RequestWindow(long windowStartNanos) {
+        this.windowStartNanos = windowStartNanos
+        this.count = 0
+      }
 
-    synchronized boolean tryAcquire(long now, long windowNanos, int maxPerMinute) {
-      long elapsed = now - windowStartNanos
-      if (elapsed < 0) {
-        log.warn("Rate limiter observed negative elapsed time ({} ns, possible clock anomaly); rejecting request and resetting window", elapsed)
-        windowStartNanos = now
-        count = 0
-        return false
-      }
-      if (elapsed >= windowNanos) {
-        windowStartNanos = now
-        count = 0
-      }
+      synchronized boolean tryAcquire(long now, long windowNanos, int maxPerMinute) {
+        long elapsed = now - windowStartNanos
+        if (elapsed < 0) {
+          log.warn("Rate limiter observed negative elapsed time ({} ns, possible clock anomaly); resetting window conservatively", elapsed)
+          windowStartNanos = now
+          count = 0
+        }
+        if (elapsed >= windowNanos) {
+          windowStartNanos = now
+          count = 0
+        }
       count++
       return count <= maxPerMinute
     }

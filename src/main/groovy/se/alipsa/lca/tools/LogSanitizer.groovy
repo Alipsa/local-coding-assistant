@@ -51,6 +51,9 @@ class LogSanitizer {
   private static final Pattern UPPER_PATTERN = Pattern.compile("[A-Z]")
   private static final Pattern DIGIT_PATTERN = Pattern.compile("\\d")
   private static final Pattern SYMBOL_PATTERN = Pattern.compile("[^A-Za-z0-9]")
+  private static final Pattern SEMVER_PATTERN = Pattern.compile("(?i)\\b\\d+\\.\\d+\\.\\d+(?:-[A-Za-z0-9.+]+)?\\b")
+  private static final Pattern UUID_PATTERN = Pattern.compile("(?i)\\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\b")
+  private static final Pattern GIT_HASH_PATTERN = Pattern.compile("\\b[0-9a-f]{7,40}\\b")
 
   /**
    * Sanitizes a string by redacting secrets and sensitive data.
@@ -81,11 +84,12 @@ class LogSanitizer {
     }
     String sanitized = input
     
-    // Check for URL-encoded secrets FIRST (before plain text patterns)
-    sanitized = sanitizeUrlEncoded(sanitized)
-    
-    // Check for Base64-encoded secrets
-    sanitized = sanitizeBase64Encoded(sanitized)
+    // Check for URL-encoded and Base64-encoded secrets, with a small number of passes
+    // to catch common double-encoding without unbounded recursion.
+    for (int i = 0; i < 2; i++) {
+      sanitized = sanitizeUrlEncoded(sanitized)
+      sanitized = sanitizeBase64Encoded(sanitized)
+    }
     
     sanitized = sanitizeKeyValuePairs(sanitized)
     sanitized = AUTHORIZATION_BEARER_PATTERN.matcher(sanitized).replaceAll("Authorization: Bearer REDACTED")
@@ -252,12 +256,18 @@ class LogSanitizer {
     if (ignoredValue(trimmed)) {
       return false
     }
+    boolean matchesCommonNonSecret = SEMVER_PATTERN.matcher(trimmed).find() ||
+      UUID_PATTERN.matcher(trimmed).find() ||
+      GIT_HASH_PATTERN.matcher(trimmed).find()
     if (trimmed.length() < 8) {
       return false
     }
     String normalizedKey = keyHint != null ? keyHint.toLowerCase(Locale.ROOT) : null
     boolean strongKeyHint = normalizedKey != null &&
       (normalizedKey.contains("password") || normalizedKey.contains("secret") || normalizedKey.contains("token") || normalizedKey.contains("key"))
+    if (matchesCommonNonSecret && !strongKeyHint) {
+      return false
+    }
     int score = 0
     if (trimmed.length() >= 12) {
       score++

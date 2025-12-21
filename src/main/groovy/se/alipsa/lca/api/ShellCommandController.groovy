@@ -387,7 +387,7 @@ class ShellCommandController {
     Boolean agentRequested
 
     @AssertTrue(message = "Confirmation required for run command. Set confirm=true to proceed.")
-    boolean isConfirmed() {
+    boolean isConfirmationProvided() {
       Boolean.TRUE.equals(confirm)
     }
   }
@@ -401,7 +401,7 @@ class ShellCommandController {
     Boolean confirm
 
     @AssertTrue(message = "Confirmation required when dryRun is false for apply patch.")
-    boolean isConfirmedWhenRequired() {
+    boolean isConfirmationProvidedWhenRequired() {
       if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
         return true
       }
@@ -420,7 +420,7 @@ class ShellCommandController {
     Boolean confirm
 
     @AssertTrue(message = "Confirmation required when dryRun is false for apply blocks.")
-    boolean isConfirmedWhenRequired() {
+    boolean isConfirmationProvidedWhenRequired() {
       if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
         return true
       }
@@ -437,7 +437,7 @@ class ShellCommandController {
     Boolean confirm
 
     @AssertTrue(message = "Confirmation required when dryRun is false for revert.")
-    boolean isConfirmedWhenRequired() {
+    boolean isConfirmationProvidedWhenRequired() {
       if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
         return true
       }
