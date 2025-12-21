@@ -64,7 +64,7 @@ class CommandPolicy {
     // - '*' matches any sequence of characters (possibly empty)
     // The glob is applied to the entire command string.
     StringBuilder regex = new StringBuilder("^")
-    String specials = ".^$+?{}[]|()\\-"
+    String specials = '''.^$+?{}[]|()\\-'''
     for (int i = 0; i < rule.length(); i++) {
       char c = rule.charAt(i)
       if (c == '*') {
