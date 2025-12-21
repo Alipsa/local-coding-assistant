@@ -49,7 +49,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
     @Value('${assistant.rest.oidc.audience:}') String oidcAudience,
     @Value('${assistant.rest.oidc.jwks-file:}') String oidcJwksFile,
     @Value('${assistant.rest.oidc.jwks-uri:}') String oidcJwksUri,
-    @Value('${assistant.rest.oidc.jwks-timeout-millis:2000}') long oidcJwksTimeoutMillis,
+    @Value('${assistant.rest.oidc.jwks-timeout-millis:10000}') long oidcJwksTimeoutMillis,
     @Value('${assistant.rest.scope.read:}') String requiredReadScopes,
     @Value('${assistant.rest.scope.write:}') String requiredWriteScopes
   ) {
