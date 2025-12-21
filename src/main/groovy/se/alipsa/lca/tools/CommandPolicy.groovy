@@ -52,11 +52,33 @@ class CommandPolicy {
     }
     String trimmed = command.trim()
     String rule = pattern.trim()
-    if (rule.endsWith("*")) {
-      String prefix = rule.substring(0, rule.length() - 1)
-      return trimmed.startsWith(prefix)
+
+    // If there is no wildcard, keep existing semantics:
+    // - exact match, or
+    // - rule matches the first token and is followed by a space.
+    if (!rule.contains("*")) {
+      return trimmed == rule || trimmed.startsWith(rule + " ")
     }
-    trimmed == rule || trimmed.startsWith(rule + " ")
+
+    // For patterns containing '*', interpret them as simple globs where:
+    // - '*' matches any sequence of characters (possibly empty)
+    // The glob is applied to the entire command string.
+    StringBuilder regex = new StringBuilder("^")
+    String specials = ".^$+?{}[]|()\\-"
+    for (int i = 0; i < rule.length(); i++) {
+      char c = rule.charAt(i)
+      if (c == '*') {
+        regex.append(".*")
+      } else {
+        if (specials.indexOf((int) c) >= 0) {
+          regex.append('\\')
+        }
+        regex.append(c)
+      }
+    }
+    regex.append('$')
+
+    return trimmed.matches(regex.toString())
   }
 
   @Canonical
