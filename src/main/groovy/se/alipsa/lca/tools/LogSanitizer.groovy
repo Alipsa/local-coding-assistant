@@ -10,6 +10,9 @@ import java.util.Base64
 @CompileStatic
 class LogSanitizer {
 
+  // Minimum length for Base64 strings to reduce false positives
+  private static final int MIN_BASE64_LENGTH = 20
+
   /**
    * Sanitizes a string by redacting secrets and sensitive data.
    * 
@@ -96,20 +99,15 @@ class LogSanitizer {
    * Attempts to decode Base64 strings and check if they contain secrets.
    */
   private static String sanitizeBase64Encoded(String input) {
-    // Pattern to find potential Base64 strings (at least 20 chars to reduce false positives)
+    // Pattern to find potential Base64 strings (configurable minimum length to reduce false positives)
     // Base64 uses A-Z, a-z, 0-9, +, /, and = for padding
-    // Include the padding in the match - use lookahead/lookbehind or non-word boundary
-    def base64Pattern = /(?<![A-Za-z0-9+\/])[A-Za-z0-9+\/]{20,}={0,2}(?![A-Za-z0-9+\/])/
+    // Use negative lookahead/lookbehind to avoid word boundaries that exclude padding
+    def base64Pattern = /(?<![A-Za-z0-9+\/])[A-Za-z0-9+\/]{${MIN_BASE64_LENGTH},}={0,2}(?![A-Za-z0-9+\/])/
     
     input.replaceAll(base64Pattern) { String encoded ->
       try {
-        // Remove padding for the check (Base64 decoder is lenient)
-        String toDecode = encoded.replaceAll(/=+$/, '')
-        // Add back padding if needed
-        while (toDecode.length() % 4 != 0) {
-          toDecode += '='
-        }
-        byte[] decoded = Base64.decoder.decode(toDecode)
+        // Java's Base64 decoder handles missing padding automatically
+        byte[] decoded = Base64.decoder.decode(encoded)
         String decodedStr = new String(decoded, StandardCharsets.UTF_8)
         // Check if decoded content contains secrets
         if (containsSecret(decodedStr)) {
