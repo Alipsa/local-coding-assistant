@@ -238,8 +238,9 @@ class CommandRunner {
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
         String line
         while ((line = reader.readLine()) != null) {
+          String sanitizedLine = LogSanitizer.sanitize(line)
           String formatted = "[${label}] ${line}${System.lineSeparator()}".toString()
-          String sanitized = LogSanitizer.sanitize(formatted)
+          String sanitized = "[${label}] ${sanitizedLine}${System.lineSeparator()}".toString()
           try {
             synchronized (logWriter) {
               writeLogLimited(sanitized)

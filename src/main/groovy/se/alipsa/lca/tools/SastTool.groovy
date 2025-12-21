@@ -77,7 +77,7 @@ class SastTool {
   /**
    * Escape a single value so it can be safely used as a POSIX shell argument.
    * Uses single-quoting and rejects control characters to avoid command injection.
-   * Null bytes are rejected since they cannot be represented safely on a shell command line.
+   * Null bytes (Unicode U+0000) are rejected since they cannot be represented safely on a shell command line.
    */
   private static String escapeShellArg(String arg) {
     if (arg == null) {
