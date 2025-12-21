@@ -12,6 +12,8 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.proc.ConfigurableJWTProcessor
 import com.nimbusds.jwt.proc.DefaultJWTProcessor
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 import java.nio.file.Path
 import java.nio.file.Files
@@ -23,6 +25,8 @@ import java.util.concurrent.TimeUnit
 
 @CompileStatic
 class OidcTokenValidator {
+
+  private static final Logger log = LoggerFactory.getLogger(OidcTokenValidator)
 
   private final String issuer
   private final String audience
@@ -60,6 +64,7 @@ class OidcTokenValidator {
       Set<String> scopes = extractScopes(claims)
       return ValidationResult.valid(scopes)
     } catch (Exception e) {
+      log.warn("Token validation failed: {}", e.message, e)
       return ValidationResult.invalid("Token validation failed.")
     }
   }
