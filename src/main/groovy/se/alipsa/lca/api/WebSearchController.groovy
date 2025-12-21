@@ -60,13 +60,13 @@ class WebSearchController {
     @NotBlank
     String query
 
-    @Min(1L)
+    @Min(1)
     int limit = 5
 
     @NotBlank
     String provider = "duckduckgo"
 
-    @Min(1L)
+    @Min(1)
     long timeoutMillis = 15000L
 
     boolean headless = true

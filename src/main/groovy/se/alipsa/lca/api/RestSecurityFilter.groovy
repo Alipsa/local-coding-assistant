@@ -183,6 +183,10 @@ class RestSecurityFilter extends OncePerRequestFilter {
     null
   }
 
+  /**
+   * Rate limiting based on a monotonic clock (System.nanoTime) to avoid wall-clock adjustments.
+   * If a platform anomaly returns a negative elapsed time, the request is rejected and the window reset.
+   */
   private boolean allowRate(String addr) {
     String key = addr ?: "unknown"
     long now = System.nanoTime()

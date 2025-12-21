@@ -109,14 +109,12 @@ class SessionState {
   }
 
   boolean isWebSearchEnabled(String sessionId) {
-    if (localOnly) {
+    SessionSettings settings = getOrCreate(sessionId)
+    Boolean desired = settings.webSearchEnabled != null ? settings.webSearchEnabled : defaultWebSearchEnabled
+    if (localOnly && Boolean.TRUE.equals(desired)) {
       return false
     }
-    SessionSettings settings = getOrCreate(sessionId)
-    if (settings.webSearchEnabled != null) {
-      return settings.webSearchEnabled
-    }
-    defaultWebSearchEnabled
+    desired
   }
 
   boolean isLocalOnly() {
