@@ -18,6 +18,8 @@ class LogSanitizer {
 
   // Minimum length for Base64 strings to reduce false positives
   private static final int MIN_BASE64_LENGTH = 20
+  // Skip decoding unusually large encoded tokens to avoid excessive work.
+  private static final int MAX_ENCODED_LENGTH = 8192
   private static final int DEFAULT_MIN_CONFIDENCE = 2
   private static final Set<String> PLACEHOLDER_VALUES = Set.of(
     "example",
@@ -69,10 +71,11 @@ class LogSanitizer {
    * Limitations:
    * - Only detects patterns matching known secret formats
    * - May miss custom or proprietary secret formats
-   * - Only checks one level of URL/Base64 encoding (not recursive)
+   * - Only checks a small number of URL/Base64 decoding passes (not recursive)
    * - May produce false positives with legitimate base64/URL-encoded data
    * - Heuristic scoring (length and character variety) can flag non-secrets such as version strings or identifiers
    * - Base64 detection uses a length threshold to reduce noise and might miss shorter encoded secrets
+   * - Encoded tokens above a size threshold are not decoded to avoid excessive work
    * - Does not detect secrets split across multiple lines or obfuscated in other ways
    * 
    * @param input the string to sanitize
@@ -147,13 +150,15 @@ class LogSanitizer {
     while (matcher.find()) {
       String encoded = matcher.group()
       String replacement = encoded
-      try {
-        String decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8.toString())
-        if (containsSecret(decoded)) {
-          replacement = "REDACTED"
+      if (encoded.length() <= MAX_ENCODED_LENGTH) {
+        try {
+          String decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8.toString())
+          if (containsSecret(decoded)) {
+            replacement = "REDACTED"
+          }
+        } catch (IllegalArgumentException | UnsupportedOperationException ignored) {
+          // leave replacement as encoded
         }
-      } catch (IllegalArgumentException | UnsupportedOperationException ignored) {
-        // leave replacement as encoded
       }
       matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
     }
@@ -171,14 +176,16 @@ class LogSanitizer {
     while (matcher.find()) {
       String encoded = matcher.group()
       String replacement = encoded
-      try {
-        byte[] decoded = Base64.decoder.decode(encoded)
-        String decodedStr = new String(decoded, StandardCharsets.UTF_8)
-        if (containsSecret(decodedStr)) {
-          replacement = "REDACTED"
+      if (encoded.length() <= MAX_ENCODED_LENGTH) {
+        try {
+          byte[] decoded = Base64.decoder.decode(encoded)
+          String decodedStr = new String(decoded, StandardCharsets.UTF_8)
+          if (containsSecret(decodedStr)) {
+            replacement = "REDACTED"
+          }
+        } catch (IllegalArgumentException e) {
+          // leave replacement as original encoded string
         }
-      } catch (IllegalArgumentException e) {
-        // leave replacement as original encoded string
       }
       matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
     }

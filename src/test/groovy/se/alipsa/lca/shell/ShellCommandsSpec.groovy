@@ -449,17 +449,7 @@ class ShellCommandsSpec extends Specification {
     _ * repoGit.isGitRepo() >> true
     _ * repoGit.hasStagedChanges() >> true
     _ * repoGit.stagedDiff() >> stagedDiff
-    ShellCommands commitCommands = new ShellCommands(
-      agent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      repoGit,
-      commandRunner,
-      modelRegistry,
-      tempDir.resolve("commit.log").toString()
-    )
+    ShellCommands commitCommands = commitCommandsFor(repoGit)
 
     when:
     def message = commitCommands.commitSuggest("default", null, null, null, null, true, false)
@@ -477,17 +467,7 @@ class ShellCommandsSpec extends Specification {
     _ * repoGit.hasStagedChanges() >> true
     _ * repoGit.stagedDiff() >> stagedDiff
     PromptRunner promptRunner = Mock()
-    ShellCommands commitCommands = new ShellCommands(
-      agent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      repoGit,
-      commandRunner,
-      modelRegistry,
-      tempDir.resolve("commit.log").toString()
-    )
+    ShellCommands commitCommands = commitCommandsFor(repoGit)
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts -> promptRunner }
     promptRunner.generateText(_ as String) >> { String prompt ->
       assert prompt.contains("User acknowledged potential secrets in staged diff.")
@@ -833,5 +813,25 @@ class ShellCommandsSpec extends Specification {
     then:
     out.contains("=== Repository Tree ===")
     out.contains("src/")
+  }
+
+  private ShellCommands commitCommandsFor(GitTool repoGit) {
+    new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("commit.log").toString(),
+      null,
+      null
+    )
   }
 }
