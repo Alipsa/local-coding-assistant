@@ -7,6 +7,8 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.io.PrintWriter
+import java.io.StringWriter
 
 @Component
 @CompileStatic
@@ -119,7 +121,11 @@ class SastTool {
           }
         }
       } catch (Exception e) {
-        log.warn("Failed to parse SAST output as JSON (falling back to line parsing)", e)
+        StringWriter sw = new StringWriter()
+        e.printStackTrace(new PrintWriter(sw))
+        String summary = e.message != null ? e.message.split("\\R")[0] : e.getClass().getSimpleName()
+        log.warn("Failed to parse SAST output as JSON (falling back to line parsing). Error: {}", summary)
+        log.debug("SAST parse stacktrace\n{}", sw.toString())
       }
     }
     return trimmed.readLines()
