@@ -108,7 +108,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
     Set<String> requiredScopes = isReadRequest(request.getMethod()) ? requiredReadScopes : requiredWriteScopes
     if (!requiredScopes.isEmpty()) {
       if (!auth.authenticated) {
-        deny(response, HttpServletResponse.SC_FORBIDDEN, "Authentication required for this operation.")
+        deny(response, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required for this operation.")
         audit(request, response)
         return
       }
