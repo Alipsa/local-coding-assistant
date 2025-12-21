@@ -107,7 +107,7 @@ class SastTool {
           }
         }
       } catch (Exception e) {
-        log.warn("Failed to parse SAST output as JSON (falling back to line parsing): {}", e.getMessage(), e)
+        log.warn("Failed to parse SAST output as JSON (falling back to line parsing)", e)
       }
     }
     return trimmed.readLines()
