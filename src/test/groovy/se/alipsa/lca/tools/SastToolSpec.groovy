@@ -46,4 +46,26 @@ class SastToolSpec extends Specification {
     !result.ran
     result.message.contains("not configured")
   }
+
+  def "falls back to line parsing when JSON is malformed"() {
+    given:
+    CommandRunner runner = Stub() {
+      run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, """
+{ "malformed": "json without closing brace
+warning: possible issue at line 5
+error: critical issue found
+""", false, null)
+    }
+    CommandPolicy policy = new CommandPolicy("", "")
+    SastTool tool = new SastTool(runner, policy, "sast-tool {paths}", 1000L, 2000)
+
+    when:
+    def result = tool.run(["src/App.groovy"])
+
+    then:
+    result.success
+    result.findings.size() == 3
+    result.findings.every { it.severity == "INFO" }
+    result.findings.any { it.rule.contains("malformed") }
+  }
 }
