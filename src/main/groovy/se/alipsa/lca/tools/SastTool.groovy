@@ -64,18 +64,23 @@ class SastTool {
 
   /**
    * Escape a single value so it can be safely used as a shell argument.
-   * Uses single-quoting and escapes any embedded single quotes with the standard
-   * POSIX pattern: '\'' -> '\'"\'"'\'
+   * Uses double-quoting and escapes embedded characters that are special in POSIX shells.
+   * Null bytes are rejected since they cannot be represented safely on a shell command line.
    */
   private static String escapeShellArg(String arg) {
     if (arg == null) {
       return "''"
     }
+    if (arg.indexOf('\u0000' as char) >= 0) {
+      throw new IllegalArgumentException("Shell arguments cannot contain null bytes")
+    }
     String value = arg
-    // Close the existing quote, insert an escaped single quote, and reopen the quote.
-    // This transforms e.g. abc'def into 'abc'"'"'def'
-    value = value.replace("'", "'\"'\"'")
-    return "'" + value + "'"
+    // Escape backslash, double quote, dollar and backtick for safe use inside double quotes.
+    value = value.replace("\\", "\\\\")
+    value = value.replace("\"", "\\\"")
+    value = value.replace("$", "\\$")
+    value = value.replace("`", "\\`")
+    return "\"" + value + "\""
   }
   private static List<SastFinding> parseFindings(String output) {
     String trimmed = output != null ? output.trim() : ""
