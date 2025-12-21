@@ -77,8 +77,8 @@ class LogSanitizer {
    */
   private static String sanitizeUrlEncoded(String input) {
     // Pattern to find URL-encoded sequences (percent-encoded)
-    // Look for continuous strings that contain %XX patterns
-    def urlEncodedPattern = /[^\s"'<>]*%[0-9A-Fa-f]{2}[^\s"'<>]*/
+    // Look for continuous strings that contain at least one %XX pattern
+    def urlEncodedPattern = /[^\s"'<>]*(?:%[0-9A-Fa-f]{2})+[^\s"'<>]*/
     
     input.replaceAll(urlEncodedPattern) { String encoded ->
       try {
@@ -87,7 +87,7 @@ class LogSanitizer {
         if (containsSecret(decoded)) {
           return "REDACTED"
         }
-      } catch (Exception e) {
+      } catch (IllegalArgumentException | UnsupportedOperationException e) {
         // If decoding fails, leave it as-is
       }
       return encoded
@@ -113,8 +113,8 @@ class LogSanitizer {
         if (containsSecret(decodedStr)) {
           return "REDACTED"
         }
-      } catch (Exception e) {
-        // If decoding fails or produces non-UTF8, leave it as-is
+      } catch (IllegalArgumentException e) {
+        // If decoding fails (invalid Base64), leave it as-is
       }
       return encoded
     }
