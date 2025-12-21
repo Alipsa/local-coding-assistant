@@ -2,6 +2,8 @@ package se.alipsa.lca.tools
 
 import groovy.transform.CompileStatic
 
+import com.github.benmanes.caffeine.cache.Cache
+import com.github.benmanes.caffeine.cache.Caffeine
 import java.nio.file.FileSystem
 import java.nio.file.FileSystems
 import java.nio.file.Files
@@ -41,7 +43,9 @@ class ExclusionPolicy {
   private final Path projectRoot
   private final FileSystem fileSystem
   private final List<String> patterns
-  private final Map<String, PathMatcher> matcherCache = new LinkedHashMap<>()
+  private final Cache<String, PathMatcher> matcherCache = Caffeine.newBuilder()
+    .maximumSize(256)
+    .build()
 
   ExclusionPolicy(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize()
@@ -146,13 +150,10 @@ class ExclusionPolicy {
   }
 
   private PathMatcher matcherFor(String glob) {
-    PathMatcher matcher = matcherCache.get(glob)
-    if (matcher != null) {
-      return matcher
-    }
-    PathMatcher created = fileSystem.getPathMatcher("glob:" + glob)
-    matcherCache.put(glob, created)
-    created
+    matcherCache.get(
+      glob,
+      { String g -> fileSystem.getPathMatcher("glob:" + g) } as java.util.function.Function<String, PathMatcher>
+    )
   }
 
   private static boolean containsWildcard(String pattern) {

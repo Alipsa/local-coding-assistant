@@ -259,8 +259,8 @@ class ShellCommandController {
   static class ChatRequest {
     @NotBlank
     String prompt
-    String session = "default"
-    PersonaMode persona = PersonaMode.CODER
+    String session
+    PersonaMode persona
     String model
     Double temperature
     Double reviewTemperature
@@ -274,14 +274,14 @@ class ShellCommandController {
     String code
     @NotBlank
     String prompt
-    String session = "default"
+    String session
     String model
     Double reviewTemperature
     Integer maxTokens
     String systemPrompt
     List<String> paths
     Boolean staged
-    ReviewSeverity minSeverity = ReviewSeverity.LOW
+    ReviewSeverity minSeverity
     Boolean noColor
     Boolean logReview
     Boolean security
@@ -378,13 +378,13 @@ class ShellCommandController {
     @NotBlank
     String command
     @Min(1L)
-    Long timeoutMillis = 60000L
+    Long timeoutMillis
     @Min(1L)
-    Integer maxOutputChars = 8000
+    Integer maxOutputChars
     String session
     @NotNull
     Boolean confirm
-    Boolean agentRequested = false
+    Boolean agentRequested
 
     @AssertTrue(message = "Confirmation required for run command. Set confirm=true to proceed.")
     boolean isConfirmed() {
@@ -397,7 +397,7 @@ class ShellCommandController {
   static class ApplyPatchRequest {
     String patch
     String patchFile
-    Boolean dryRun = true
+    Boolean dryRun
     Boolean confirm
 
     @AssertTrue(message = "Confirmation required when dryRun is false for apply patch.")
@@ -416,7 +416,7 @@ class ShellCommandController {
     String filePath
     String blocks
     String blocksFile
-    Boolean dryRun = true
+    Boolean dryRun
     Boolean confirm
 
     @AssertTrue(message = "Confirmation required when dryRun is false for apply blocks.")
@@ -433,7 +433,7 @@ class ShellCommandController {
   static class RevertRequest {
     @NotBlank
     String filePath
-    Boolean dryRun = false
+    Boolean dryRun
     Boolean confirm
 
     @AssertTrue(message = "Confirmation required when dryRun is false for revert.")
@@ -454,6 +454,6 @@ class ShellCommandController {
     Integer end
     String symbol
     @Min(0L)
-    Integer padding = 2
+    Integer padding
   }
 }

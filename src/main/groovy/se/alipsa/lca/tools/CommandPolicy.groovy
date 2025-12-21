@@ -66,15 +66,8 @@ class CommandPolicy {
     int wildcardIndex = rule.indexOf('*')
     if (wildcardIndex > 0) {
       String prefix = rule.substring(0, wildcardIndex)
-      if (!trimmed.startsWith(prefix)) {
+      if (!prefixMatchesWithBoundary(trimmed, prefix)) {
         return false
-      }
-      if (prefix.length() < trimmed.length()) {
-        char lastPrefixChar = prefix.charAt(prefix.length() - 1)
-        char boundaryChar = trimmed.charAt(prefix.length())
-        if (Character.isLetterOrDigit(lastPrefixChar) && Character.isLetterOrDigit(boundaryChar)) {
-          return false
-        }
       }
     }
     StringBuilder regex = new StringBuilder("^")
@@ -93,6 +86,24 @@ class CommandPolicy {
     regex.append('$')
 
     return trimmed.matches(regex.toString())
+  }
+
+  private static boolean prefixMatchesWithBoundary(String command, String prefix) {
+    if (!command.startsWith(prefix)) {
+      return false
+    }
+    if (prefix.isEmpty()) {
+      return true
+    }
+    char lastPrefixChar = prefix.charAt(prefix.length() - 1)
+    if (!Character.isLetterOrDigit(lastPrefixChar)) {
+      return true
+    }
+    if (command.length() == prefix.length()) {
+      return true
+    }
+    char boundaryChar = command.charAt(prefix.length())
+    !Character.isLetterOrDigit(boundaryChar)
   }
 
   @Canonical

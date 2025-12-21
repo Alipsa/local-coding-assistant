@@ -9,6 +9,7 @@ import java.util.Collection
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ConcurrentHashMap
+import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 
@@ -33,6 +34,23 @@ class LogSanitizer {
   private static final Set<String> IGNORED_VALUES = ConcurrentHashMap.newKeySet()
   private static final CopyOnWriteArrayList<Pattern> IGNORED_VALUE_PATTERNS = new CopyOnWriteArrayList<>()
   private static volatile int minSecretConfidence = DEFAULT_MIN_CONFIDENCE
+  private static final Pattern KEY_VALUE_PATTERN = Pattern.compile(
+    "(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\\s*([:=])\\s*([^\\s\"']+)"
+  )
+  private static final Pattern AUTHORIZATION_BEARER_PATTERN = Pattern.compile("(?i)Authorization:\\s*Bearer\\s+[A-Za-z0-9\\-_.]{16,}")
+  private static final Pattern BEARER_PATTERN = Pattern.compile("(?i)Bearer\\s+[A-Za-z0-9\\-_.]{16,}")
+  private static final Pattern GITHUB_GHP_PATTERN = Pattern.compile("\\bghp_[A-Za-z0-9]{16,}\\b")
+  private static final Pattern GITHUB_PAT_PATTERN = Pattern.compile("\\bgithub_pat_[A-Za-z0-9_]{10,}\\b")
+  private static final Pattern AWS_ACCESS_KEY_PATTERN = Pattern.compile("\\bAKIA[0-9A-Z]{16}\\b")
+  private static final Pattern AWS_SESSION_KEY_PATTERN = Pattern.compile("\\bASIA[0-9A-Z]{16}\\b")
+  private static final Pattern URL_ENCODED_PATTERN = Pattern.compile("[^\\s\"'<>]*(?:%[0-9A-Fa-f]{2})+[^\\s\"'<>]*")
+  private static final Pattern BASE64_PATTERN = Pattern.compile(
+    "(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{" + MIN_BASE64_LENGTH + ",}={0,2}(?![A-Za-z0-9+/])"
+  )
+  private static final Pattern LOWER_PATTERN = Pattern.compile("[a-z]")
+  private static final Pattern UPPER_PATTERN = Pattern.compile("[A-Z]")
+  private static final Pattern DIGIT_PATTERN = Pattern.compile("\\d")
+  private static final Pattern SYMBOL_PATTERN = Pattern.compile("[^A-Za-z0-9]")
 
   /**
    * Sanitizes a string by redacting secrets and sensitive data.
@@ -67,28 +85,13 @@ class LogSanitizer {
     // Check for Base64-encoded secrets
     sanitized = sanitizeBase64Encoded(sanitized)
     
-    // Apply standard patterns
-    sanitized = sanitized.replaceAll(
-      /(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\s*([:=])\s*([^\s"']+)/
-    ) { List<String> match ->
-      String key = match[1]  // Group 1
-      String delimiter = match[2]  // Group 2
-      String value = match[3]  // Group 3
-      // Don't re-redact if already redacted
-      if (value == "REDACTED" || !looksLikeSecretValue(value, key)) {
-        return match[0]  // Return full match unchanged
-      }
-      return "${key}${delimiter}REDACTED"
-    }
-    sanitized = sanitized.replaceAll(
-      /(?i)Authorization:\s*Bearer\s+[A-Za-z0-9\-_.]{16,}/,
-      "Authorization: Bearer REDACTED"
-    )
-    sanitized = sanitized.replaceAll(/(?i)Bearer\s+[A-Za-z0-9\-_.]{16,}/, "Bearer REDACTED")
-    sanitized = sanitized.replaceAll(/\bghp_[A-Za-z0-9]{16,}\b/, "REDACTED")
-    sanitized = sanitized.replaceAll(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/, "REDACTED")
-    sanitized = sanitized.replaceAll(/\bAKIA[0-9A-Z]{16}\b/, "REDACTED")
-    sanitized = sanitized.replaceAll(/\bASIA[0-9A-Z]{16}\b/, "REDACTED")
+    sanitized = sanitizeKeyValuePairs(sanitized)
+    sanitized = AUTHORIZATION_BEARER_PATTERN.matcher(sanitized).replaceAll("Authorization: Bearer REDACTED")
+    sanitized = BEARER_PATTERN.matcher(sanitized).replaceAll("Bearer REDACTED")
+    sanitized = GITHUB_GHP_PATTERN.matcher(sanitized).replaceAll("REDACTED")
+    sanitized = GITHUB_PAT_PATTERN.matcher(sanitized).replaceAll("REDACTED")
+    sanitized = AWS_ACCESS_KEY_PATTERN.matcher(sanitized).replaceAll("REDACTED")
+    sanitized = AWS_SESSION_KEY_PATTERN.matcher(sanitized).replaceAll("REDACTED")
     
     sanitized
   }
@@ -133,22 +136,23 @@ class LogSanitizer {
    * Attempts to decode URL-encoded strings and check if they contain secrets.
    */
   private static String sanitizeUrlEncoded(String input) {
-    // Pattern to find URL-encoded sequences (percent-encoded)
-    // Look for continuous strings that contain at least one %XX pattern
-    def urlEncodedPattern = /[^\s"'<>]*(?:%[0-9A-Fa-f]{2})+[^\s"'<>]*/
-    
-    input.replaceAll(urlEncodedPattern) { String encoded ->
+    Matcher matcher = URL_ENCODED_PATTERN.matcher(input)
+    StringBuffer sb = new StringBuffer()
+    while (matcher.find()) {
+      String encoded = matcher.group()
+      String replacement = encoded
       try {
         String decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8.toString())
-        // Check if decoded content contains secrets
         if (containsSecret(decoded)) {
-          return "REDACTED"
+          replacement = "REDACTED"
         }
-      } catch (IllegalArgumentException | UnsupportedOperationException e) {
-        // If decoding fails, leave it as-is
+      } catch (IllegalArgumentException | UnsupportedOperationException ignored) {
+        // leave replacement as encoded
       }
-      return encoded
+      matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
     }
+    matcher.appendTail(sb)
+    sb.toString()
   }
   
   /**
@@ -156,25 +160,41 @@ class LogSanitizer {
    * Attempts to decode Base64 strings and check if they contain secrets.
    */
   private static String sanitizeBase64Encoded(String input) {
-    // Pattern to find potential Base64 strings (configurable minimum length to reduce false positives)
-    // Base64 uses A-Z, a-z, 0-9, +, /, and = for padding
-    // Use negative lookahead/lookbehind to avoid word boundaries that exclude padding
-    def base64Pattern = /(?<![A-Za-z0-9+\/])[A-Za-z0-9+\/]{${MIN_BASE64_LENGTH},}={0,2}(?![A-Za-z0-9+\/])/
-    
-    input.replaceAll(base64Pattern) { String encoded ->
+    Matcher matcher = BASE64_PATTERN.matcher(input)
+    StringBuffer sb = new StringBuffer()
+    while (matcher.find()) {
+      String encoded = matcher.group()
+      String replacement = encoded
       try {
-        // Java's Base64 decoder handles missing padding automatically
         byte[] decoded = Base64.decoder.decode(encoded)
         String decodedStr = new String(decoded, StandardCharsets.UTF_8)
-        // Check if decoded content contains secrets
         if (containsSecret(decodedStr)) {
-          return "REDACTED"
+          replacement = "REDACTED"
         }
       } catch (IllegalArgumentException e) {
-        // If decoding fails (invalid Base64), leave it as-is
+        // leave replacement as original encoded string
       }
-      return encoded
+      matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
     }
+    matcher.appendTail(sb)
+    sb.toString()
+  }
+
+  private static String sanitizeKeyValuePairs(String input) {
+    Matcher matcher = KEY_VALUE_PATTERN.matcher(input)
+    StringBuffer sb = new StringBuffer()
+    while (matcher.find()) {
+      String key = matcher.group(1)
+      String delimiter = matcher.group(2)
+      String value = matcher.group(3)
+      String replacement = matcher.group(0)
+      if (!"REDACTED".equals(value) && looksLikeSecretValue(value, key)) {
+        replacement = key + delimiter + "REDACTED"
+      }
+      matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
+    }
+    matcher.appendTail(sb)
+    sb.toString()
   }
   
   /**
@@ -186,9 +206,9 @@ class LogSanitizer {
     }
     
     // Check for key=value patterns with secret-like keys
-    def kvMatcher = text =~ /(?i)(api[_-]?key|x-api-key|token|secret|password|passwd|pwd)\s*[:=]\s*([^\s"']+)/
+    Matcher kvMatcher = KEY_VALUE_PATTERN.matcher(text)
     if (kvMatcher.find()) {
-      String value = kvMatcher.group(2)
+      String value = kvMatcher.group(3)
       String key = kvMatcher.group(1)
       if (looksLikeSecretValue(value, key)) {
         return true
@@ -196,23 +216,23 @@ class LogSanitizer {
     }
     
     // Check for Bearer tokens
-    if (text =~ /(?i)(Authorization:\s*)?Bearer\s+[A-Za-z0-9\-_.]{16,}/) {
+    if (BEARER_PATTERN.matcher(text).find()) {
       return true
     }
     
     // Check for GitHub tokens
-    if (text =~ /\bghp_[A-Za-z0-9]{16,}\b/) {
+    if (GITHUB_GHP_PATTERN.matcher(text).find()) {
       return true
     }
-    if (text =~ /\bgithub_pat_[A-Za-z0-9_]{10,}\b/) {
+    if (GITHUB_PAT_PATTERN.matcher(text).find()) {
       return true
     }
     
     // Check for AWS keys
-    if (text =~ /\bAKIA[0-9A-Z]{16}\b/) {
+    if (AWS_ACCESS_KEY_PATTERN.matcher(text).find()) {
       return true
     }
-    if (text =~ /\bASIA[0-9A-Z]{16}\b/) {
+    if (AWS_SESSION_KEY_PATTERN.matcher(text).find()) {
       return true
     }
     
@@ -243,10 +263,10 @@ class LogSanitizer {
     if (trimmed.length() >= 16) {
       score++
     }
-    boolean hasLower = trimmed =~ /[a-z]/
-    boolean hasUpper = trimmed =~ /[A-Z]/
-    boolean hasDigit = trimmed =~ /\d/
-    boolean hasSymbol = trimmed =~ /[^A-Za-z0-9]/
+    boolean hasLower = LOWER_PATTERN.matcher(trimmed).find()
+    boolean hasUpper = UPPER_PATTERN.matcher(trimmed).find()
+    boolean hasDigit = DIGIT_PATTERN.matcher(trimmed).find()
+    boolean hasSymbol = SYMBOL_PATTERN.matcher(trimmed).find()
     if (strongKeyHint) {
       int hintScore = 0
       if (hasDigit || hasSymbol) {

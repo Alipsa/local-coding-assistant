@@ -74,7 +74,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
     }
     this.counters = Caffeine.newBuilder()
       .maximumSize(MAX_CACHE_SIZE)
-      .expireAfterAccess(Duration.ofMinutes(5))
+      .expireAfterWrite(WINDOW_DURATION)
       .build()
   }
 

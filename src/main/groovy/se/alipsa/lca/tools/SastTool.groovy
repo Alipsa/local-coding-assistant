@@ -75,8 +75,8 @@ class SastTool {
   }
 
   /**
-   * Escape a single value so it can be safely used as a shell argument.
-   * Uses double-quoting and escapes embedded characters that are special in POSIX shells.
+   * Escape a single value so it can be safely used as a POSIX shell argument.
+   * Uses single-quoting and rejects control characters to avoid command injection.
    * Null bytes are rejected since they cannot be represented safely on a shell command line.
    */
   private static String escapeShellArg(String arg) {
@@ -88,17 +88,13 @@ class SastTool {
     }
     for (int i = 0; i < arg.length(); i++) {
       char ch = arg.charAt(i)
-      if (Character.isISOControl(ch)) {
+      if (ch < 0x20 || ch == 0x7F) {
         throw new IllegalArgumentException("Shell arguments cannot contain control characters")
       }
     }
-    String escaped = arg
-    // Escape backslash, double quote, dollar and backtick for safe use inside double quotes.
-    escaped = escaped.replace("\\", "\\\\")
-    escaped = escaped.replace('"', '\\"')
-    escaped = escaped.replace('$', '\\$')
-    escaped = escaped.replace('`', '\\`')
-    return '"' + escaped + '"'
+    // Single-quote wrapping is safe for POSIX shells; escape single quotes by closing, escaping, and reopening.
+    String escaped = arg.replace("'", "'\"'\"'")
+    return "'" + escaped + "'"
   }
   private static List<SastFinding> parseFindings(String output) {
     String trimmed = output != null ? output.trim() : ""
@@ -108,8 +104,8 @@ class SastTool {
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
         def parsed = new JsonSlurper().parseText(trimmed)
-        List<Map> results = parsed instanceof Map ? (List<Map>) parsed.results : List.of()
-        if (results != null) {
+        List<Map> results = extractResults(parsed)
+        if (!results.isEmpty()) {
           return results.collect { Map entry ->
             String checkId = entry.check_id ?: "rule"
             String path = entry.path ?: "unknown"
@@ -149,5 +145,19 @@ class SastTool {
     boolean ran
     String message
     List<SastFinding> findings
+  }
+
+  private static List<Map> extractResults(Object parsed) {
+    if (parsed instanceof Map) {
+      Object rawResults = ((Map) parsed).get("results")
+      if (rawResults instanceof List) {
+        return ((List) rawResults).findAll { it instanceof Map } as List<Map>
+      }
+      return List.of()
+    }
+    if (parsed instanceof List) {
+      return ((List) parsed).findAll { it instanceof Map } as List<Map>
+    }
+    List.of()
   }
 }
