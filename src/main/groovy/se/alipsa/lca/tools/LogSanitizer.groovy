@@ -4,6 +4,7 @@ import groovy.transform.CompileStatic
 
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 
 @CompileStatic

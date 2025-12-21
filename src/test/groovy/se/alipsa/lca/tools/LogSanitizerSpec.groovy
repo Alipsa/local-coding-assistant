@@ -4,6 +4,7 @@ import spock.lang.Specification
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 class LogSanitizerSpec extends Specification {
 
