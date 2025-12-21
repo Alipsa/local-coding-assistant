@@ -350,7 +350,7 @@ Notes:
     RoleGoalBackstory reviewerPersona
   ) {
     String extraSystem = systemPromptOverride?.trim()
-    boolean securityFocus = reviewerPersona == Personas.SECURITY_REVIEWER
+    boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
     """
 You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
