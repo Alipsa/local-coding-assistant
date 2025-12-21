@@ -287,7 +287,7 @@ class ShellCommandController {
 
   private static void requireMin(long value, long min, String field) {
     if (value < min) {
-      throw new IllegalArgumentException("${field} must be >= ${min}")
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "${field} must be >= ${min}")
     }
   }
 
