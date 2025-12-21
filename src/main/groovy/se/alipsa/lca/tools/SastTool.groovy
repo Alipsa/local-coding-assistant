@@ -71,16 +71,16 @@ class SastTool {
     if (arg == null) {
       return "''"
     }
-    if (arg.indexOf('\u0000' as char) >= 0) {
+    if (arg.indexOf((int)('\u0000' as char)) >= 0) {
       throw new IllegalArgumentException("Shell arguments cannot contain null bytes")
     }
     String value = arg
     // Escape backslash, double quote, dollar and backtick for safe use inside double quotes.
     value = value.replace("\\", "\\\\")
-    value = value.replace("\"", "\\\"")
-    value = value.replace("$", "\\$")
-    value = value.replace("`", "\\`")
-    return "\"" + value + "\""
+    value = value.replace('"', '\\"')
+    value = value.replace('$', '\\$')
+    value = value.replace('`', '\\`')
+    return '"' + value + '"'
   }
   private static List<SastFinding> parseFindings(String output) {
     String trimmed = output != null ? output.trim() : ""
