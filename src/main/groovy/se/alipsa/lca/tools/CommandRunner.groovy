@@ -59,6 +59,7 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
+    String sanitizedCommand = LogSanitizer.sanitize(command)
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_TIMEOUT_MILLIS
     int outputLimit = maxOutputChars > 0 ? maxOutputChars : DEFAULT_OUTPUT_LIMIT
     Path logPath
@@ -66,7 +67,7 @@ class CommandRunner {
       logPath = createLogPath()
     } catch (IOException e) {
       logPath = null
-      log.debug("Failed to prepare log path for command {}", LogSanitizer.sanitize(command), e)
+      log.debug("Failed to prepare log path for command {}", sanitizedCommand, e)
     }
     Instant started = Instant.now()
     boolean timedOut = false
@@ -74,7 +75,7 @@ class CommandRunner {
     BufferedWriter logWriter = null
     try {
       logWriter = prepareWriter(logPath)
-      writeHeader(logWriter, LogSanitizer.sanitize(command), started)
+      writeHeader(logWriter, sanitizedCommand, started)
       process = startProcess(command)
       AtomicInteger remaining = new AtomicInteger(outputLimit)
       AtomicInteger remainingLogCapacity = new AtomicInteger(outputLimit)
@@ -123,7 +124,7 @@ class CommandRunner {
         logPath
       )
     } catch (IOException e) {
-      log.warn("Command execution failed: {}", LogSanitizer.sanitize(command), e)
+      log.warn("Command execution failed: {}", sanitizedCommand, e)
       return new CommandResult(false, timedOut, -1, e.message ?: e.class.simpleName, false, logPath)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt()
