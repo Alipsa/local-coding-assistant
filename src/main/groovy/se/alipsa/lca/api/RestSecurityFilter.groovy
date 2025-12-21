@@ -184,15 +184,20 @@ class RestSecurityFilter extends OncePerRequestFilter {
   private boolean allowRate(String addr) {
     String key = addr ?: "unknown"
     long now = System.currentTimeMillis()
-    RequestCounter counter = counters.get(key, k -> new RequestCounter(now, 0))
-    synchronized (counter) {
-      if (now - counter.windowStart >= WINDOW_MILLIS) {
-        counter.windowStart = now
-        counter.count = 0
+    // Use Caffeine's asMap().compute() for atomic check-and-update
+    RequestCounter result = counters.asMap().compute(key, (k, existing) -> {
+      if (existing == null) {
+        // First request for this key
+        return new RequestCounter(now, 1)
       }
-      counter.count++
-      return counter.count <= maxPerMinute
-    }
+      // Check if we need to reset the window
+      if (now - existing.windowStart >= WINDOW_MILLIS) {
+        return new RequestCounter(now, 1)
+      }
+      // Increment within the same window
+      return new RequestCounter(existing.windowStart, existing.count + 1)
+    })
+    return result.count <= maxPerMinute
   }
 
   private static boolean isLocal(String addr) {
@@ -257,8 +262,8 @@ class RestSecurityFilter extends OncePerRequestFilter {
 
   @CompileStatic
   private static class RequestCounter {
-    long windowStart
-    int count
+    final long windowStart
+    final int count
 
     RequestCounter(long windowStart, int count) {
       this.windowStart = windowStart
