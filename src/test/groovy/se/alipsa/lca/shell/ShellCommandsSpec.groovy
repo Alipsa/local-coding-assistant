@@ -560,7 +560,7 @@ class ShellCommandsSpec extends Specification {
         true,
         true,
         null,
-        [new SastTool.SastFinding("HIGH", "src/apiKey=secret.txt", 42, "token=token-value-1234567890")]
+        [new SastTool.SastFinding("HIGH", "src/main/java/Auth.java", 42, "ghp_1234567890abcdef1234567890abcdef1234")]
       )
     }
     ShellCommands cmds = new ShellCommands(
@@ -588,7 +588,7 @@ class ShellCommandsSpec extends Specification {
 
     then:
     block.contains("SAST:")
-    !block.contains("secret")
+    !block.contains("ghp_1234567890abcdef")
     block.contains("REDACTED")
   }
 

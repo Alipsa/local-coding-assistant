@@ -36,17 +36,7 @@ class SecretScanner {
   }
 
   private static String mask(String value) {
-    if (value == null) {
-      return ""
-    }
-    String trimmed = value.trim()
-    if (trimmed.length() <= 8) {
-      return "*" * trimmed.length()
-    }
-    String start = trimmed.substring(0, 4)
-    String end = trimmed.substring(trimmed.length() - 4)
-    String stars = "*" * Math.max(4, trimmed.length() - 8)
-    "${start}${stars}${end}"
+    "REDACTED"
   }
 
   @Canonical

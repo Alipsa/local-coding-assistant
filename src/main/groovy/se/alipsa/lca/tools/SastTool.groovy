@@ -80,16 +80,17 @@ class SastTool {
    * Null bytes (Unicode U+0000) are rejected since they cannot be represented safely on a shell command line.
    */
   private static String escapeShellArg(String arg) {
+    final String controlMessage = "Shell arguments cannot contain control characters (including null bytes)"
     if (arg == null) {
       return "''"
     }
     if (arg.indexOf((int)('\u0000' as char)) >= 0) {
-      throw new IllegalArgumentException("Shell arguments cannot contain null bytes")
+      throw new IllegalArgumentException(controlMessage)
     }
     for (int i = 0; i < arg.length(); i++) {
       char ch = arg.charAt(i)
       if (ch < 0x20 || ch == 0x7F) {
-        throw new IllegalArgumentException("Shell arguments cannot contain control characters")
+        throw new IllegalArgumentException(controlMessage)
       }
     }
     // Single-quote wrapping is safe for POSIX shells; escape single quotes by closing, escaping, and reopening.

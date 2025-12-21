@@ -5,6 +5,7 @@ import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.regex.Pattern
+import java.util.concurrent.ConcurrentHashMap
 
 @Component
 @CompileStatic
@@ -12,6 +13,7 @@ class CommandPolicy {
 
   private final List<String> allowlist
   private final List<String> denylist
+  private static final Map<String, Pattern> WILDCARD_PATTERN_CACHE = new ConcurrentHashMap<>()
 
   CommandPolicy(
     @Value('${assistant.command.allowlist:}') String allowlistCsv,
@@ -71,18 +73,11 @@ class CommandPolicy {
         return false
       }
     }
-    StringBuilder regex = new StringBuilder("^")
-    for (int i = 0; i < rule.length(); i++) {
-      char c = rule.charAt(i)
-      if (c == '*') {
-        regex.append(".*")
-      } else {
-        regex.append(Pattern.quote(String.valueOf(c)))
-      }
-    }
-    regex.append('$')
-
-    return trimmed.matches(regex.toString())
+    Pattern wildcardPattern = WILDCARD_PATTERN_CACHE.computeIfAbsent(
+      rule,
+      { String r -> Pattern.compile(globToRegex(r)) } as java.util.function.Function<String, Pattern>
+    )
+    return wildcardPattern.matcher(trimmed).matches()
   }
 
   private static boolean prefixMatchesWithBoundary(String command, String prefix) {
@@ -101,6 +96,20 @@ class CommandPolicy {
     }
     char boundaryChar = command.charAt(prefix.length())
     !Character.isLetterOrDigit(boundaryChar)
+  }
+
+  private static String globToRegex(String rule) {
+    StringBuilder regex = new StringBuilder("^")
+    for (int i = 0; i < rule.length(); i++) {
+      char c = rule.charAt(i)
+      if (c == '*') {
+        regex.append(".*")
+      } else {
+        regex.append(Pattern.quote(String.valueOf(c)))
+      }
+    }
+    regex.append('$')
+    regex.toString()
   }
 
   @Canonical
