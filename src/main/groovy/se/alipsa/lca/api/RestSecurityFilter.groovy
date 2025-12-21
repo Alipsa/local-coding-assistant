@@ -1,5 +1,7 @@
 package se.alipsa.lca.api
 
+import com.github.benmanes.caffeine.cache.Cache
+import com.github.benmanes.caffeine.cache.Caffeine
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -14,9 +16,9 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 
 import java.nio.file.Path
+import java.time.Duration
 import java.util.LinkedHashSet
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -25,6 +27,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
 
   private static final Logger log = LoggerFactory.getLogger(RestSecurityFilter)
   private static final long WINDOW_MILLIS = 60_000L
+  private static final int MAX_CACHE_SIZE = 10_000
 
   private final boolean localOnly
   private final boolean remoteEnabled
@@ -35,7 +38,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
   private final Set<String> requiredReadScopes
   private final Set<String> requiredWriteScopes
   private final OidcTokenValidator oidcValidator
-  private final Map<String, RequestCounter> counters = new ConcurrentHashMap<>()
+  private final Cache<String, RequestCounter> counters
 
   RestSecurityFilter(
     @Value('${assistant.local-only:true}') boolean localOnly,
@@ -67,6 +70,10 @@ class RestSecurityFilter extends OncePerRequestFilter {
     } else {
       this.oidcValidator = null
     }
+    this.counters = Caffeine.newBuilder()
+      .maximumSize(MAX_CACHE_SIZE)
+      .expireAfterAccess(Duration.ofMinutes(5))
+      .build()
   }
 
   @Override
@@ -177,7 +184,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
   private boolean allowRate(String addr) {
     String key = addr ?: "unknown"
     long now = System.currentTimeMillis()
-    RequestCounter counter = counters.computeIfAbsent(key) { new RequestCounter(now, 0) }
+    RequestCounter counter = counters.get(key, k -> new RequestCounter(now, 0))
     synchronized (counter) {
       if (now - counter.windowStart >= WINDOW_MILLIS) {
         counter.windowStart = now
