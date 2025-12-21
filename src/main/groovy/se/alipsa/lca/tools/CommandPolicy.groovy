@@ -4,6 +4,7 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.regex.Pattern
 
 @Component
 @CompileStatic
@@ -71,16 +72,12 @@ class CommandPolicy {
       }
     }
     StringBuilder regex = new StringBuilder("^")
-    String specials = '''.^$+?{}[]|()\\-'''
     for (int i = 0; i < rule.length(); i++) {
       char c = rule.charAt(i)
       if (c == '*') {
         regex.append(".*")
       } else {
-        if (specials.indexOf((int) c) >= 0) {
-          regex.append('\\')
-        }
-        regex.append(c)
+        regex.append(Pattern.quote(String.valueOf(c)))
       }
     }
     regex.append('$')

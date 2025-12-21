@@ -68,6 +68,8 @@ class LogSanitizer {
    * - May miss custom or proprietary secret formats
    * - Only checks one level of URL/Base64 encoding (not recursive)
    * - May produce false positives with legitimate base64/URL-encoded data
+   * - Heuristic scoring (length and character variety) can flag non-secrets such as version strings or identifiers
+   * - Base64 detection uses a length threshold to reduce noise and might miss shorter encoded secrets
    * - Does not detect secrets split across multiple lines or obfuscated in other ways
    * 
    * @param input the string to sanitize

@@ -271,7 +271,7 @@ class RestSecurityFilter extends OncePerRequestFilter {
     synchronized boolean tryAcquire(long now, long windowNanos, int maxPerMinute) {
       long elapsed = now - windowStartNanos
       if (elapsed < 0) {
-        log.warn("Rate limiter observed negative elapsed time ({} ns); resetting window", elapsed)
+        log.warn("Rate limiter observed negative elapsed time ({} ns, possible clock anomaly); resetting window", elapsed)
       }
       if (elapsed < 0 || elapsed >= windowNanos) {
         windowStartNanos = now

@@ -402,7 +402,7 @@ class ShellCommandController {
 
     @AssertTrue(message = "Confirmation required when dryRun is false for apply patch.")
     boolean isConfirmedWhenRequired() {
-      if (dryRun == null || dryRun) {
+      if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
         return true
       }
       Boolean.TRUE.equals(confirm)
@@ -421,7 +421,7 @@ class ShellCommandController {
 
     @AssertTrue(message = "Confirmation required when dryRun is false for apply blocks.")
     boolean isConfirmedWhenRequired() {
-      if (dryRun == null || dryRun) {
+      if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
         return true
       }
       Boolean.TRUE.equals(confirm)
@@ -438,7 +438,7 @@ class ShellCommandController {
 
     @AssertTrue(message = "Confirmation required when dryRun is false for revert.")
     boolean isConfirmedWhenRequired() {
-      if (dryRun == null || dryRun) {
+      if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
         return true
       }
       Boolean.TRUE.equals(confirm)
