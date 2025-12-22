@@ -29,6 +29,19 @@ class CommandRunnerSpec extends Specification {
     Files.exists(result.logPath)
   }
 
+  def "run executes argument list without a shell"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir)
+
+    when:
+    CommandRunner.CommandResult result = runner.run(["echo", "hi"], 2000L, 200)
+
+    then:
+    result.success
+    !result.timedOut
+    result.output.contains("hi")
+  }
+
   def "run respects timeout"() {
     given:
     CommandRunner runner = new CommandRunner(tempDir)

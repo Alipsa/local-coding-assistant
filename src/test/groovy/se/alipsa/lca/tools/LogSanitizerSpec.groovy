@@ -32,13 +32,13 @@ class LogSanitizerSpec extends Specification {
     given:
     String secret = "apiKey=supersecret123"
     String urlEncoded = URLEncoder.encode(secret, StandardCharsets.UTF_8.toString())
-    String input = "Query: ${urlEncoded}"
+    String input = "token=${urlEncoded}"
     
     when:
     String result = LogSanitizer.sanitize(input)
     
     then:
-    result == "Query: REDACTED"
+    result == "token=REDACTED"
   }
   
   def "redacts URL-encoded GitHub token"() {
@@ -71,13 +71,13 @@ class LogSanitizerSpec extends Specification {
     given:
     String secret = "password=mysecretpassword123"
     String base64Encoded = Base64.encoder.encodeToString(secret.bytes)
-    String input = "Data: ${base64Encoded}"
+    String input = "password=${base64Encoded}"
     
     when:
     String result = LogSanitizer.sanitize(input)
     
     then:
-    result == "Data: REDACTED"
+    result == "password=REDACTED"
   }
   
   def "redacts Base64-encoded GitHub token"() {
@@ -97,13 +97,13 @@ class LogSanitizerSpec extends Specification {
     given:
     String secret = "AKIAIOSFODNN7EXAMPLE"
     String base64Encoded = Base64.encoder.encodeToString(secret.bytes)
-    String input = "credentials: ${base64Encoded}"
+    String input = "secret: ${base64Encoded}"
     
     when:
     String result = LogSanitizer.sanitize(input)
     
     then:
-    result == "credentials: REDACTED"
+    result == "secret: REDACTED"
   }
   
   def "does not redact innocuous URL-encoded text"() {
@@ -147,13 +147,13 @@ class LogSanitizerSpec extends Specification {
     given:
     String plainSecret = "apiKey=plain123secret"
     String encodedSecret = URLEncoder.encode("password=encoded456", StandardCharsets.UTF_8.toString())
-    String input = "${plainSecret} and ${encodedSecret}"
+    String input = "${plainSecret} and token=${encodedSecret}"
     
     when:
     String result = LogSanitizer.sanitize(input)
     
     then:
-    result == "apiKey=REDACTED and REDACTED"
+    result == "apiKey=REDACTED and token=REDACTED"
   }
 
   def "ignores configured values and patterns to reduce false positives"() {

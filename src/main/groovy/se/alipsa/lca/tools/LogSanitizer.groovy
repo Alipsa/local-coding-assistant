@@ -17,7 +17,9 @@ import java.util.regex.Pattern
 class LogSanitizer {
 
   // Minimum length for Base64 strings to reduce false positives
-  private static final int MIN_BASE64_LENGTH = 20
+  private static final int MIN_BASE64_LENGTH = 28
+  // Minimum length for URL-encoded strings to reduce false positives
+  private static final int MIN_URL_ENCODED_LENGTH = 16
   // Skip decoding unusually large encoded tokens to avoid excessive work.
   private static final int MAX_ENCODED_LENGTH = 8192
   private static final int DEFAULT_MIN_CONFIDENCE = 2
@@ -45,10 +47,8 @@ class LogSanitizer {
   private static final Pattern GITHUB_PAT_PATTERN = Pattern.compile("\\bgithub_pat_[A-Za-z0-9_]{10,}\\b")
   private static final Pattern AWS_ACCESS_KEY_PATTERN = Pattern.compile("\\bAKIA[0-9A-Z]{16}\\b")
   private static final Pattern AWS_SESSION_KEY_PATTERN = Pattern.compile("\\bASIA[0-9A-Z]{16}\\b")
-  private static final Pattern URL_ENCODED_PATTERN = Pattern.compile("[^\\s\"'<>]*(?:%[0-9A-Fa-f]{2})+[^\\s\"'<>]*")
-  private static final Pattern BASE64_PATTERN = Pattern.compile(
-    "(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{" + MIN_BASE64_LENGTH + ",}={0,2}(?![A-Za-z0-9+/])"
-  )
+  private static final Pattern URL_ENCODED_VALUE_PATTERN = Pattern.compile("[^\\s\"'<>]*(?:%[0-9A-Fa-f]{2})+[^\\s\"'<>]*")
+  private static final Pattern BASE64_VALUE_PATTERN = Pattern.compile("[A-Za-z0-9+/]+={0,2}")
   private static final Pattern LOWER_PATTERN = Pattern.compile("[a-z]")
   private static final Pattern UPPER_PATTERN = Pattern.compile("[A-Z]")
   private static final Pattern DIGIT_PATTERN = Pattern.compile("\\d")
@@ -145,19 +145,20 @@ class LogSanitizer {
    * Attempts to decode URL-encoded strings and check if they contain secrets.
    */
   private static String sanitizeUrlEncoded(String input) {
-    Matcher matcher = URL_ENCODED_PATTERN.matcher(input)
+    Matcher matcher = KEY_VALUE_PATTERN.matcher(input)
     StringBuffer sb = new StringBuffer()
     while (matcher.find()) {
-      String encoded = matcher.group()
-      String replacement = encoded
-      if (encoded.length() <= MAX_ENCODED_LENGTH) {
+      String value = matcher.group(3)
+      String full = matcher.group(0)
+      String replacement = full
+      if (isUrlEncodedCandidate(value)) {
         try {
-          String decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8.toString())
+          String decoded = URLDecoder.decode(value, StandardCharsets.UTF_8.toString())
           if (containsSecret(decoded)) {
-            replacement = "REDACTED"
+            replacement = full.substring(0, full.length() - value.length()) + "REDACTED"
           }
         } catch (IllegalArgumentException | UnsupportedOperationException ignored) {
-          // leave replacement as encoded
+          // leave replacement as original
         }
       }
       matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
@@ -171,26 +172,50 @@ class LogSanitizer {
    * Attempts to decode Base64 strings and check if they contain secrets.
    */
   private static String sanitizeBase64Encoded(String input) {
-    Matcher matcher = BASE64_PATTERN.matcher(input)
+    Matcher matcher = KEY_VALUE_PATTERN.matcher(input)
     StringBuffer sb = new StringBuffer()
     while (matcher.find()) {
-      String encoded = matcher.group()
-      String replacement = encoded
-      if (encoded.length() <= MAX_ENCODED_LENGTH) {
+      String value = matcher.group(3)
+      String full = matcher.group(0)
+      String replacement = full
+      if (isBase64Candidate(value)) {
         try {
-          byte[] decoded = Base64.decoder.decode(encoded)
+          byte[] decoded = Base64.decoder.decode(value)
           String decodedStr = new String(decoded, StandardCharsets.UTF_8)
           if (containsSecret(decodedStr)) {
-            replacement = "REDACTED"
+            replacement = full.substring(0, full.length() - value.length()) + "REDACTED"
           }
         } catch (IllegalArgumentException e) {
-          // leave replacement as original encoded string
+          // leave replacement as original
         }
       }
       matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement))
     }
     matcher.appendTail(sb)
     sb.toString()
+  }
+  
+  private static boolean isUrlEncodedCandidate(String value) {
+    if (value == null) {
+      return false
+    }
+    if (value.length() < MIN_URL_ENCODED_LENGTH || value.length() > MAX_ENCODED_LENGTH) {
+      return false
+    }
+    URL_ENCODED_VALUE_PATTERN.matcher(value).matches()
+  }
+  
+  private static boolean isBase64Candidate(String value) {
+    if (value == null) {
+      return false
+    }
+    if (value.length() < MIN_BASE64_LENGTH || value.length() > MAX_ENCODED_LENGTH) {
+      return false
+    }
+    if (!BASE64_VALUE_PATTERN.matcher(value).matches()) {
+      return false
+    }
+    value.length() % 4 == 0
   }
 
   private static String sanitizeKeyValuePairs(String input) {

@@ -38,7 +38,7 @@ class WebSearchController {
   @GetMapping
   List<WebSearchTool.SearchResult> search(@Valid @ModelAttribute SearchRequest request) {
     if (localOnly) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Web search is disabled in local-only mode.")
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Request not permitted.")
     }
     boolean defaultEnabled = webSearchEnabledDefault
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(

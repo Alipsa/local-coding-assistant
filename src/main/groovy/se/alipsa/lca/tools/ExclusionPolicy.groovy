@@ -76,15 +76,16 @@ class ExclusionPolicy {
       return false
     }
     String normalized = normalizePath(relativePath)
+    Path normalizedPath = Paths.get(normalized)
     for (String pattern : patterns) {
-      if (matchesPattern(normalized, pattern)) {
+      if (matchesPattern(normalized, normalizedPath, pattern)) {
         return true
       }
     }
     false
   }
 
-  private boolean matchesPattern(String normalized, String rawPattern) {
+  private boolean matchesPattern(String normalized, Path normalizedPath, String rawPattern) {
     String pattern = rawPattern?.trim()
     if (pattern == null || pattern.isEmpty() || pattern.startsWith("#")) {
       return false
@@ -105,30 +106,30 @@ class ExclusionPolicy {
       if (fileName == pattern) {
         return true
       }
-      if (dirOnly && containsDirSegment(normalized, pattern, anchored)) {
+      if (dirOnly && containsDirSegment(normalized, normalizedPath, pattern, anchored)) {
         return true
       }
       return false
     }
-    boolean dirMatch = dirOnly && containsDirSegment(normalized, pattern, anchored)
+    boolean dirMatch = dirOnly && containsDirSegment(normalized, normalizedPath, pattern, anchored)
     String glob = toGlob(pattern, anchored)
     if (dirOnly && !glob.endsWith("/**")) {
       glob = glob + "/**"
     }
     PathMatcher matcher = matcherFor(glob)
-    dirMatch || matcher.matches(Paths.get(normalized))
+    dirMatch || matcher.matches(normalizedPath)
   }
 
-  private boolean containsDirSegment(String normalized, String dirName, boolean anchored) {
+  private boolean containsDirSegment(String normalized, Path normalizedPath, String dirName, boolean anchored) {
     if (dirName.startsWith("**/")) {
-      return containsDirSegment(normalized, dirName.substring(3), false)
+      return containsDirSegment(normalized, normalizedPath, dirName.substring(3), false)
     }
     if (containsWildcard(dirName)) {
       String glob = toGlob(dirName, anchored)
       if (!glob.endsWith("/**")) {
         glob = glob + "/**"
       }
-      return matcherFor(glob).matches(Paths.get(normalized))
+      return matcherFor(glob).matches(normalizedPath)
     }
     if (anchored) {
       return normalized == dirName || normalized.startsWith(dirName + "/")

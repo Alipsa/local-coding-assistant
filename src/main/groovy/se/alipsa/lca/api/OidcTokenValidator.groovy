@@ -83,6 +83,9 @@ class OidcTokenValidator {
       DefaultResourceRetriever retriever = new DefaultResourceRetriever((int) timeout, (int) timeout)
       try {
         URL url = new URL(jwksUri.trim())
+        if (!"https".equalsIgnoreCase(url.getProtocol())) {
+          throw new IllegalStateException("JWKS URI must use HTTPS when OIDC is enabled.")
+        }
         return new RemoteJWKSet<>(url, retriever)
       } catch (MalformedURLException e) {
         throw new IllegalStateException("Invalid JWKS URI: ${jwksUri}", e)

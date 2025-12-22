@@ -59,7 +59,32 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
-    String sanitizedCommand = LogSanitizer.sanitize(command)
+    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars)
+  }
+
+  /**
+   * Run a command directly via ProcessBuilder without invoking a shell.
+   */
+  CommandResult run(List<String> commandArgs, long timeoutMillis, int maxOutputChars) {
+    if (commandArgs == null || commandArgs.isEmpty()) {
+      return new CommandResult(false, false, 1, "No command provided.", false, null)
+    }
+    for (String arg : commandArgs) {
+      if (arg == null) {
+        return new CommandResult(false, false, 1, "Command arguments cannot be null.", false, null)
+      }
+    }
+    String commandLabel = formatCommand(commandArgs)
+    runInternal(commandLabel, { startProcess(commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars)
+  }
+
+  private CommandResult runInternal(
+    String commandLabel,
+    ProcessStarter starter,
+    long timeoutMillis,
+    int maxOutputChars
+  ) {
+    String sanitizedCommand = LogSanitizer.sanitize(commandLabel)
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_TIMEOUT_MILLIS
     int outputLimit = maxOutputChars > 0 ? maxOutputChars : DEFAULT_OUTPUT_LIMIT
     Path logPath
@@ -76,7 +101,7 @@ class CommandRunner {
     try {
       logWriter = prepareWriter(logPath)
       writeHeader(logWriter, sanitizedCommand, started)
-      process = startProcess(command)
+      process = starter.start()
       AtomicInteger remaining = new AtomicInteger(outputLimit)
       AtomicInteger remainingLogCapacity = new AtomicInteger(outputLimit)
       StringBuffer visibleOutput = new StringBuffer()
@@ -150,6 +175,13 @@ class CommandRunner {
     pb.start()
   }
 
+  protected Process startProcess(List<String> commandArgs) throws IOException {
+    ProcessBuilder pb = new ProcessBuilder(new ArrayList<>(commandArgs))
+    pb.directory(realProjectRoot.toFile())
+    pb.redirectErrorStream(false)
+    pb.start()
+  }
+
   private static BufferedWriter prepareWriter(Path logPath) throws IOException {
     if (logPath == null) {
       return new BufferedWriter(new OutputStreamWriter(OutputStream.nullOutputStream(), StandardCharsets.UTF_8))
@@ -194,6 +226,36 @@ class CommandRunner {
       writer.newLine()
       writer.flush()
     }
+  }
+
+  private static String formatCommand(List<String> commandArgs) {
+    List<String> parts = new ArrayList<>()
+    for (String arg : commandArgs) {
+      if (arg == null || arg.isEmpty()) {
+        parts.add("''")
+        continue
+      }
+      if (hasWhitespace(arg)) {
+        parts.add("\"" + arg.replace("\"", "\\\"") + "\"")
+      } else {
+        parts.add(arg)
+      }
+    }
+    parts.join(" ")
+  }
+
+  private static boolean hasWhitespace(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      if (Character.isWhitespace(value.charAt(i))) {
+        return true
+      }
+    }
+    false
+  }
+
+  @CompileStatic
+  private static interface ProcessStarter {
+    Process start() throws IOException
   }
 
   @Canonical

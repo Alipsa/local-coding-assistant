@@ -15,6 +15,7 @@ import java.io.StringWriter
 class SastTool {
 
   private static final Logger log = LoggerFactory.getLogger(SastTool)
+  private static final String PATHS_PLACEHOLDER = "{paths}"
 
   private final CommandRunner commandRunner
   private final CommandPolicy commandPolicy
@@ -44,18 +45,18 @@ class SastTool {
     if (targets.isEmpty()) {
       return new SastResult(false, false, "No paths provided for SAST scan.", List.of())
     }
-    String finalCommand
+    ResolvedCommand resolved
     try {
-      finalCommand = resolveCommand(command, targets)
+      resolved = resolveCommand(command, targets)
     } catch (IllegalArgumentException e) {
       String reason = e.message ?: "Unsafe argument provided to SAST command."
       return new SastResult(false, false, reason, List.of())
     }
-    CommandPolicy.Decision decision = commandPolicy.evaluate(finalCommand)
+    CommandPolicy.Decision decision = commandPolicy.evaluate(resolved.policyCommand)
     if (!decision.allowed) {
       return new SastResult(false, false, decision.message ?: "SAST command blocked by policy.", List.of())
     }
-    CommandRunner.CommandResult result = commandRunner.run(finalCommand, timeoutMillis, maxOutputChars)
+    CommandRunner.CommandResult result = commandRunner.run(resolved.args, timeoutMillis, maxOutputChars)
     if (!result.success) {
       String message = result.output ?: "SAST command failed."
       return new SastResult(false, true, message, List.of())
@@ -64,25 +65,83 @@ class SastTool {
     new SastResult(true, true, null, findings)
   }
 
-  private static String resolveCommand(String command, List<String> targets) {
-    // Escape each target so that any shell metacharacters are treated as literal path characters
-    List<String> safeTargets = targets.collect { String t -> escapeShellArg(t) }
-    String joined = safeTargets.join(" ")
-    if (command.contains("{paths}")) {
-      return command.replace("{paths}", joined)
+  private static ResolvedCommand resolveCommand(String command, List<String> targets) {
+    List<String> baseArgs = tokenizeCommand(command)
+    List<String> resolvedArgs = new ArrayList<>()
+    boolean replaced = false
+    for (String arg : baseArgs) {
+      if (arg.contains(PATHS_PLACEHOLDER)) {
+        replaced = true
+        for (String target : targets) {
+          String expanded = arg.replace(PATHS_PLACEHOLDER, target)
+          validateArg(expanded)
+          resolvedArgs.add(expanded)
+        }
+      } else {
+        validateArg(arg)
+        resolvedArgs.add(arg)
+      }
     }
-    return command + " " + joined
+    if (!replaced) {
+      for (String target : targets) {
+        validateArg(target)
+        resolvedArgs.add(target)
+      }
+    }
+    new ResolvedCommand(resolvedArgs, renderForPolicy(resolvedArgs))
   }
 
-  /**
-   * Escape a single value so it can be safely used as a POSIX shell argument.
-   * Uses single-quoting and rejects control characters to avoid command injection.
-   * Null bytes (Unicode U+0000) are rejected since they cannot be represented safely on a shell command line.
-   */
-  private static String escapeShellArg(String arg) {
-    final String controlMessage = "Shell arguments cannot contain control characters (including null bytes)"
+  private static List<String> tokenizeCommand(String command) {
+    String trimmed = command != null ? command.trim() : ""
+    if (!trimmed) {
+      return List.of()
+    }
+    List<String> args = new ArrayList<>()
+    StringBuilder current = new StringBuilder()
+    boolean inSingle = false
+    boolean inDouble = false
+    boolean escaping = false
+    for (int i = 0; i < trimmed.length(); i++) {
+      char ch = trimmed.charAt(i)
+      if (escaping) {
+        current.append(ch)
+        escaping = false
+        continue
+      }
+      if (ch == '\\' && !inSingle) {
+        escaping = true
+        continue
+      }
+      if (ch == '\'' && !inDouble) {
+        inSingle = !inSingle
+        continue
+      }
+      if (ch == '"' && !inSingle) {
+        inDouble = !inDouble
+        continue
+      }
+      if (!inSingle && !inDouble && Character.isWhitespace(ch)) {
+        if (current.length() > 0) {
+          args.add(current.toString())
+          current.setLength(0)
+        }
+        continue
+      }
+      current.append(ch)
+    }
+    if (escaping || inSingle || inDouble) {
+      throw new IllegalArgumentException("Unterminated quote or escape sequence in SAST command.")
+    }
+    if (current.length() > 0) {
+      args.add(current.toString())
+    }
+    args
+  }
+
+  private static void validateArg(String arg) {
+    final String controlMessage = "Command arguments cannot contain control characters (including null bytes)"
     if (arg == null) {
-      return "''"
+      throw new IllegalArgumentException(controlMessage)
     }
     if (arg.indexOf((int)('\u0000' as char)) >= 0) {
       throw new IllegalArgumentException(controlMessage)
@@ -93,9 +152,31 @@ class SastTool {
         throw new IllegalArgumentException(controlMessage)
       }
     }
-    // Single-quote wrapping is safe for POSIX shells; escape single quotes by closing, escaping, and reopening.
-    String escaped = arg.replace("'", "'\"'\"'")
-    return "'" + escaped + "'"
+  }
+
+  private static String renderForPolicy(List<String> args) {
+    List<String> parts = new ArrayList<>()
+    for (String arg : args) {
+      if (arg == null || arg.isEmpty()) {
+        parts.add("''")
+        continue
+      }
+      if (hasWhitespace(arg)) {
+        parts.add("\"" + arg.replace("\"", "\\\"") + "\"")
+      } else {
+        parts.add(arg)
+      }
+    }
+    parts.join(" ")
+  }
+
+  private static boolean hasWhitespace(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      if (Character.isWhitespace(value.charAt(i))) {
+        return true
+      }
+    }
+    false
   }
   private static List<SastFinding> parseFindings(String output) {
     String trimmed = output != null ? output.trim() : ""
@@ -128,6 +209,17 @@ class SastTool {
     return trimmed.readLines()
       .findAll { it != null && it.trim() }
       .collect { new SastFinding("INFO", "unknown", null, it.trim()) }
+  }
+
+  @CompileStatic
+  private static class ResolvedCommand {
+    final List<String> args
+    final String policyCommand
+
+    private ResolvedCommand(List<String> args, String policyCommand) {
+      this.args = args
+      this.policyCommand = policyCommand
+    }
   }
 
   @Canonical

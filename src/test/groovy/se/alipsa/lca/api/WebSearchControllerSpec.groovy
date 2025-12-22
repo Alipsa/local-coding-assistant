@@ -3,6 +3,7 @@ package se.alipsa.lca.api
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
+import org.springframework.web.server.ResponseStatusException
 import se.alipsa.lca.tools.WebSearchTool
 import spock.lang.Specification
 
@@ -50,5 +51,19 @@ class WebSearchControllerSpec extends Specification {
         opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
         opts.webSearchEnabled
     }) >> List.of()
+  }
+
+  def "rejects local-only web search with a generic message"() {
+    given:
+    WebSearchController controller = new WebSearchController(webSearchTool, true, true)
+    WebSearchController.SearchRequest request = new WebSearchController.SearchRequest(query: "groovy search")
+
+    when:
+    controller.search(request)
+
+    then:
+    ResponseStatusException ex = thrown()
+    ex.statusCode.value() == 403
+    ex.reason == "Request not permitted."
   }
 }

@@ -7,7 +7,7 @@ class SastToolSpec extends Specification {
   def "parses semgrep style json output"() {
     given:
     CommandRunner runner = Stub() {
-      run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, """
+      run(_ as List<String>, _, _) >> new CommandRunner.CommandResult(true, false, 0, """
 {
   "results": [
     {
@@ -50,7 +50,7 @@ class SastToolSpec extends Specification {
   def "falls back to line parsing when JSON is malformed"() {
     given:
     CommandRunner runner = Stub() {
-      run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, """
+      run(_ as List<String>, _, _) >> new CommandRunner.CommandResult(true, false, 0, """
 { "malformed": "json without closing brace
 warning: possible issue at line 5
 error: critical issue found
@@ -82,6 +82,24 @@ error: critical issue found
     !result.ran
     !result.success
     result.message.contains("control characters")
-    0 * runner.run(_, _, _)
+    0 * runner.run(_ as List<String>, _, _)
+  }
+
+  def "expands paths into command arguments"() {
+    given:
+    CommandRunner runner = Mock()
+    CommandPolicy policy = new CommandPolicy("", "")
+    SastTool tool = new SastTool(runner, policy, "semgrep --json {paths}", 1000L, 2000)
+
+    when:
+    def result = tool.run(["src/App.groovy", "src/Other.groovy"])
+
+    then:
+    1 * runner.run(
+      ["semgrep", "--json", "src/App.groovy", "src/Other.groovy"],
+      1000L,
+      2000
+    ) >> new CommandRunner.CommandResult(true, false, 0, "{}", false, null)
+    result.success
   }
 }
