@@ -231,3 +231,23 @@ Options:
 - `--depth`: Max depth (`-1` for unlimited, min -1).
 - `--dirs-only`: Show directories only.
 - `--max-entries`: Maximum entries to render (`0` for unlimited, min 0).
+
+## Batch Mode (Non-Interactive)
+Run one or more commands without starting the interactive shell.
+
+Usage:
+`java -jar local-coding-assistant.jar -c "status; review --paths src/main/groovy"`
+
+Options:
+- `-c`, `--command`: Command string (supports `;` separators).
+- `--batch-file`: Path to a file with one command per line (each line can include `;` separators; use `-` for stdin).
+- `--batch-json`: Emit a JSON summary line per command (JSONL).
+- `--yes`, `--assume-yes`: Auto-confirm prompts in batch mode (off by default).
+
+Notes:
+- Commands execute sequentially and stop on the first failure.
+- Exit code is `0` when all commands succeed; non-zero on the first failure.
+- Use quotes or `\\;` to include a literal `;` inside a command.
+- Batch mode uses the same configuration files, workspace root, and safety limits as interactive mode.
+- Commands run relative to the working directory where `java -jar` starts; if that is not a git repo,
+  git commands report that git is unavailable.

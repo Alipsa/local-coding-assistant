@@ -65,11 +65,13 @@ class ShellCommandsSpec extends Specification {
       gitTool,
       Stub(CodeSearchTool),
       new ContextPacker(),
-      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
       commandPolicy,
       modelRegistry,
-      tempDir.resolve("reviews.log").toString()
+      tempDir.resolve("reviews.log").toString(),
+      null,
+      null
     )
   }
 
@@ -307,9 +309,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("other.log").toString()
+      tempDir.resolve("other.log").toString(),
+      null,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -383,9 +391,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("reviews.log").toString()
+      tempDir.resolve("reviews.log").toString(),
+      null,
+      null
     ) {
       @Override
       protected java.time.Instant nowInstant() {
@@ -419,9 +433,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       runTool,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("commit.log").toString()
+      tempDir.resolve("commit.log").toString(),
+      null,
+      null
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -491,9 +511,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("stage.log").toString()
+      tempDir.resolve("stage.log").toString(),
+      null,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -509,6 +535,73 @@ class ShellCommandsSpec extends Specification {
     0 * repoGit.stageFiles(_)
   }
 
+  def "batch mode throws when confirmation is required"() {
+    given:
+    GitTool repoGit = Mock()
+    ShellCommands staging = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("stage.log").toString(),
+      null,
+      null
+    )
+    staging.configureBatchMode(true, false)
+
+    when:
+    staging.stage(["file.txt"], null, null, true)
+
+    then:
+    IllegalStateException ex = thrown()
+    ex.message.contains("Confirmation required in batch mode")
+    0 * repoGit.stageFiles(_)
+  }
+
+  def "batch mode assumes yes for confirmations"() {
+    given:
+    GitTool repoGit = Mock()
+    ShellCommands staging = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("stage.log").toString(),
+      null,
+      null
+    ) {
+      ConfirmChoice exposeConfirmAction(String prompt) {
+        super.confirmAction(prompt)
+      }
+    }
+    staging.configureBatchMode(true, true)
+
+    when:
+    def choice = staging.exposeConfirmAction("Stage files?")
+    def result = staging.stage(["file.txt"], null, null, true)
+
+    then:
+    choice == ShellCommands.ConfirmChoice.ALL
+    1 * repoGit.stageFiles(["file.txt"]) >> new GitTool.GitResult(true, true, 0, "ok", "")
+    result.contains("Stage succeeded")
+  }
+
   def "gitStatus formats output"() {
     given:
     GitTool repoGit = Stub(GitTool) {
@@ -521,9 +614,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("status.log").toString()
+      tempDir.resolve("status.log").toString(),
+      null,
+      null
     )
 
     when:
@@ -557,7 +656,7 @@ class ShellCommandsSpec extends Specification {
       gitTool,
       Stub(CodeSearchTool),
       new ContextPacker(),
-      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
       commandPolicy,
       modelRegistry,
@@ -590,9 +689,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("diff.log").toString()
+      tempDir.resolve("diff.log").toString(),
+      null,
+      null
     )
 
     when:
@@ -616,9 +721,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("apply.log").toString()
+      tempDir.resolve("apply.log").toString(),
+      null,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -651,9 +762,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("push.log").toString()
+      tempDir.resolve("push.log").toString(),
+      null,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -688,9 +805,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       runner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("runReviews.log").toString()
+      tempDir.resolve("runReviews.log").toString(),
+      null,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -721,9 +844,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       runner,
+      commandPolicy,
       modelRegistry,
-      tempDir.resolve("run2.log").toString()
+      tempDir.resolve("run2.log").toString(),
+      null,
+      null
     )
 
     when:
@@ -747,9 +876,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       fallbackRegistry,
-      tempDir.resolve("model.log").toString()
+      tempDir.resolve("model.log").toString(),
+      null,
+      null
     )
 
     when:
@@ -774,9 +909,15 @@ class ShellCommandsSpec extends Specification {
       editorLauncher,
       fileEditingTool,
       gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
+      commandPolicy,
       downRegistry,
-      tempDir.resolve("health.log").toString()
+      tempDir.resolve("health.log").toString(),
+      null,
+      null
     )
 
     expect:
@@ -804,7 +945,7 @@ class ShellCommandsSpec extends Specification {
       gitTool,
       Stub(CodeSearchTool),
       new ContextPacker(),
-      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
       commandPolicy,
       modelRegistry,
@@ -831,7 +972,7 @@ class ShellCommandsSpec extends Specification {
       repoGit,
       Stub(CodeSearchTool),
       new ContextPacker(),
-      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
       commandRunner,
       commandPolicy,
       modelRegistry,

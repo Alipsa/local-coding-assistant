@@ -8,6 +8,7 @@ import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.CommandPolicy
+import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.TokenEstimator
@@ -21,9 +22,10 @@ class CodeSearchCommandSpec extends Specification {
   SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback")
   CodingAssistantAgent agent = Mock()
   FileEditingTool fileEditingTool = Stub()
+  GitTool gitTool = Stub()
   CodeSearchTool codeSearchTool = Mock()
   ContextPacker contextPacker = new ContextPacker()
-  ContextBudgetManager budgetManager = new ContextBudgetManager(1000, 500, new TokenEstimator())
+  ContextBudgetManager budgetManager = new ContextBudgetManager(1000, 500, new TokenEstimator(), 2, -1)
   EditorLauncher editorLauncher = Stub() {
     edit(_) >> ""
   }
@@ -44,13 +46,16 @@ class CodeSearchCommandSpec extends Specification {
       sessionState,
       editorLauncher,
       fileEditingTool,
+      gitTool,
       codeSearchTool,
       contextPacker,
       budgetManager,
       commandRunner,
       commandPolicy,
       modelRegistry,
-      tempDir.resolve("reviews.log").toString()
+      tempDir.resolve("reviews.log").toString(),
+      null,
+      null
     )
   }
 

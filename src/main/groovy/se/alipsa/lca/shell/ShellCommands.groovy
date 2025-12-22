@@ -5,6 +5,7 @@ import com.embabel.agent.domain.io.UserInput
 import com.embabel.common.ai.model.LlmOptions
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -46,7 +47,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-@ShellComponent
+@ShellComponent("lcaShellCommands")
 @CompileStatic
 class ShellCommands {
 
@@ -68,39 +69,8 @@ class ShellCommands {
   private final SastTool sastTool
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
-
-  ShellCommands(
-    CodingAssistantAgent codingAssistantAgent,
-    Ai ai,
-    SessionState sessionState,
-    EditorLauncher editorLauncher,
-    FileEditingTool fileEditingTool,
-    CodeSearchTool codeSearchTool,
-    ContextPacker contextPacker,
-    ContextBudgetManager contextBudgetManager,
-    CommandRunner commandRunner,
-    CommandPolicy commandPolicy,
-    ModelRegistry modelRegistry,
-    String reviewLogPath
-  ) {
-    this(
-      codingAssistantAgent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      new GitTool(resolveProjectRoot(fileEditingTool)),
-      codeSearchTool,
-      contextPacker,
-      contextBudgetManager,
-      commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
-      commandPolicy,
-      modelRegistry,
-      reviewLogPath,
-      null,
-      null
-    )
-  }
+  private volatile boolean batchMode = false
+  private volatile boolean assumeYes = false
 
   ShellCommands(
     CodingAssistantAgent codingAssistantAgent,
@@ -115,41 +85,7 @@ class ShellCommands {
     CommandRunner commandRunner,
     CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
-    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
-  ) {
-    this(
-      codingAssistantAgent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      gitTool,
-      codeSearchTool,
-      contextPacker,
-      contextBudgetManager,
-      commandRunner,
-      commandPolicy,
-      modelRegistry,
-      reviewLogPath,
-      null,
-      null
-    )
-  }
-
-  ShellCommands(
-    CodingAssistantAgent codingAssistantAgent,
-    Ai ai,
-    SessionState sessionState,
-    EditorLauncher editorLauncher,
-    FileEditingTool fileEditingTool,
-    GitTool gitTool,
-    CodeSearchTool codeSearchTool,
-    ContextPacker contextPacker,
-    ContextBudgetManager contextBudgetManager,
-    CommandRunner commandRunner,
-    CommandPolicy commandPolicy,
-    ModelRegistry modelRegistry,
-    String reviewLogPath,
+    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath,
     TreeTool treeTool,
     SastTool sastTool
   ) {
@@ -158,47 +94,21 @@ class ShellCommands {
     this.sessionState = sessionState
     this.editorLauncher = editorLauncher
     this.fileEditingTool = fileEditingTool
-    this.gitTool = gitTool
-    this.codeSearchTool = codeSearchTool
-    this.contextPacker = contextPacker
-    this.contextBudgetManager = contextBudgetManager
-    this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
+    Path root = resolveProjectRoot(fileEditingTool)
+    this.gitTool = gitTool != null ? gitTool : new GitTool(root)
+    this.codeSearchTool = codeSearchTool != null ? codeSearchTool : new CodeSearchTool()
+    this.contextPacker = contextPacker != null ? contextPacker : new ContextPacker()
+    this.contextBudgetManager = contextBudgetManager != null
+      ? contextBudgetManager
+      : new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1)
+    this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(root)
     this.commandPolicy = commandPolicy != null ? commandPolicy : new CommandPolicy("", "")
     this.modelRegistry = modelRegistry
-    this.treeTool = treeTool != null ? treeTool : new TreeTool(resolveProjectRoot(fileEditingTool), gitTool)
+    this.treeTool = treeTool != null ? treeTool : new TreeTool(root, this.gitTool)
     this.secretScanner = new SecretScanner()
     this.sastTool = sastTool != null ? sastTool : new SastTool(this.commandRunner, this.commandPolicy, "", 60000L, 8000)
-    this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
-  }
-
-  ShellCommands(
-    CodingAssistantAgent codingAssistantAgent,
-    Ai ai,
-    SessionState sessionState,
-    EditorLauncher editorLauncher,
-    FileEditingTool fileEditingTool,
-    GitTool gitTool,
-    CommandRunner commandRunner,
-    ModelRegistry modelRegistry,
-    String reviewLogPath
-  ) {
-    this(
-      codingAssistantAgent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      gitTool,
-      new CodeSearchTool(),
-      new ContextPacker(),
-      new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
-      commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
-      new CommandPolicy("", ""),
-      modelRegistry,
-      reviewLogPath,
-      null,
-      null
-    )
+    String reviewPath = reviewLogPath != null && reviewLogPath.trim() ? reviewLogPath : ".lca/reviews.log"
+    this.reviewLogPath = Paths.get(reviewPath).toAbsolutePath()
   }
 
   @ShellMethod(key = ["chat", "/chat"], value = "Send a prompt to the coding assistant.")
@@ -1412,6 +1322,14 @@ ${rendered}
 
   @CompileStatic
   protected ConfirmChoice confirmAction(String prompt) {
+    if (batchMode) {
+      if (assumeYes) {
+        return ConfirmChoice.ALL
+      }
+      throw new IllegalStateException(
+        "Confirmation required in batch mode. Re-run with --yes to auto-confirm."
+      )
+    }
     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
     print("${prompt.trim()} [y/N/a]: ")
     String response = reader.readLine()
@@ -1423,6 +1341,15 @@ ${rendered}
       return ConfirmChoice.YES
     }
     ConfirmChoice.NO
+  }
+
+  @PackageScope
+  void configureBatchMode(boolean enabled, boolean assumeYes) {
+    this.batchMode = enabled
+    this.assumeYes = assumeYes
+    if (assumeYes) {
+      this.applyAllConfirmed = true
+    }
   }
 
   @CompileStatic

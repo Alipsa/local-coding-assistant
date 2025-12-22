@@ -33,10 +33,6 @@ class ContextBudgetManager {
     this.testPenalty = testPenalty
   }
 
-  ContextBudgetManager(int maxChars, int maxTokens, TokenEstimator tokenEstimator) {
-    this(maxChars, maxTokens, tokenEstimator, 2, -1)
-  }
-
   BudgetResult applyBudget(String text, List<CodeSearchTool.SearchHit> hits) {
     applyBudget(text, hits, maxChars, maxTokens)
   }

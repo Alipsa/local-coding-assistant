@@ -2,7 +2,9 @@ package se.alipsa.lca.shell
 
 import com.embabel.agent.api.common.Ai
 import se.alipsa.lca.agent.CodingAssistantAgent
+import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.CommandRunner
+import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.FileEditingTool
@@ -70,13 +72,30 @@ class ResolveModelSpec extends Specification {
     EditorLauncher editor = Stub()
     FileEditingTool fileEditingTool = Stub()
     se.alipsa.lca.tools.GitTool gitTool = Stub()
+    CodeSearchTool codeSearchTool = Stub()
+    ContextPacker contextPacker = new ContextPacker()
+    ContextBudgetManager budgetManager = new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1)
     CommandRunner runner = Stub()
+    CommandPolicy commandPolicy = new CommandPolicy("", "")
     ModelRegistry registry = Stub() {
       listModels() >> models
       checkHealth() >> new ModelRegistry.Health(true, "ok")
       getBaseUrl() >> "http://localhost:11434"
     }
-    new TestCommands(agent, ai, sessionState, editor, fileEditingTool, gitTool, runner, registry)
+    new TestCommands(
+      agent,
+      ai,
+      sessionState,
+      editor,
+      fileEditingTool,
+      gitTool,
+      codeSearchTool,
+      contextPacker,
+      budgetManager,
+      runner,
+      commandPolicy,
+      registry
+    )
   }
 
   private class TestCommands extends ShellCommands {
@@ -87,10 +106,30 @@ class ResolveModelSpec extends Specification {
       EditorLauncher editor,
       FileEditingTool fileEditingTool,
       se.alipsa.lca.tools.GitTool gitTool,
+      CodeSearchTool codeSearchTool,
+      ContextPacker contextPacker,
+      ContextBudgetManager budgetManager,
       CommandRunner runner,
+      CommandPolicy commandPolicy,
       ModelRegistry registry
     ) {
-      super(agent, ai, state, editor, fileEditingTool, gitTool, runner, registry, ".")
+      super(
+        agent,
+        ai,
+        state,
+        editor,
+        fileEditingTool,
+        gitTool,
+        codeSearchTool,
+        contextPacker,
+        budgetManager,
+        runner,
+        commandPolicy,
+        registry,
+        ".",
+        null,
+        null
+      )
     }
   }
 }

@@ -6,6 +6,7 @@ import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.net.URI
@@ -34,28 +35,22 @@ class ModelRegistry {
     @Value('${spring.ai.ollama.base-url:http://localhost:11434}') String baseUrl,
     @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis,
     @Value('${assistant.llm.model-cache-ttl-millis:30000}') long cacheTtlMillis,
-    @Value('${assistant.llm.health-cache-ttl-millis:5000}') long healthTtlMillis
+    @Value('${assistant.llm.health-cache-ttl-millis:5000}') long healthTtlMillis,
+    @Nullable HttpClient httpClient
   ) {
-    this(
-      baseUrl,
-      timeoutMillis,
-      cacheTtlMillis,
-      healthTtlMillis,
-      HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)).build()
-    )
-  }
-
-  ModelRegistry(String baseUrl, long timeoutMillis, long cacheTtlMillis, long healthTtlMillis, HttpClient httpClient) {
     if (baseUrl == null || baseUrl.trim().isEmpty()) {
       throw new IllegalArgumentException("Ollama baseUrl must be provided")
     }
     this.baseUrl = baseUrl
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
-    this.timeout = Duration.ofMillis(timeoutMillis > 0 ? timeoutMillis : 4000L)
+    long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : 4000L
+    this.timeout = Duration.ofMillis(effectiveTimeout)
     this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
     this.healthTtlMillis = healthTtlMillis > 0 ? healthTtlMillis : 5000L
-    this.client = httpClient
+    this.client = httpClient != null
+      ? httpClient
+      : HttpClient.newBuilder().connectTimeout(Duration.ofMillis(effectiveTimeout)).build()
   }
 
   List<String> listModels() {
