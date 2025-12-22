@@ -1327,7 +1327,7 @@ ${rendered}
         return ConfirmChoice.ALL
       }
       throw new IllegalStateException(
-        "Confirmation required in batch mode. Re-run with --yes or pass --confirm false to the command."
+        "Confirmation required in batch mode. Re-run with --yes to auto-confirm."
       )
     }
     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))

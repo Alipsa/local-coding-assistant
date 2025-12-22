@@ -535,6 +535,37 @@ class ShellCommandsSpec extends Specification {
     0 * repoGit.stageFiles(_)
   }
 
+  def "batch mode throws when confirmation is required"() {
+    given:
+    GitTool repoGit = Mock()
+    ShellCommands staging = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("stage.log").toString(),
+      null,
+      null
+    )
+    staging.configureBatchMode(true, false)
+
+    when:
+    staging.stage(["file.txt"], null, null, true)
+
+    then:
+    IllegalStateException ex = thrown()
+    ex.message.contains("Confirmation required in batch mode")
+    0 * repoGit.stageFiles(_)
+  }
+
   def "gitStatus formats output"() {
     given:
     GitTool repoGit = Stub(GitTool) {

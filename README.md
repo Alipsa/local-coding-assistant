@@ -120,13 +120,13 @@ Run one or more commands non-interactively and exit when done.
 
 Inline command string:
 ```
-java -jar local-coding-assistant-0.10.0-SNAPSHOT.jar \
+java -jar local-coding-assistant-<version>.jar \
   -c "status; review --paths src/main/groovy; commit-suggest"
 ```
 
 Batch file (one command per line; each line can include `;`-separated commands):
 ```
-java -jar local-coding-assistant-0.10.0-SNAPSHOT.jar --batch-file scripts/batch.txt
+java -jar local-coding-assistant-<version>.jar --batch-file scripts/batch.txt
 ```
 
 Notes:

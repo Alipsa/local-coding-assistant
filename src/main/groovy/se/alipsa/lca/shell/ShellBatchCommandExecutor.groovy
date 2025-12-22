@@ -4,17 +4,22 @@ import groovy.transform.CompileStatic
 import org.jline.reader.Parser
 import org.jline.reader.ParsedLine
 import org.jline.reader.impl.DefaultParser
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.shell.ExitRequest
 import org.springframework.shell.Input
 import org.springframework.shell.ResultHandlerService
 import org.springframework.shell.Shell
 import org.springframework.stereotype.Component
+import se.alipsa.lca.tools.LogSanitizer
 
 import java.lang.reflect.InvocationTargetException
 
 @Component
 @CompileStatic
 class ShellBatchCommandExecutor implements BatchCommandExecutor {
+
+  private static final Logger log = LoggerFactory.getLogger(ShellBatchCommandExecutor)
 
   private final Shell shell
   private final ResultHandlerService resultHandlerService
@@ -44,7 +49,24 @@ class ShellBatchCommandExecutor implements BatchCommandExecutor {
     }
     try {
       try {
-        ParsedLine parsed = parser.parse(command, command.length() + 1)
+        ParsedLine parsed
+        try {
+          parsed = parser.parse(command, command.length() + 1)
+        } catch (Exception e) {
+          String safe = LogSanitizer.sanitize(command)
+          log.warn("Failed to parse batch command: {}", safe, e)
+          outcome.error = e
+          handleResult(outcome)
+          return outcome
+        }
+        if (parsed == null) {
+          String safe = LogSanitizer.sanitize(command)
+          IllegalArgumentException error = new IllegalArgumentException("Failed to parse batch command.")
+          log.warn("Parsed line was null for batch command: {}", safe)
+          outcome.error = error
+          handleResult(outcome)
+          return outcome
+        }
         Input input = new BatchInput(command, parsed.words())
         Object result = evaluateMethod.invoke(shell, input)
         if (result == Shell.NO_INPUT) {
