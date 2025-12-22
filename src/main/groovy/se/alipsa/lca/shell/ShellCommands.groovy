@@ -1258,7 +1258,8 @@ ${rendered}
       }
       String sanitizedLocation = LogSanitizer.sanitize(location)
       String sanitizedRule = LogSanitizer.sanitize(finding.rule ?: "rule")
-      "- [${finding.severity}] ${sanitizedLocation} - ${sanitizedRule}"
+      String sanitizedSeverity = LogSanitizer.sanitize(finding.severity ?: "UNKNOWN")
+      "- [${sanitizedSeverity}] ${sanitizedLocation} - ${sanitizedRule}"
     }.join("\n")
     "\n\nSAST:\n" + details
   }

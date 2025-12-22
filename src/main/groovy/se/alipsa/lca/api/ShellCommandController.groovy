@@ -81,8 +81,8 @@ class ShellCommandController {
   String reviewLog(
     @RequestParam(name = "minSeverity", defaultValue = "LOW") ReviewSeverity minSeverity,
     @RequestParam(name = "pathFilter", required = false) String pathFilter,
-    @RequestParam(name = "limit", defaultValue = "5") @Min(1L) int limit,
-    @RequestParam(name = "page", defaultValue = "1") @Min(1L) int page,
+    @RequestParam(name = "limit", defaultValue = "5") @Min(1) int limit,
+    @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
     @RequestParam(name = "since", required = false) String since,
     @RequestParam(name = "noColor", defaultValue = "false") boolean noColor
   ) {
@@ -92,7 +92,7 @@ class ShellCommandController {
   @GetMapping("/search")
   String search(
     @RequestParam(name = "query") @NotBlank String query,
-    @RequestParam(name = "limit", defaultValue = "5") @Min(1L) int limit,
+    @RequestParam(name = "limit", defaultValue = "5") @Min(1) int limit,
     @RequestParam(name = "session", defaultValue = "default") String session,
     @RequestParam(name = "provider", defaultValue = "duckduckgo") String provider,
     @RequestParam(name = "timeoutMillis", defaultValue = "15000") @Min(1L) long timeoutMillis,
@@ -106,11 +106,11 @@ class ShellCommandController {
   String codeSearch(
     @RequestParam(name = "query") @NotBlank String query,
     @RequestParam(name = "paths", required = false) List<String> paths,
-    @RequestParam(name = "context", defaultValue = "2") @Min(0L) int context,
-    @RequestParam(name = "limit", defaultValue = "20") @Min(1L) int limit,
+    @RequestParam(name = "context", defaultValue = "2") @Min(0) int context,
+    @RequestParam(name = "limit", defaultValue = "20") @Min(1) int limit,
     @RequestParam(name = "pack", defaultValue = "false") boolean pack,
-    @RequestParam(name = "maxChars", defaultValue = "8000") @Min(0L) int maxChars,
-    @RequestParam(name = "maxTokens", defaultValue = "0") @Min(0L) int maxTokens
+    @RequestParam(name = "maxChars", defaultValue = "8000") @Min(0) int maxChars,
+    @RequestParam(name = "maxTokens", defaultValue = "0") @Min(0) int maxTokens
   ) {
     shellCommands.codeSearch(query, paths, context, limit, pack, maxChars, maxTokens)
   }
@@ -145,7 +145,7 @@ class ShellCommandController {
   @GetMapping("/diff")
   String diff(
     @RequestParam(name = "staged", defaultValue = "false") boolean staged,
-    @RequestParam(name = "context", defaultValue = "3") @Min(0L) int context,
+    @RequestParam(name = "context", defaultValue = "3") @Min(0) int context,
     @RequestParam(name = "paths", required = false) List<String> paths,
     @RequestParam(name = "stat", defaultValue = "false") boolean stat
   ) {
@@ -247,9 +247,9 @@ class ShellCommandController {
 
   @GetMapping("/tree")
   String tree(
-    @RequestParam(name = "depth", defaultValue = "4") @Min(-1L) int depth,
+    @RequestParam(name = "depth", defaultValue = "4") @Min(-1) int depth,
     @RequestParam(name = "dirsOnly", defaultValue = "false") boolean dirsOnly,
-    @RequestParam(name = "maxEntries", defaultValue = "2000") @Min(0L) int maxEntries
+    @RequestParam(name = "maxEntries", defaultValue = "2000") @Min(0) int maxEntries
   ) {
     shellCommands.tree(depth, dirsOnly, maxEntries)
   }
@@ -379,7 +379,7 @@ class ShellCommandController {
     String command
     @Min(1L)
     Long timeoutMillis
-    @Min(1L)
+    @Min(1)
     Integer maxOutputChars
     String session
     @NotNull
@@ -453,7 +453,7 @@ class ShellCommandController {
     Integer start
     Integer end
     String symbol
-    @Min(0L)
+    @Min(0)
     Integer padding
   }
 }
