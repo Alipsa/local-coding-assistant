@@ -18,6 +18,10 @@ class DefaultBatchExitHandler implements BatchExitHandler {
   @Override
   void exit(int code) {
     int exitCode = SpringApplication.exit(context, { -> code })
+    exitProcess(exitCode)
+  }
+
+  protected void exitProcess(int exitCode) {
     System.exit(exitCode)
   }
 }

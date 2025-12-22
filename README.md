@@ -131,7 +131,7 @@ java -jar local-coding-assistant-<version>.jar --batch-file scripts/batch.txt
 
 Notes:
 - Exit code is `0` when all commands succeed, non-zero on the first failure.
-- Use `--yes` to auto-confirm destructive prompts in CI; leave it off by default.
+- Use `--yes` (or `--assume-yes`) to auto-confirm destructive prompts in CI; leave it off by default.
 - Add `--batch-json` to emit a JSON summary line per command for machine parsing.
 - Batch mode uses the same configuration files, workspace root, and safety limits as interactive mode.
 - Commands run relative to the working directory where `java -jar` starts; if that is not a git repo,

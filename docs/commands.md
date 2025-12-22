@@ -232,7 +232,7 @@ Options:
 - `--dirs-only`: Show directories only.
 - `--max-entries`: Maximum entries to render (`0` for unlimited, min 0).
 
-## batch mode (non-interactive)
+## Batch Mode (Non-Interactive)
 Run one or more commands without starting the interactive shell.
 
 Usage:
@@ -242,7 +242,7 @@ Options:
 - `-c`, `--command`: Command string (supports `;` separators).
 - `--batch-file`: Path to a file with one command per line (each line can include `;` separators; use `-` for stdin).
 - `--batch-json`: Emit a JSON summary line per command (JSONL).
-- `--yes`: Auto-confirm prompts in batch mode (off by default).
+- `--yes`, `--assume-yes`: Auto-confirm prompts in batch mode (off by default).
 
 Notes:
 - Commands execute sequentially and stop on the first failure.
