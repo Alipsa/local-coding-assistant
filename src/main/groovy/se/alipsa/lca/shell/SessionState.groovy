@@ -5,6 +5,7 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import se.alipsa.lca.tools.AgentsMdProvider
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -23,6 +24,7 @@ class SessionState {
   private final boolean defaultWebSearchEnabled
   private final boolean localOnly
   private final String fallbackModel
+  private final AgentsMdProvider agentsMdProvider
 
   SessionState(
     @Value('${assistant.llm.model:qwen3-coder:30b}') String defaultModel,
@@ -32,7 +34,8 @@ class SessionState {
     @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
     @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled,
     @Value('${assistant.local-only:true}') boolean localOnly,
-    @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel
+    @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel,
+    AgentsMdProvider agentsMdProvider
   ) {
     this.defaultModel = defaultModel
     this.defaultCraftTemperature = defaultCraftTemperature
@@ -42,6 +45,7 @@ class SessionState {
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
     this.localOnly = localOnly
     this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
+    this.agentsMdProvider = agentsMdProvider
   }
 
   SessionSettings update(
@@ -84,10 +88,10 @@ class SessionState {
   }
 
   String systemPrompt(SessionSettings settings) {
-    if (settings.systemPrompt != null && settings.systemPrompt.trim()) {
-      return settings.systemPrompt
-    }
-    defaultSystemPrompt
+    String base = settings.systemPrompt != null && settings.systemPrompt.trim()
+      ? settings.systemPrompt
+      : defaultSystemPrompt
+    agentsMdProvider != null ? agentsMdProvider.appendToSystemPrompt(base) : (base ?: "")
   }
 
   String getDefaultModel() {

@@ -7,7 +7,10 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 import se.alipsa.lca.agent.CodingAssistantAgent
+import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.agent.Personas
+import se.alipsa.lca.shell.SessionState
+import se.alipsa.lca.tools.AgentsMdProvider
 import spock.lang.Specification
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -17,12 +20,17 @@ class CodingAssistantControllerSpec extends Specification {
 
   CodingAssistantAgent agent = Mock(CodingAssistantAgent)
   Ai ai = Mock(Ai)
+  AgentsMdProvider agentsMdProvider = Stub() {
+    appendToSystemPrompt(_) >> { String base -> base }
+  }
+  SessionState sessionState =
+    new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback", agentsMdProvider)
   LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
   MockMvc mvc
 
   def setup() {
     validator.afterPropertiesSet()
-    mvc = MockMvcBuilders.standaloneSetup(new CodingAssistantController(agent, ai))
+    mvc = MockMvcBuilders.standaloneSetup(new CodingAssistantController(agent, ai, sessionState))
       .setValidator(validator)
       .build()
   }
@@ -39,8 +47,20 @@ class CodingAssistantControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk()).andReturn()
-    1 * agent.craftCode({ UserInput ui -> ui.getContent() == "write a search command" }, ai) >> crafted
-    1 * agent.reviewCode({ UserInput ui -> ui.getContent() == "write a search command" }, crafted, ai) >> reviewed
+    1 * agent.craftCode(
+      { UserInput ui -> ui.getContent() == "write a search command" },
+      ai,
+      PersonaMode.CODER,
+      null,
+      ""
+    ) >> crafted
+    1 * agent.reviewCode(
+      { UserInput ui -> ui.getContent() == "write a search command" },
+      crafted,
+      ai,
+      null,
+      ""
+    ) >> reviewed
   }
 
   def "generateAndReviewCode rejects blank prompts"() {
@@ -51,6 +71,6 @@ class CodingAssistantControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isBadRequest())
-    0 * agent.craftCode(_, _, _)
+    0 * agent.craftCode(_, _, _, _, _)
   }
 }

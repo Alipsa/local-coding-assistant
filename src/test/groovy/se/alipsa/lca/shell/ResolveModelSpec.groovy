@@ -2,6 +2,7 @@ package se.alipsa.lca.shell
 
 import com.embabel.agent.api.common.Ai
 import se.alipsa.lca.agent.CodingAssistantAgent
+import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.CodeSearchTool
@@ -14,7 +15,20 @@ import spock.lang.Specification
 
 class ResolveModelSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback-model")
+  AgentsMdProvider agentsMdProvider = Stub() {
+    appendToSystemPrompt(_) >> { String base -> base }
+  }
+  SessionState sessionState = new SessionState(
+    "default-model",
+    0.7d,
+    0.35d,
+    0,
+    "",
+    true,
+    false,
+    "fallback-model",
+    agentsMdProvider
+  )
 
   def "resolveModel prefers available requested model with original casing"() {
     given:

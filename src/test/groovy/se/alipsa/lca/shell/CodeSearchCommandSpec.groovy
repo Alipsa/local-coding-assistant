@@ -3,6 +3,7 @@ package se.alipsa.lca.shell
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ContextPacker
@@ -19,7 +20,20 @@ import java.nio.file.Path
 
 class CodeSearchCommandSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback")
+  AgentsMdProvider agentsMdProvider = Stub() {
+    appendToSystemPrompt(_) >> { String base -> base }
+  }
+  SessionState sessionState = new SessionState(
+    "default-model",
+    0.7d,
+    0.35d,
+    0,
+    "",
+    true,
+    false,
+    "fallback",
+    agentsMdProvider
+  )
   CodingAssistantAgent agent = Mock()
   FileEditingTool fileEditingTool = Stub()
   GitTool gitTool = Stub()
