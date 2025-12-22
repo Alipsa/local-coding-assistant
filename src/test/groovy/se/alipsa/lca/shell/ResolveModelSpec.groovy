@@ -12,7 +12,7 @@ import spock.lang.Specification
 
 class ResolveModelSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback-model")
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback-model")
 
   def "resolveModel prefers available requested model with original casing"() {
     given:

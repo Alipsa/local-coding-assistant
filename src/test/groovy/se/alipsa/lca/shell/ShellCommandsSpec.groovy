@@ -12,6 +12,7 @@ import se.alipsa.lca.tools.GitTool
 import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.CommandRunner
+import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
@@ -19,6 +20,7 @@ import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
+import se.alipsa.lca.tools.SastTool
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -27,7 +29,7 @@ import java.nio.file.Path
 
 class ShellCommandsSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback-model")
+  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback-model")
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   FileEditingTool fileEditingTool = Mock()
@@ -43,6 +45,7 @@ class ShellCommandsSpec extends Specification {
   CommandRunner commandRunner = Stub() {
     run(_, _, _) >> new CommandRunner.CommandResult(true, false, 0, "", false, null)
   }
+  CommandPolicy commandPolicy = new CommandPolicy("", "")
   ModelRegistry modelRegistry = Stub() {
     listModels() >> ["default-model", "fallback-model", "custom-model"]
     isModelAvailable(_) >> true
@@ -64,6 +67,7 @@ class ShellCommandsSpec extends Specification {
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
       commandRunner,
+      commandPolicy,
       modelRegistry,
       tempDir.resolve("reviews.log").toString()
     )
@@ -108,7 +112,7 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -124,6 +128,8 @@ class ShellCommandsSpec extends Specification {
       false,
       ReviewSeverity.LOW,
       true,
+      false,
+      false,
       false
     )
 
@@ -141,7 +147,8 @@ class ShellCommandsSpec extends Specification {
         opts.getTemperature() == 0.2d &&
         opts.getMaxTokens() == 1024
       },
-      "system"
+      "system",
+      _
     ) >> reviewed
   }
 
@@ -184,6 +191,14 @@ class ShellCommandsSpec extends Specification {
     out.contains("Results: 2")
     out.contains("1. T1 - http://example.com")
     out.contains("S1")
+  }
+
+  def "search rejects blank query"() {
+    when:
+    commands.search("  ", 5, "default", "duckduckgo", 15000L, true, null)
+
+    then:
+    thrown(IllegalArgumentException)
   }
 
   def "edit returns edited text when send is false"() {
@@ -271,11 +286,11 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [Low] general - note\nTests:\n- test",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
 
     when:
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
     then:
     Files.exists(tempDir.resolve("reviews.log"))
@@ -339,9 +354,9 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
     when:
     def out = commands.reviewLog(ReviewSeverity.HIGH, "src/App.groovy", 5, 1, null, true)
@@ -358,7 +373,7 @@ class ShellCommandsSpec extends Specification {
       "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test",
       Personas.REVIEWER
     )
-    agent.reviewCode(_, _, ai, _, _) >> reviewed
+    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
     fileEditingTool.readFile(_) >> "content"
     def instants = [java.time.Instant.parse("2025-01-01T00:00:00Z"), java.time.Instant.parse("2025-01-01T00:00:10Z")].iterator()
     ShellCommands clocked = new ShellCommands(
@@ -377,8 +392,8 @@ class ShellCommandsSpec extends Specification {
         instants.hasNext() ? instants.next() : java.time.Instant.now()
       }
     }
-    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
-    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true)
+    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
+    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
     when:
     def out = clocked.reviewLog(ReviewSeverity.LOW, null, 1, 2, "2025-01-01T00:00:05Z", true)
@@ -421,10 +436,49 @@ class ShellCommandsSpec extends Specification {
     }
 
     when:
-    def message = commitCommands.commitSuggest("default", null, 0.5d, 512, "focus on bugfix")
+    def message = commitCommands.commitSuggest("default", null, 0.5d, 512, "focus on bugfix", true, false)
 
     then:
     message.contains("Subject")
+  }
+
+  def "commitSuggest blocks when secrets are detected"() {
+    given:
+    def stagedDiff = new GitTool.GitResult(true, true, 0, "AKIA1234567890ABCDEF\n", "")
+    GitTool repoGit = Mock()
+    _ * repoGit.isGitRepo() >> true
+    _ * repoGit.hasStagedChanges() >> true
+    _ * repoGit.stagedDiff() >> stagedDiff
+    ShellCommands commitCommands = commitCommandsFor(repoGit)
+
+    when:
+    def message = commitCommands.commitSuggest("default", null, null, null, null, true, false)
+
+    then:
+    message.contains("Potential secrets detected")
+    0 * ai.withLlm(_)
+  }
+
+  def "commitSuggest proceeds when allowSecrets is enabled"() {
+    given:
+    def stagedDiff = new GitTool.GitResult(true, true, 0, "AKIA1234567890ABCDEF\n", "")
+    GitTool repoGit = Mock()
+    _ * repoGit.isGitRepo() >> true
+    _ * repoGit.hasStagedChanges() >> true
+    _ * repoGit.stagedDiff() >> stagedDiff
+    PromptRunner promptRunner = Mock()
+    ShellCommands commitCommands = commitCommandsFor(repoGit)
+    ai.withLlm(_ as LlmOptions) >> { LlmOptions opts -> promptRunner }
+    promptRunner.generateText(_ as String) >> { String prompt ->
+      assert prompt.contains("User acknowledged potential secrets in staged diff.")
+      "Subject: Allowed"
+    }
+
+    when:
+    def message = commitCommands.commitSuggest("default", null, null, null, null, true, true)
+
+    then:
+    message.contains("Subject: Allowed")
   }
 
   def "stage cancels when user declines confirmation"() {
@@ -477,6 +531,51 @@ class ShellCommandsSpec extends Specification {
 
     then:
     out.contains("clean")
+  }
+
+  def "buildSastBlock sanitizes findings"() {
+    given:
+    SastTool sastTool = Stub() {
+      run(_ as List<String>) >> new SastTool.SastResult(
+        true,
+        true,
+        null,
+        [new SastTool.SastFinding(
+          "HIGH-ghp_1234567890abcdef1234567890abcdef1234",
+          "src/main/java/Auth.java",
+          42,
+          "ghp_1234567890abcdef1234567890abcdef1234"
+        )]
+      )
+    }
+    ShellCommands cmds = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("sast.log").toString(),
+      null,
+      sastTool
+    )
+    def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
+    method.accessible = true
+
+    when:
+    String block = method.invoke(cmds, true, ["src"])
+
+    then:
+    block.contains("SAST:")
+    !block.contains("ghp_1234567890abcdef")
+    block.contains("[HIGH-REDACTED]")
+    block.contains("REDACTED")
   }
 
   def "gitDiff uses git tool output"() {
@@ -707,9 +806,11 @@ class ShellCommandsSpec extends Specification {
       new ContextPacker(),
       new ContextBudgetManager(10000, 0, new TokenEstimator()),
       commandRunner,
+      commandPolicy,
       modelRegistry,
       tempDir.resolve("tree.log").toString(),
-      treeTool
+      treeTool,
+      null
     )
 
     when:
@@ -718,5 +819,25 @@ class ShellCommandsSpec extends Specification {
     then:
     out.contains("=== Repository Tree ===")
     out.contains("src/")
+  }
+
+  private ShellCommands commitCommandsFor(GitTool repoGit) {
+    new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      repoGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator()),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      tempDir.resolve("commit.log").toString(),
+      null,
+      null
+    )
   }
 }

@@ -31,6 +31,8 @@ Options:
 - `--min-severity`: Minimum severity (`LOW`, `MEDIUM`, `HIGH`).
 - `--no-color`: Disable ANSI colors.
 - `--log-review`: Persist review summary to log.
+- `--security`: Focus on security risks in the review.
+- `--sast`: Run optional static analysis (requires `assistant.sast.command`).
 - `--session`, `--model`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
 
 ## reviewlog (/reviewlog)
@@ -39,8 +41,8 @@ Show recent reviews from the log with filters.
 Options:
 - `--min-severity`: Minimum severity to show.
 - `--path-filter`: Filter by path substring.
-- `--limit`: Maximum entries to show.
-- `--page`: Page number (1-based).
+- `--limit`: Maximum entries to show (min 1).
+- `--page`: Page number (1-based, min 1).
 - `--since`: ISO-8601 timestamp (e.g., `2025-02-12T10:00:00Z`).
 - `--no-color`: Disable ANSI colors.
 
@@ -51,9 +53,9 @@ Usage:
 `search --query "<text>"`
 
 Options:
-- `--limit`: Number of results to show.
+- `--limit`: Number of results to show (min 1).
 - `--provider`: Search provider (default `duckduckgo`).
-- `--timeout-millis`: Timeout in milliseconds.
+- `--timeout-millis`: Timeout in milliseconds (min 1).
 - `--headless`: Run browser in headless mode.
 - `--enable-web-search`: Override web search enablement.
 - `--session`: Session id for caching and configuration.
@@ -66,11 +68,11 @@ Usage:
 
 Options:
 - `--paths`: Paths or globs to search (repeatable).
-- `--context`: Context lines around matches.
-- `--limit`: Maximum matches to return.
+- `--context`: Context lines around matches (min 0).
+- `--limit`: Maximum matches to return (min 1).
 - `--pack`: Pack results into a single context blob.
-- `--max-chars`: Max characters when packing.
-- `--max-tokens`: Max tokens when packing (0 uses default).
+- `--max-chars`: Max characters when packing (min 0).
+- `--max-tokens`: Max tokens when packing (0 uses default, min 0).
 
 ## edit (/edit)
 Open `$EDITOR` to draft a prompt.
@@ -108,7 +110,7 @@ Show git diff.
 
 Options:
 - `--staged`: Use staged diff (`--cached`).
-- `--context`: Number of context lines.
+- `--context`: Number of context lines (min 0).
 - `--paths`: Paths to include (repeatable).
 - `--stat`: Show stats instead of full patch.
 
@@ -139,6 +141,8 @@ Draft an imperative commit message from staged changes.
 Options:
 - `--session`, `--model`, `--temperature`, `--max-tokens`.
 - `--hint`: Optional guidance for the commit message.
+- `--secret-scan`: Scan staged diff for secrets before suggesting.
+- `--allow-secrets`: Allow suggestion even if secrets are detected.
 
 ## git-push (/git-push)
 Push the current branch with confirmation.
@@ -164,8 +168,8 @@ Usage:
 `run --command "<command>"`
 
 Options:
-- `--timeout-millis`: Timeout in milliseconds.
-- `--max-output-chars`: Maximum output characters to display.
+- `--timeout-millis`: Timeout in milliseconds (min 1).
+- `--max-output-chars`: Maximum output characters to display (min 1).
 - `--confirm`: Ask for confirmation before running.
 - `--agent-requested`: Mark that the request came from the agent.
 - `--session`: Session id for history logging.
@@ -215,7 +219,7 @@ Options:
 - `--start`: Start line (1-based) when using ranges.
 - `--end`: End line (1-based) when using ranges.
 - `--symbol`: Symbol to locate instead of line numbers.
-- `--padding`: Padding lines around the selection.
+- `--padding`: Padding lines around the selection (min 0).
 
 ## tree (/tree)
 Show repository tree (respects `.gitignore` when available).
@@ -224,6 +228,6 @@ Usage:
 `tree [--depth <n>] [--dirs-only] [--max-entries <n>]`
 
 Options:
-- `--depth`: Max depth (`-1` for unlimited).
+- `--depth`: Max depth (`-1` for unlimited, min -1).
 - `--dirs-only`: Show directories only.
-- `--max-entries`: Maximum entries to render (`0` for unlimited).
+- `--max-entries`: Maximum entries to render (`0` for unlimited, min 0).

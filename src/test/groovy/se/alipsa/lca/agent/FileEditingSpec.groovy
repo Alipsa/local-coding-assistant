@@ -81,6 +81,20 @@ class FileEditingSpec extends Specification {
     content == "read me"
   }
 
+  def "readFile rejects excluded path"() {
+    given:
+    Files.writeString(tempDir.resolve(".aiexclude"), "secret.txt\n")
+    Files.writeString(tempDir.resolve("secret.txt"), "top secret")
+    FileEditingTool restricted = new FileEditingTool(tempDir)
+
+    when:
+    restricted.readFile("secret.txt")
+
+    then:
+    def ex = thrown(IllegalArgumentException)
+    ex.message.contains("excluded")
+  }
+
   def "applies unified patch and creates backup"() {
     given:
     Files.writeString(tempFile, "one\n-two\n")

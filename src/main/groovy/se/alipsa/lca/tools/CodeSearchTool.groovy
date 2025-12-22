@@ -23,6 +23,7 @@ class CodeSearchTool {
   private static final Logger log = LoggerFactory.getLogger(CodeSearchTool)
 
   private final Path projectRoot
+  private final ExclusionPolicy exclusionPolicy
 
   CodeSearchTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -30,6 +31,7 @@ class CodeSearchTool {
 
   CodeSearchTool(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize()
+    this.exclusionPolicy = new ExclusionPolicy(this.projectRoot)
   }
 
   List<SearchHit> search(String query, List<String> paths, int contextLines, int limit) {
@@ -163,27 +165,7 @@ class CodeSearchTool {
   }
 
   private boolean isIgnored(Path file) {
-    String relative = projectRoot.relativize(file).toString()
-    String lower = relative.toLowerCase()
-    if (lower.startsWith(".git") || lower.contains("/.git/")) {
-      return true
-    }
-    if (lower.startsWith(".lca") || lower.contains("/.lca/")) {
-      return true
-    }
-    if (lower.contains("/node_modules/") || lower.startsWith("node_modules")) {
-      return true
-    }
-    if (lower.contains("/build/") || lower.contains("/target/") || lower.contains("/dist/") || lower.contains("/out/")) {
-      return true
-    }
-    if (lower.contains("/.idea/") || lower.contains("/.vscode/") || lower.contains("/.gradle/") || lower.contains("/.m2/")) {
-      return true
-    }
-    if (lower.endsWith(".env") || lower.endsWith(".lock") || lower.endsWith(".jar") || lower.endsWith(".class")) {
-      return true
-    }
-    false
+    exclusionPolicy.isExcluded(file)
   }
 
   private static LineEntry nextLine(BufferedReader reader, AtomicInteger counter) {

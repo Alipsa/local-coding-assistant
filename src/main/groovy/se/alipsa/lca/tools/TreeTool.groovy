@@ -12,14 +12,18 @@ import java.nio.file.Paths
 class TreeTool {
 
   private final GitTool gitTool
+  private final ExclusionPolicy exclusionPolicy
 
   TreeTool() {
     this(Paths.get(".").toAbsolutePath().normalize(), new GitTool())
   }
 
   TreeTool(Path projectRoot, GitTool gitTool) {
-    Path root = projectRoot != null ? projectRoot.toAbsolutePath().normalize() : Paths.get(".").toAbsolutePath().normalize()
+    Path root = projectRoot != null
+      ? projectRoot.toAbsolutePath().normalize()
+      : Paths.get(".").toAbsolutePath().normalize()
     this.gitTool = gitTool != null ? gitTool : new GitTool(root)
+    this.exclusionPolicy = new ExclusionPolicy(root)
   }
 
   TreeResult buildTree(int maxDepth, boolean directoriesOnly, int maxEntries) {
@@ -34,6 +38,7 @@ class TreeTool {
       return new TreeResult(false, result.repoPresent, false, 0, "", message)
     }
     List<String> files = result.output?.readLines()?.findAll { it != null && !it.trim().isEmpty() } ?: List.of()
+    files = files.findAll { String path -> !exclusionPolicy.isExcludedRelative(path) }
     TreeNode root = new TreeNode(".", true)
     boolean truncatedBuild = false
     int added = 0

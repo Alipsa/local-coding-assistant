@@ -5,7 +5,7 @@ import spock.lang.Specification
 
 class SessionStateSpec extends Specification {
 
-  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback")
+  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback")
 
   def "uses default model and temperatures when unset"() {
     when:
@@ -43,7 +43,7 @@ class SessionStateSpec extends Specification {
 
   def "falls back to default system prompt when unset"() {
     given:
-    def withDefault = new SessionState("default-model", 0.7d, 0.35d, 0, "base", false, "fallback")
+    def withDefault = new SessionState("default-model", 0.7d, 0.35d, 0, "base", false, false, "fallback")
 
     when:
     def prompt = withDefault.systemPrompt(withDefault.getOrCreate("s3"))
@@ -54,7 +54,7 @@ class SessionStateSpec extends Specification {
 
   def "tracks web search enablement with defaults"() {
     when:
-    def disabled = new SessionState("m", 0.5d, 0.4d, 0, "", false, "fallback")
+    def disabled = new SessionState("m", 0.5d, 0.4d, 0, "", false, false, "fallback")
     def settings = disabled.update("s4", null, null, null, null, null, true)
 
     then:
@@ -62,5 +62,14 @@ class SessionStateSpec extends Specification {
     !disabled.isWebSearchEnabled("unknown")
     disabled.isWebSearchEnabled("s4")
     settings.webSearchEnabled
+  }
+
+  def "local-only mode disables web search"() {
+    when:
+    def localOnly = new SessionState("m", 0.5d, 0.4d, 0, "", true, true, "fallback")
+
+    then:
+    !localOnly.isWebSearchEnabled("default")
+    localOnly.isLocalOnly()
   }
 }

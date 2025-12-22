@@ -40,6 +40,20 @@ Spring Shell exposes the commands.
   - `assistant.llm.max-tokens`, `assistant.system-prompt`
   - `snippetWordCount`, `reviewWordCount`
 
+## Safety
+- Add a `.aiexclude` file at the project root to block the assistant from reading or modifying sensitive files.
+  Patterns are glob-like and applied relative to the repo (for example: `.env`, `*.pem`, `credentials.*`, `build/`).
+- Configure command execution policy with `assistant.command.allowlist` and `assistant.command.denylist`
+  in `src/main/resources/application.properties` (comma-separated prefixes like `mvn*,git*`).
+- Local-only mode (`assistant.local-only=true`) disables remote REST access and web search unless you opt in.
+- REST access is local-only by default; configure `assistant.rest.remote.enabled`, `assistant.rest.api-key`,
+  `assistant.rest.require-https`, and `assistant.rest.rate-limit.per-minute` in
+  `src/main/resources/application.properties` if needed. Optional OIDC settings live under
+  `assistant.rest.oidc.*`, and scope enforcement uses `assistant.rest.scope.read` / `assistant.rest.scope.write`.
+- Optional static analysis for reviews uses `assistant.sast.command` (for example:
+  `semgrep --config auto --json {paths}`).
+- No telemetry is collected or sent; logs are sanitized to redact common secrets.
+
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.
 REST usage is documented in `docs/rest.md`.
@@ -47,7 +61,7 @@ REST usage is documented in `docs/rest.md`.
 - `chat` (`/chat`): Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.
 - `review` (`/review`): Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
-  `--min-severity`, `--no-color`, `--log-review`, plus model/temperature overrides.
+  `--min-severity`, `--no-color`, `--log-review`, `--security`, `--sast`, plus model/temperature overrides.
 - `reviewlog` (`/reviewlog`): Show recent review entries. Options: `--min-severity`, `--path-filter`, `--limit`,
   `--page`, `--since`, `--no-color`.
 - `search` (`/search`): Web search through the agent tool. Options: `--limit`, `--provider`, `--timeout-millis`,
@@ -62,7 +76,7 @@ REST usage is documented in `docs/rest.md`.
 - `gitapply` (`/gitapply`): Apply a patch via git. Options: `--patch-file`, `--cached`, `--check`, `--confirm`.
 - `stage` (`/stage`): Stage files or hunks. Options: `--paths`, `--file`, `--hunks`, `--confirm`.
 - `commit-suggest` (`/commit-suggest`): Draft a commit message. Options: `--session`, `--model`, `--temperature`,
-  `--max-tokens`, `--hint`.
+  `--max-tokens`, `--hint`, `--secret-scan`, `--allow-secrets`.
 - `git-push` (`/git-push`): Push with confirmation. Options: `--force`.
 - `model` (`/model`): List or set models. Options: `--list`, `--set`, `--session`.
 - `health` (`/health`): Check Ollama connectivity.

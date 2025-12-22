@@ -98,6 +98,58 @@ class TreeToolSpec extends Specification {
     !result.treeText.contains("App.groovy")
   }
 
+  def "tree respects aiexclude patterns"() {
+    given:
+    Files.writeString(tempDir.resolve(".aiexclude"), "docs/\n")
+    TreeTool treeTool = buildStubTreeTool()
+
+    when:
+    def result = treeTool.buildTree(3, false, 0)
+
+    then:
+    // Verify the excluded directory is not shown
+    !result.treeText.contains("docs/")
+    // Verify descendant files within the excluded directory are also blocked
+    !result.treeText.contains("guide.md")
+    // Verify non-excluded content is still included
+    result.treeText.contains("src/")
+    result.treeText.contains("README.md")
+  }
+
+  def "tree blocks files within excluded directories"() {
+    given:
+    // Create stub that returns multiple files in docs/ directory
+    Files.writeString(tempDir.resolve(".aiexclude"), "docs/\n")
+    GitTool gitTool = Stub() {
+      isGitRepo() >> true
+      listFiles() >> new GitTool.GitResult(
+        true,
+        true,
+        0,
+        "src/App.groovy\ndocs/guide.md\ndocs/tutorial.md\ndocs/api/reference.md\nREADME.md\n",
+        ""
+      )
+    }
+    TreeTool treeTool = new TreeTool(tempDir, gitTool)
+
+    when:
+    def result = treeTool.buildTree(5, false, 0)
+
+    then:
+    result.success
+    // Verify the excluded directory itself is not shown
+    !result.treeText.contains("docs/")
+    // Verify all descendant files within the excluded directory are blocked
+    !result.treeText.contains("guide.md")
+    !result.treeText.contains("tutorial.md")
+    !result.treeText.contains("reference.md")
+    !result.treeText.contains("api/")
+    // Verify non-excluded content is still present
+    result.treeText.contains("src/")
+    result.treeText.contains("App.groovy")
+    result.treeText.contains("README.md")
+  }
+
   def "tree truncates when max entries is set"() {
     given:
     TreeTool treeTool = buildStubTreeTool()

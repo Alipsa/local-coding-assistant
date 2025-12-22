@@ -4,6 +4,7 @@ import groovy.json.JsonOutput
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.shell.ShellCommands
@@ -16,7 +17,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ShellCommandControllerSpec extends Specification {
 
   ShellCommands commands = Mock(ShellCommands)
-  MockMvc mvc = MockMvcBuilders.standaloneSetup(new ShellCommandController(commands)).build()
+  LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
+  MockMvc mvc
+
+  def setup() {
+    validator.afterPropertiesSet()
+    mvc = MockMvcBuilders.standaloneSetup(new ShellCommandController(commands))
+      .setValidator(validator)
+      .build()
+  }
 
   def "chat endpoint delegates with defaults"() {
     when:
@@ -56,6 +65,8 @@ class ShellCommandControllerSpec extends Specification {
       false,
       ReviewSeverity.HIGH,
       true,
+      false,
+      false,
       false
     ) >> "review"
   }
@@ -64,11 +75,11 @@ class ShellCommandControllerSpec extends Specification {
     when:
     def response = mvc.perform(post("/api/cli/git-push")
       .contentType(MediaType.APPLICATION_JSON)
-      .content(JsonOutput.toJson([force: true, confirm: false])))
+      .content(JsonOutput.toJson([force: true, confirm: true])))
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.gitPush(true, false) >> "pushed"
+    1 * commands.gitPush(true, true) >> "pushed"
   }
 
   def "tree endpoint maps query params"() {
@@ -92,5 +103,38 @@ class ShellCommandControllerSpec extends Specification {
     then:
     response.andExpect(status().isOk())
     1 * commands.chat("draft", "s1", PersonaMode.ARCHITECT, null, null, null, null, null) >> "sent"
+  }
+
+  def "run endpoint requires confirmation"() {
+    when:
+    def response = mvc.perform(post("/api/cli/run")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([command: "echo hi"])))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * commands.runCommand(_, _, _, _, _, _)
+  }
+
+  def "revert endpoint requires confirmation when not a dry run"() {
+    when:
+    def response = mvc.perform(post("/api/cli/revert")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([filePath: "file.txt", dryRun: false, confirm: false])) )
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * commands.revert(_, _, _)
+  }
+
+  def "chat requires non-blank prompt"() {
+    when:
+    def response = mvc.perform(post("/api/cli/chat")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: " "])))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * commands.chat(_, _, _, _, _, _, _, _)
   }
 }

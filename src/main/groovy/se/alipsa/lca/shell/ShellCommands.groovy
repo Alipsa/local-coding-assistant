@@ -14,6 +14,7 @@ import org.springframework.shell.standard.ShellOption
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.agent.Personas
 import se.alipsa.lca.review.ReviewFinding
 import se.alipsa.lca.review.ReviewParser
 import se.alipsa.lca.review.ReviewSeverity
@@ -26,10 +27,14 @@ import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.PackedContext
 import se.alipsa.lca.tools.CommandRunner
+import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
+import se.alipsa.lca.tools.SecretScanner
+import se.alipsa.lca.tools.SastTool
+import se.alipsa.lca.tools.LogSanitizer
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -56,8 +61,11 @@ class ShellCommands {
   private final ContextPacker contextPacker
   private final ContextBudgetManager contextBudgetManager
   private final CommandRunner commandRunner
+  private final CommandPolicy commandPolicy
   private final ModelRegistry modelRegistry
   private final TreeTool treeTool
+  private final SecretScanner secretScanner
+  private final SastTool sastTool
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
 
@@ -71,6 +79,7 @@ class ShellCommands {
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
     CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
     String reviewLogPath
   ) {
@@ -85,38 +94,10 @@ class ShellCommands {
       contextPacker,
       contextBudgetManager,
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
-      modelRegistry,
-      reviewLogPath
-    )
-  }
-
-  ShellCommands(
-    CodingAssistantAgent codingAssistantAgent,
-    Ai ai,
-    SessionState sessionState,
-    EditorLauncher editorLauncher,
-    FileEditingTool fileEditingTool,
-    GitTool gitTool,
-    CodeSearchTool codeSearchTool,
-    ContextPacker contextPacker,
-    ContextBudgetManager contextBudgetManager,
-    CommandRunner commandRunner,
-    ModelRegistry modelRegistry,
-    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
-  ) {
-    this(
-      codingAssistantAgent,
-      ai,
-      sessionState,
-      editorLauncher,
-      fileEditingTool,
-      gitTool,
-      codeSearchTool,
-      contextPacker,
-      contextBudgetManager,
-      commandRunner,
+      commandPolicy,
       modelRegistry,
       reviewLogPath,
+      null,
       null
     )
   }
@@ -132,9 +113,45 @@ class ShellCommands {
     ContextPacker contextPacker,
     ContextBudgetManager contextBudgetManager,
     CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
+    ModelRegistry modelRegistry,
+    @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath
+  ) {
+    this(
+      codingAssistantAgent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      codeSearchTool,
+      contextPacker,
+      contextBudgetManager,
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      reviewLogPath,
+      null,
+      null
+    )
+  }
+
+  ShellCommands(
+    CodingAssistantAgent codingAssistantAgent,
+    Ai ai,
+    SessionState sessionState,
+    EditorLauncher editorLauncher,
+    FileEditingTool fileEditingTool,
+    GitTool gitTool,
+    CodeSearchTool codeSearchTool,
+    ContextPacker contextPacker,
+    ContextBudgetManager contextBudgetManager,
+    CommandRunner commandRunner,
+    CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
     String reviewLogPath,
-    TreeTool treeTool
+    TreeTool treeTool,
+    SastTool sastTool
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -146,8 +163,11 @@ class ShellCommands {
     this.contextPacker = contextPacker
     this.contextBudgetManager = contextBudgetManager
     this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool))
+    this.commandPolicy = commandPolicy != null ? commandPolicy : new CommandPolicy("", "")
     this.modelRegistry = modelRegistry
     this.treeTool = treeTool != null ? treeTool : new TreeTool(resolveProjectRoot(fileEditingTool), gitTool)
+    this.secretScanner = new SecretScanner()
+    this.sastTool = sastTool != null ? sastTool : new SastTool(this.commandRunner, this.commandPolicy, "", 60000L, 8000)
     this.reviewLogPath = Paths.get(reviewLogPath).toAbsolutePath()
   }
 
@@ -173,8 +193,11 @@ class ShellCommands {
       new ContextPacker(),
       new ContextBudgetManager(12000, 0, new TokenEstimator(), 2, -1),
       commandRunner != null ? commandRunner : new CommandRunner(resolveProjectRoot(fileEditingTool)),
+      new CommandPolicy("", ""),
       modelRegistry,
-      reviewLogPath
+      reviewLogPath,
+      null,
+      null
     )
   }
 
@@ -189,6 +212,7 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
   ) {
+    requireNonBlank(prompt, "prompt")
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
@@ -240,8 +264,11 @@ class ShellCommands {
     @ShellOption(defaultValue = "false", help = "Include staged git diff") boolean staged,
     @ShellOption(defaultValue = "LOW", help = "Minimum severity to display/log: LOW, MEDIUM, HIGH") ReviewSeverity minSeverity,
     @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
-    @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview
+    @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview,
+    @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security,
+    @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast
   ) {
+    requireNonBlank(prompt, "prompt")
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     String health = ensureOllamaHealth()
     if (health != null) {
@@ -258,15 +285,17 @@ class ShellCommands {
       new CodeSnippet(reviewPayload),
       ai,
       reviewOptions,
-      system
+      system,
+      security ? Personas.SECURITY_REVIEWER : Personas.REVIEWER
     )
     printProgressDone("Review")
     ReviewSummary summary = ReviewParser.parse(result.review)
     String rendered = renderReview(summary, severityThreshold, !noColor)
+    String sastBlock = buildSastBlock(sast, paths)
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
-    String output = formatSection("Review", rendered)
+    String output = formatSection("Review", rendered + sastBlock)
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (logReview) {
       writeReviewLog(prompt, summary, paths, staged, severityThreshold)
@@ -286,6 +315,8 @@ class ShellCommands {
     if (!Files.exists(reviewLogPath)) {
       return "No reviews logged yet."
     }
+    requireMin(limit, 1, "limit")
+    requireMin(page, 1, "page")
     Instant sinceInstant = parseInstant(since)
     List<LogEntry> entries = loadLogEntries(pathFilter, minSeverity, sinceInstant)
     if (entries.isEmpty()) {
@@ -320,10 +351,16 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Run browser in headless mode") boolean headless,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override web search enablement (true/false)") Boolean enableWebSearch
   ) {
+    requireNonBlank(query, "query")
+    requireMin(limit, 1, "limit")
+    requireMin(timeoutMillis, 1, "timeoutMillis")
     boolean defaultEnabled = sessionState.isWebSearchEnabled(session)
     Boolean overrideEnabled = enableWebSearch
     boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
     if (!allowed) {
+      if (sessionState.isLocalOnly()) {
+        return "Web search is disabled in local-only mode. Set assistant.local-only=false to enable."
+      }
       return "Web search is disabled for this session. " +
         "Enable globally in application.properties with assistant.web-search.enabled=true, " +
         "or enable for this request by passing --enable-web-search true."
@@ -374,6 +411,11 @@ class ShellCommands {
     @ShellOption(defaultValue = "8000", help = "Max chars when packing") int maxChars,
     @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens
   ) {
+    requireNonBlank(query, "query")
+    requireMin(context, 0, "context")
+    requireMin(limit, 1, "limit")
+    requireMin(maxChars, 0, "maxChars")
+    requireMin(maxTokens, 0, "maxTokens")
     printProgressStart("Repository search")
     List<CodeSearchTool.SearchHit> hits = codeSearchTool.search(query, paths, context, limit)
     printProgressDone("Repository search")
@@ -444,6 +486,7 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "Paths to include") List<String> paths,
     @ShellOption(defaultValue = "false", help = "Show stats instead of full patch") boolean stat
   ) {
+    requireMin(context, 0, "context")
     GitTool.GitResult result = gitTool.diff(staged, paths, context, stat)
     formatGitResult("Diff", result)
   }
@@ -535,7 +578,9 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Optional guidance for the commit message") String hint
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Optional guidance for the commit message") String hint,
+    @ShellOption(defaultValue = "true", help = "Scan staged diff for secrets") boolean secretScan,
+    @ShellOption(defaultValue = "false", help = "Allow commit suggestion even if secrets are detected") boolean allowSecrets
   ) {
     if (!gitTool.isGitRepo()) {
       return "Not a git repository; cannot suggest a commit message."
@@ -547,6 +592,14 @@ class ShellCommands {
     if (!diff.success) {
       return formatGitResult("Staged diff", diff)
     }
+    List<SecretScanner.SecretFinding> findings = secretScan ? secretScanner.scan(diff.output ?: "") : List.of()
+    if (!findings.isEmpty() && !allowSecrets) {
+      String details = findings.collect { finding ->
+        "- ${finding.label} at line ${finding.line}: ${finding.maskedValue}"
+      }.join("\n")
+      return "Potential secrets detected in staged changes.\n${details}\n" +
+        "Remove secrets or re-run with --allow-secrets true to proceed."
+    }
     String health = ensureOllamaHealth()
     if (health != null) {
       return health
@@ -554,7 +607,8 @@ class ShellCommands {
     ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(session, resolution.chosen, temperature, null, maxTokens, null, null)
     LlmOptions options = sessionState.craftOptions(settings)
-    String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings))
+    String secretNote = !findings.isEmpty() ? "User acknowledged potential secrets in staged diff." : null
+    String prompt = buildCommitPrompt(diff.output ?: "", hint, sessionState.systemPrompt(settings), secretNote)
     String message = ai.withLlm(options).generateText(prompt)
     if (resolution.fallbackUsed) {
       message = "Note: using fallback model ${resolution.chosen}.\n" + (message ?: "")
@@ -652,6 +706,10 @@ class ShellCommands {
     if (!trimmed) {
       throw new IllegalArgumentException("Command must not be empty.")
     }
+    CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
+    if (!decision.allowed) {
+      return decision.message ?: "Command blocked by policy."
+    }
     boolean shouldConfirm = (agentRequested || confirm) && !applyAllConfirmed
     if (shouldConfirm) {
       String prompt = agentRequested
@@ -733,6 +791,7 @@ class ShellCommands {
     @ShellOption(defaultValue = "true", help = "Preview changes without writing") boolean dryRun,
     @ShellOption(defaultValue = "true", help = "Ask for confirmation before writing changes") boolean confirm
   ) {
+    requireNonBlank(filePath, "filePath")
     String body = resolvePatchBody(blocks, blocksFile)
     String title = dryRun ? "Edit Preview" : "Edit Result"
     if (dryRun) {
@@ -775,6 +834,14 @@ class ShellCommands {
     @ShellOption(help = "File path relative to project root") String filePath,
     @ShellOption(defaultValue = "false", help = "Preview the restore without writing") boolean dryRun
   ) {
+    revert(filePath, dryRun, true)
+  }
+
+  String revert(String filePath, boolean dryRun, boolean confirm) {
+    requireNonBlank(filePath, "filePath")
+    if (!dryRun && !confirm) {
+      return "Revert canceled: confirmation required."
+    }
     printProgressStart("Edit revert")
     String output = formatEditResult(fileEditingTool.revertLatestBackup(filePath, dryRun))
     printProgressDone("Edit revert")
@@ -792,6 +859,8 @@ class ShellCommands {
     @ShellOption(defaultValue = ShellOption.NULL, help = "Symbol to locate instead of line numbers") String symbol,
     @ShellOption(defaultValue = "2", help = "Padding lines around the selection") int padding
   ) {
+    requireNonBlank(filePath, "filePath")
+    requireMin(padding, 0, "padding")
     FileEditingTool.TargetedEditContext ctx
     if (symbol != null && symbol.trim()) {
       ctx = fileEditingTool.contextBySymbol(filePath, symbol, padding)
@@ -813,6 +882,8 @@ class ShellCommands {
     @ShellOption(defaultValue = "false", help = "Show directories only") boolean dirsOnly,
     @ShellOption(defaultValue = "2000", help = "Maximum entries to render (0 for unlimited)") int maxEntries
   ) {
+    requireMin(depth, -1, "depth")
+    requireMin(maxEntries, 0, "maxEntries")
     printProgressStart("Repository tree")
     TreeTool.TreeResult result = treeTool.buildTree(depth, dirsOnly, maxEntries)
     printProgressDone("Repository tree")
@@ -1009,6 +1080,19 @@ class ShellCommands {
     }
   }
 
+  private static String requireNonBlank(String value, String field) {
+    if (value == null || value.trim().isEmpty()) {
+      throw new IllegalArgumentException("${field} must not be blank")
+    }
+    value
+  }
+
+  private static void requireMin(long value, long min, String field) {
+    if (value < min) {
+      throw new IllegalArgumentException("${field} must be >= ${min}")
+    }
+  }
+
   @CompileStatic
   protected Instant nowInstant() {
     Instant.now()
@@ -1036,17 +1120,19 @@ class ShellCommands {
       if (parent != null) {
         Files.createDirectories(parent)
       }
+      String sanitizedPrompt = LogSanitizer.sanitize(prompt)
       List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
+      String rendered = LogSanitizer.sanitize(renderReview(summary, minSeverity, false))
       String entry = """
 === Review ===
-Prompt: ${prompt}
+Prompt: ${sanitizedPrompt}
 Paths: ${paths ? paths.join(", ") : "none"}
 Staged: ${staged}
 Timestamp: ${nowInstant()}
 Findings: ${filtered.size()} (min ${minSeverity})
 Tests: ${summary.tests.size()}
 ---
-${renderReview(summary, minSeverity, false)}
+${rendered}
 ---
 """
       Files.writeString(
@@ -1152,6 +1238,30 @@ ${renderReview(summary, minSeverity, false)}
   private static String formatSection(String title, String body) {
     String content = body ?: ""
     "=== ${title} ===\n${content}".stripTrailing()
+  }
+
+  private String buildSastBlock(boolean enabled, List<String> paths) {
+    if (!enabled) {
+      return ""
+    }
+    SastTool.SastResult result = sastTool.run(paths)
+    if (!result.ran) {
+      return "\n\nSAST:\n- " + (result.message ?: "SAST not run.")
+    }
+    if (result.findings == null || result.findings.isEmpty()) {
+      return "\n\nSAST:\n- No findings"
+    }
+    String details = result.findings.collect { SastTool.SastFinding finding ->
+      String location = finding.path ?: "unknown"
+      if (finding.line != null) {
+        location += ":" + finding.line
+      }
+      String sanitizedLocation = LogSanitizer.sanitize(location)
+      String sanitizedRule = LogSanitizer.sanitize(finding.rule ?: "rule")
+      String sanitizedSeverity = LogSanitizer.sanitize(finding.severity ?: "UNKNOWN")
+      "- [${sanitizedSeverity}] ${sanitizedLocation} - ${sanitizedRule}"
+    }.join("\n")
+    "\n\nSAST:\n" + details
   }
 
   private static void printProgressStart(String label) {
@@ -1262,7 +1372,7 @@ ${renderReview(summary, minSeverity, false)}
     indexes
   }
 
-  private static String buildCommitPrompt(String diff, String hint, String systemPrompt) {
+  private static String buildCommitPrompt(String diff, String hint, String systemPrompt, String secretNote) {
     StringBuilder builder = new StringBuilder()
     builder.append(
       "You are crafting a git commit message for staged changes in the current project.\n"
@@ -1273,6 +1383,9 @@ ${renderReview(summary, minSeverity, false)}
     builder.append("Use American English and mention tests if added or missing.\n")
     if (systemPrompt != null && systemPrompt.trim()) {
       builder.append("System guidance: ").append(systemPrompt.trim()).append("\n")
+    }
+    if (secretNote != null && secretNote.trim()) {
+      builder.append("Security note: ").append(secretNote.trim()).append("\n")
     }
     if (hint != null && hint.trim()) {
       builder.append("User notes: ").append(hint.trim()).append("\n")

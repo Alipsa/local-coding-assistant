@@ -29,6 +29,7 @@ class FileEditingTool {
 
   private final Path projectRoot
   private final Path realProjectRoot
+  private final ExclusionPolicy exclusionPolicy
 
   FileEditingTool() {
     this(Paths.get(".").toAbsolutePath())
@@ -41,6 +42,7 @@ class FileEditingTool {
     } catch (IOException e) {
       throw new IllegalStateException("Failed to resolve project root path", e)
     }
+    this.exclusionPolicy = new ExclusionPolicy(this.projectRoot)
   }
 
   Path getProjectRoot() {
@@ -662,6 +664,9 @@ class FileEditingTool {
       }
     } catch (IOException e) {
       throw new IllegalArgumentException("Unable to resolve file path safely", e)
+    }
+    if (exclusionPolicy.isExcluded(resolvedPath)) {
+      throw new IllegalArgumentException("File path is excluded by .aiexclude")
     }
     resolvedPath
   }

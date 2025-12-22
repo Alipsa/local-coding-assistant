@@ -123,7 +123,7 @@ The measures below aim to:
 
 Prevent the agent from performing destructive or unintended actions on the local system.
 
-- **14.1.1 [ ] Interactive Confirmation for Destructive Operations**  
+- **14.1.1 [x] Interactive Confirmation for Destructive Operations**  
   Implement a strict confirmation gate (`[y/N/a]`) for any command that:
   - Modifies the file system in a destructive way (`rm`, `mv`, `cp -r`, etc.),
   - Applies git changes (`git apply`, `git commit`, `git push`),
@@ -131,7 +131,7 @@ Prevent the agent from performing destructive or unintended actions on the local
 
   This builds on items `7.5` and `8.4`: the agent can *propose* actions, but the user must confirm them.
 
-- **14.1.2 [ ] Filesystem Access Control**  
+- **14.1.2 [x] Filesystem Access Control**  
   Strictly limit file I/O to the current project root (or a configured workspace root).  
   Add support for an `.aiexclude` file (similar to `.gitignore`) to prevent the agent from
   reading or touching sensitive files such as:
@@ -139,7 +139,7 @@ Prevent the agent from performing destructive or unintended actions on the local
   - `~/.ssh`, keychains, OS config directories
   - IDE config files or any path explicitly excluded by the user.
 
-- **14.1.3 [ ] Command Execution Safety**  
+- **14.1.3 [x] Command Execution Safety**  
   For the `/run` and other execution-related commands:
   - Start by enforcing:
     - Explicit confirmation before execution.
@@ -157,7 +157,7 @@ Prevent the agent from performing destructive or unintended actions on the local
 
 Improve the agent’s ability to write and review code with security in mind.
 
-- **14.2.1 [ ] Dedicated Security Persona**  
+- **14.2.1 [x] Dedicated Security Persona**  
   Add a specialised "Security Reviewer" persona/prompt that focuses on:
   - Common vulnerabilities (OWASP Top 10 style): injection, insecure deserialization,
     hardcoded secrets, insecure crypto, etc.
@@ -166,13 +166,13 @@ Improve the agent’s ability to write and review code with security in mind.
 
   The CLI should expose this mode via a flag (e.g., `review --security`).
 
-- **14.2.2 [ ] Integrate Static Analysis (SAST) [Optional / pluggable]**  
+- **14.2.2 [x] Integrate Static Analysis (SAST) [Optional / pluggable]**  
   Enhance the `/review` command with an optional static analysis step (e.g., semgrep with a default ruleset):
   - Run the SAST tool on the files/diffs under review.
   - Parse and summarise findings (rules, severity, locations).
   - Present them together with the LLM-based review for better coverage.
 
-- **14.2.3 [ ] Secret Detection Before Commit**  
+- **14.2.3 [x] Secret Detection Before Commit**  
   Before running `commit-suggest` or any commit helper:
   - Scan the staged diff for likely secrets (API keys, tokens, passwords).
   - If a potential secret is detected:
@@ -204,19 +204,19 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.2 Authentication & Authorization (REST)
 
-- **14.3.2.1 [ ] API Key Authentication**  
+- **14.3.2.1 [x] API Key Authentication**  
   For machine-to-machine usage (e.g., remote tools or scripts), support simple API key
   authentication with:
   - Keys stored in a configuration file or environment variable.
   - The ability to generate/revoke keys.
 
-- **14.3.2.2 [ ] OAuth2/OIDC (Optional)**  
+- **14.3.2.2 [x] OAuth2/OIDC (Optional)**  
   For interactive, user-facing remote UIs, consider integrating OAuth2/OIDC via Spring Security
   so that:
   - Users authenticate through a standard identity provider.
   - Roles/authorities can be mapped to fine-grained permissions.
 
-- **14.3.2.3 [ ] Scope-Based Authorization**  
+- **14.3.2.3 [x] Scope-Based Authorization**  
   Implement a scope or permission model that can be applied both to API keys and OIDC users:
   - Example scopes:
     - `file:read`, `file:write`
@@ -226,18 +226,18 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.3 Transport Security (TLS)
 
-- **14.3.3.1 [ ] Enforce HTTPS for Remote Mode**
+- **14.3.3.1 [x] Enforce HTTPS for Remote Mode**
   - Require TLS for all REST traffic when running in remote mode.
   - Provide documentation and helper scripts for generating self-signed certificates
     for local dev and testing.
 
 #### 14.3.4 Protection Against Abuse
 
-- **14.3.4.1 [ ] Rate Limiting & Throttling**  
+- **14.3.4.1 [x] Rate Limiting & Throttling**  
   Implement rate limiting for remote requests to prevent accidental or malicious
   denial-of-service scenarios.
 
-- **14.3.4.2 [ ] Audit Logging for Remote Operations**  
+- **14.3.4.2 [x] Audit Logging for Remote Operations**  
   Maintain an audit log for all operations invoked via remote REST:
   - Caller identity (API key or authenticated user).
   - Operation type (file read/write, git, run).
@@ -245,7 +245,7 @@ Define clear modes for how the REST API is exposed:
 
 #### 14.3.5 Input Validation
 
-- **14.3.5.1 [ ] Validate CLI & API Inputs**  
+- **14.3.5.1 [x] Validate CLI & API Inputs**  
   Apply rigorous validation and sanitisation to:
   - CLI arguments (paths, command names, flags).
   - REST request payloads and query parameters.
@@ -264,15 +264,15 @@ Define clear modes for how the REST API is exposed:
 
 Uphold the "local-first" promise and protect user data.
 
-- **14.4.1 [ ] Guarantee Local-Only Operation**  
+- **14.4.1 [x] Guarantee Local-Only Operation**  
   Explicitly document and test that:
   - No code, prompts, project data, or metadata is sent to third-party cloud services.
   - All inference happens via locally-running Ollama models or other local runtimes.
 
-- **14.4.2 [ ] No Telemetry**  
+- **14.4.2 [x] No Telemetry**  
   Do not collect or transmit any usage data or telemetry.
 
-- **14.4.3 [ ] Log Sanitization**  
+- **14.4.3 [x] Log Sanitization**  
   Review logging across the project to ensure that:
   - Logs do not include large code blocks, prompt bodies, or agent responses by default.
   - Logs explicitly avoid storing secrets or sensitive content.
@@ -284,7 +284,7 @@ Uphold the "local-first" promise and protect user data.
 Why: Enable scripted use and CI-style end-to-end tests by running a sequence of commands non-interactively and then exiting. Example:
 
 ```bash
-java -jar local-coding-assistant-0.2.0-SNAPSHOT.jar \
+java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
   -c "status; review --paths src/main/java; commit-suggest"
 ```
 

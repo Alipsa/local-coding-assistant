@@ -5,6 +5,7 @@ import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import se.alipsa.lca.tools.LogSanitizer
 
 import java.io.BufferedReader
 import java.io.BufferedWriter
@@ -58,6 +59,32 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
+    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars)
+  }
+
+  /**
+   * Run a command directly via ProcessBuilder without invoking a shell.
+   */
+  CommandResult run(List<String> commandArgs, long timeoutMillis, int maxOutputChars) {
+    if (commandArgs == null || commandArgs.isEmpty()) {
+      return new CommandResult(false, false, 1, "No command provided.", false, null)
+    }
+    for (String arg : commandArgs) {
+      if (arg == null) {
+        return new CommandResult(false, false, 1, "Command arguments cannot be null.", false, null)
+      }
+    }
+    String commandLabel = formatCommand(commandArgs)
+    runInternal(commandLabel, { startProcess(commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars)
+  }
+
+  private CommandResult runInternal(
+    String commandLabel,
+    ProcessStarter starter,
+    long timeoutMillis,
+    int maxOutputChars
+  ) {
+    String sanitizedCommand = LogSanitizer.sanitize(commandLabel)
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_TIMEOUT_MILLIS
     int outputLimit = maxOutputChars > 0 ? maxOutputChars : DEFAULT_OUTPUT_LIMIT
     Path logPath
@@ -65,7 +92,7 @@ class CommandRunner {
       logPath = createLogPath()
     } catch (IOException e) {
       logPath = null
-      log.debug("Failed to prepare log path for command {}", command, e)
+      log.debug("Failed to prepare log path for command {}", sanitizedCommand, e)
     }
     Instant started = Instant.now()
     boolean timedOut = false
@@ -73,23 +100,26 @@ class CommandRunner {
     BufferedWriter logWriter = null
     try {
       logWriter = prepareWriter(logPath)
-      writeHeader(logWriter, command, started)
-      process = startProcess(command)
+      writeHeader(logWriter, sanitizedCommand, started)
+      process = starter.start()
       AtomicInteger remaining = new AtomicInteger(outputLimit)
+      AtomicInteger remainingLogCapacity = new AtomicInteger(outputLimit)
       StringBuffer visibleOutput = new StringBuffer()
       StreamCollector outCollector = new StreamCollector(
         process.getInputStream(),
         logWriter,
         "OUT",
         visibleOutput,
-        remaining
+        remaining,
+        remainingLogCapacity
       )
       StreamCollector errCollector = new StreamCollector(
         process.getErrorStream(),
         logWriter,
         "ERR",
         visibleOutput,
-        remaining
+        remaining,
+        remainingLogCapacity
       )
       Thread outThread = new Thread(outCollector)
       Thread errThread = new Thread(errCollector)
@@ -119,7 +149,7 @@ class CommandRunner {
         logPath
       )
     } catch (IOException e) {
-      log.warn("Command execution failed: {}", command, e)
+      log.warn("Command execution failed: {}", sanitizedCommand, e)
       return new CommandResult(false, timedOut, -1, e.message ?: e.class.simpleName, false, logPath)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt()
@@ -140,6 +170,13 @@ class CommandRunner {
 
   protected Process startProcess(String command) throws IOException {
     ProcessBuilder pb = new ProcessBuilder(List.of("bash", "-lc", command))
+    pb.directory(realProjectRoot.toFile())
+    pb.redirectErrorStream(false)
+    pb.start()
+  }
+
+  protected Process startProcess(List<String> commandArgs) throws IOException {
+    ProcessBuilder pb = new ProcessBuilder(new ArrayList<>(commandArgs))
     pb.directory(realProjectRoot.toFile())
     pb.redirectErrorStream(false)
     pb.start()
@@ -191,6 +228,36 @@ class CommandRunner {
     }
   }
 
+  private static String formatCommand(List<String> commandArgs) {
+    List<String> parts = new ArrayList<>()
+    for (String arg : commandArgs) {
+      if (arg == null || arg.isEmpty()) {
+        parts.add("''")
+        continue
+      }
+      if (hasWhitespace(arg)) {
+        parts.add("\"" + arg.replace("\"", "\\\"") + "\"")
+      } else {
+        parts.add(arg)
+      }
+    }
+    parts.join(" ")
+  }
+
+  private static boolean hasWhitespace(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      if (Character.isWhitespace(value.charAt(i))) {
+        return true
+      }
+    }
+    false
+  }
+
+  @CompileStatic
+  private static interface ProcessStarter {
+    Process start() throws IOException
+  }
+
   @Canonical
   @CompileStatic
   static class CommandResult {
@@ -210,6 +277,7 @@ class CommandRunner {
     private final String label
     private final StringBuffer visibleOutput
     private final AtomicInteger remainingVisible
+    private final AtomicInteger remainingLogCapacity
     volatile boolean truncated = false
 
     StreamCollector(
@@ -217,13 +285,15 @@ class CommandRunner {
       BufferedWriter logWriter,
       String label,
       StringBuffer visibleOutput,
-      AtomicInteger remainingVisible
+      AtomicInteger remainingVisible,
+      AtomicInteger remainingLogCapacity
     ) {
       this.stream = stream
       this.logWriter = logWriter
       this.label = label
       this.visibleOutput = visibleOutput
       this.remainingVisible = remainingVisible
+      this.remainingLogCapacity = remainingLogCapacity
     }
 
     @Override
@@ -231,10 +301,12 @@ class CommandRunner {
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
         String line
         while ((line = reader.readLine()) != null) {
+          String sanitizedLine = LogSanitizer.sanitize(line)
           String formatted = "[${label}] ${line}${System.lineSeparator()}".toString()
+          String sanitized = "[${label}] ${sanitizedLine}${System.lineSeparator()}".toString()
           try {
             synchronized (logWriter) {
-              logWriter.write(formatted)
+              writeLogLimited(sanitized)
             }
           } catch (IOException e) {
             log.warn("Failed to write to log file for label '{}': {}", label, e.getMessage())
@@ -260,6 +332,24 @@ class CommandRunner {
         if (toTake < formatted.length() || after <= 0) {
           truncated = true
         }
+      }
+    }
+
+    private void writeLogLimited(String formatted) throws IOException {
+      if (remainingLogCapacity == null) {
+        logWriter.write(formatted)
+        return
+      }
+      int remaining = remainingLogCapacity.get()
+      if (remaining <= 0) {
+        truncated = true
+        return
+      }
+      int toTake = Math.min(remaining, formatted.length())
+      logWriter.write(formatted, 0, toTake)
+      int after = remainingLogCapacity.addAndGet(-toTake)
+      if (toTake < formatted.length() || after <= 0) {
+        truncated = true
       }
     }
   }

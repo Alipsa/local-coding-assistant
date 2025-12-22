@@ -20,6 +20,7 @@ class CodingAssistantAgentSpec extends Specification {
     0.65d,
     0.25d,
     true,
+    false,
     fileEditingTool,
     webSearchTool,
     codeSearchTool
@@ -107,6 +108,23 @@ class CodingAssistantAgentSpec extends Specification {
     review.review.split(/\s+/).length <= agent.reviewWordCount
     review.review.contains("Findings:")
     review.review.contains("Tests:")
+  }
+
+  def "reviewCode uses security reviewer persona when requested"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("Check for security issues.")
+    def snippet = new CodingAssistantAgent.CodeSnippet("Implementation: // code")
+
+    when:
+    def review = agent.reviewCode(userInput, snippet, ai, null, null, Personas.SECURITY_REVIEWER)
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(Personas.SECURITY_REVIEWER) >> runner
+    1 * runner.generateText({ it.contains("secrets") || it.contains("injection") }) >> "Findings:\n- High general - secret\nTests:\n- test"
+    review.reviewer == Personas.SECURITY_REVIEWER
   }
 
   def "craftCode adds structured sections when missing"() {
@@ -231,5 +249,29 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     1 * codeSearchTool.search("q", List.of("p"), 2, 5) >> hits
     result == hits
+  }
+
+  def "local-only mode skips web search"() {
+    given:
+    WebSearchTool searchTool = Mock(WebSearchTool)
+    CodingAssistantAgent localAgent = new CodingAssistantAgent(
+      220,
+      180,
+      "test-model",
+      0.65d,
+      0.25d,
+      true,
+      true,
+      fileEditingTool,
+      searchTool,
+      codeSearchTool
+    )
+
+    when:
+    def result = localAgent.search("query")
+
+    then:
+    result == []
+    0 * searchTool.search(_, _)
   }
 }

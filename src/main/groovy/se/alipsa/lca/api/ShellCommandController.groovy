@@ -2,7 +2,13 @@ package se.alipsa.lca.api
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import jakarta.validation.Valid
+import jakarta.validation.constraints.AssertTrue
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import org.springframework.http.MediaType
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -15,6 +21,7 @@ import se.alipsa.lca.shell.ShellCommands
 
 @RestController
 @RequestMapping("/api/cli")
+@Validated
 @CompileStatic
 class ShellCommandController {
 
@@ -25,8 +32,8 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/chat", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String chat(@RequestBody ChatRequest request) {
-    String prompt = requireValue(request.prompt, "prompt")
+  String chat(@Valid @RequestBody ChatRequest request) {
+    String prompt = request.prompt
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.CODER
     shellCommands.chat(
@@ -42,13 +49,15 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/review", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String review(@RequestBody ReviewRequest request) {
-    String prompt = requireValue(request.prompt, "prompt")
+  String review(@Valid @RequestBody ReviewRequest request) {
+    String prompt = request.prompt
     String session = request.session ?: "default"
     ReviewSeverity severity = request.minSeverity ?: ReviewSeverity.LOW
     boolean staged = request.staged != null ? request.staged : false
     boolean noColor = request.noColor != null ? request.noColor : false
     boolean logReview = request.logReview != null ? request.logReview : true
+    boolean security = request.security != null ? request.security : false
+    boolean sast = request.sast != null ? request.sast : false
     List<String> paths = request.paths != null ? request.paths : List.<String>of()
     shellCommands.review(
       request.code ?: "",
@@ -62,7 +71,9 @@ class ShellCommandController {
       staged,
       severity,
       noColor,
-      logReview
+      logReview,
+      security,
+      sast
     )
   }
 
@@ -70,8 +81,8 @@ class ShellCommandController {
   String reviewLog(
     @RequestParam(name = "minSeverity", defaultValue = "LOW") ReviewSeverity minSeverity,
     @RequestParam(name = "pathFilter", required = false) String pathFilter,
-    @RequestParam(name = "limit", defaultValue = "5") int limit,
-    @RequestParam(name = "page", defaultValue = "1") int page,
+    @RequestParam(name = "limit", defaultValue = "5") @Min(1) int limit,
+    @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
     @RequestParam(name = "since", required = false) String since,
     @RequestParam(name = "noColor", defaultValue = "false") boolean noColor
   ) {
@@ -80,11 +91,11 @@ class ShellCommandController {
 
   @GetMapping("/search")
   String search(
-    @RequestParam(name = "query") String query,
-    @RequestParam(name = "limit", defaultValue = "5") int limit,
+    @RequestParam(name = "query") @NotBlank String query,
+    @RequestParam(name = "limit", defaultValue = "5") @Min(1) int limit,
     @RequestParam(name = "session", defaultValue = "default") String session,
     @RequestParam(name = "provider", defaultValue = "duckduckgo") String provider,
-    @RequestParam(name = "timeoutMillis", defaultValue = "15000") long timeoutMillis,
+    @RequestParam(name = "timeoutMillis", defaultValue = "15000") @Min(1L) long timeoutMillis,
     @RequestParam(name = "headless", defaultValue = "true") boolean headless,
     @RequestParam(name = "enableWebSearch", required = false) Boolean enableWebSearch
   ) {
@@ -93,19 +104,19 @@ class ShellCommandController {
 
   @GetMapping("/codesearch")
   String codeSearch(
-    @RequestParam(name = "query") String query,
+    @RequestParam(name = "query") @NotBlank String query,
     @RequestParam(name = "paths", required = false) List<String> paths,
-    @RequestParam(name = "context", defaultValue = "2") int context,
-    @RequestParam(name = "limit", defaultValue = "20") int limit,
+    @RequestParam(name = "context", defaultValue = "2") @Min(0) int context,
+    @RequestParam(name = "limit", defaultValue = "20") @Min(1) int limit,
     @RequestParam(name = "pack", defaultValue = "false") boolean pack,
-    @RequestParam(name = "maxChars", defaultValue = "8000") int maxChars,
-    @RequestParam(name = "maxTokens", defaultValue = "0") int maxTokens
+    @RequestParam(name = "maxChars", defaultValue = "8000") @Min(0) int maxChars,
+    @RequestParam(name = "maxTokens", defaultValue = "0") @Min(0) int maxTokens
   ) {
     shellCommands.codeSearch(query, paths, context, limit, pack, maxChars, maxTokens)
   }
 
   @PostMapping(path = "/edit", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String edit(@RequestBody EditRequest request) {
+  String edit(@Valid @RequestBody EditRequest request) {
     String seed = request.seed ?: ""
     boolean send = request.send != null ? request.send : false
     String session = request.session ?: "default"
@@ -117,8 +128,8 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/paste", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String paste(@RequestBody PasteRequest request) {
-    String content = requireValue(request.content, "content")
+  String paste(@Valid @RequestBody PasteRequest request) {
+    String content = request.content
     String endMarker = request.endMarker ?: "/end"
     boolean send = request.send != null ? request.send : false
     String session = request.session ?: "default"
@@ -134,7 +145,7 @@ class ShellCommandController {
   @GetMapping("/diff")
   String diff(
     @RequestParam(name = "staged", defaultValue = "false") boolean staged,
-    @RequestParam(name = "context", defaultValue = "3") int context,
+    @RequestParam(name = "context", defaultValue = "3") @Min(0) int context,
     @RequestParam(name = "paths", required = false) List<String> paths,
     @RequestParam(name = "stat", defaultValue = "false") boolean stat
   ) {
@@ -142,7 +153,7 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/gitapply", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String gitApply(@RequestBody GitApplyRequest request) {
+  String gitApply(@Valid @RequestBody GitApplyRequest request) {
     boolean cached = request.cached != null ? request.cached : false
     boolean check = request.check != null ? request.check : true
     boolean confirm = request.confirm != null ? request.confirm : false
@@ -150,26 +161,36 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/stage", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String stage(@RequestBody StageRequest request) {
+  String stage(@Valid @RequestBody StageRequest request) {
     boolean confirm = request.confirm != null ? request.confirm : false
     shellCommands.stage(request.paths, request.file, request.hunks, confirm)
   }
 
   @PostMapping(path = "/commit-suggest", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String commitSuggest(@RequestBody CommitSuggestRequest request) {
+  String commitSuggest(@Valid @RequestBody CommitSuggestRequest request) {
     String session = request.session ?: "default"
-    shellCommands.commitSuggest(session, request.model, request.temperature, request.maxTokens, request.hint)
+    boolean secretScan = request.secretScan != null ? request.secretScan : true
+    boolean allowSecrets = request.allowSecrets != null ? request.allowSecrets : false
+    shellCommands.commitSuggest(
+      session,
+      request.model,
+      request.temperature,
+      request.maxTokens,
+      request.hint,
+      secretScan,
+      allowSecrets
+    )
   }
 
   @PostMapping(path = "/git-push", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String gitPush(@RequestBody GitPushRequest request) {
+  String gitPush(@Valid @RequestBody GitPushRequest request) {
     boolean force = request.force != null ? request.force : false
     boolean confirm = request.confirm != null ? request.confirm : false
     shellCommands.gitPush(force, confirm)
   }
 
   @PostMapping(path = "/model", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String model(@RequestBody ModelRequest request) {
+  String model(@Valid @RequestBody ModelRequest request) {
     String session = request.session ?: "default"
     boolean list = request.list != null ? request.list : false
     shellCommands.model(request.set, session, list)
@@ -181,8 +202,8 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/run", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String run(@RequestBody RunRequest request) {
-    String command = requireValue(request.command, "command")
+  String run(@Valid @RequestBody RunRequest request) {
+    String command = request.command
     String session = request.session ?: "default"
     long timeoutMillis = request.timeoutMillis != null ? request.timeoutMillis : 60000L
     int maxOutputChars = request.maxOutputChars != null ? request.maxOutputChars : 8000
@@ -192,30 +213,31 @@ class ShellCommandController {
   }
 
   @PostMapping(path = "/apply", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String apply(@RequestBody ApplyPatchRequest request) {
+  String apply(@Valid @RequestBody ApplyPatchRequest request) {
     boolean dryRun = request.dryRun != null ? request.dryRun : true
     boolean confirm = request.confirm != null ? request.confirm : false
     shellCommands.applyPatch(request.patch, request.patchFile, dryRun, confirm)
   }
 
   @PostMapping(path = "/apply-blocks", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String applyBlocks(@RequestBody ApplyBlocksRequest request) {
-    String filePath = requireValue(request.filePath, "filePath")
+  String applyBlocks(@Valid @RequestBody ApplyBlocksRequest request) {
+    String filePath = request.filePath
     boolean dryRun = request.dryRun != null ? request.dryRun : true
     boolean confirm = request.confirm != null ? request.confirm : false
     shellCommands.applyBlocks(filePath, request.blocks, request.blocksFile, dryRun, confirm)
   }
 
   @PostMapping(path = "/revert", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String revert(@RequestBody RevertRequest request) {
-    String filePath = requireValue(request.filePath, "filePath")
+  String revert(@Valid @RequestBody RevertRequest request) {
+    String filePath = request.filePath
     boolean dryRun = request.dryRun != null ? request.dryRun : false
-    shellCommands.revert(filePath, dryRun)
+    boolean confirm = request.confirm != null ? request.confirm : false
+    shellCommands.revert(filePath, dryRun, confirm)
   }
 
   @PostMapping(path = "/context", consumes = MediaType.APPLICATION_JSON_VALUE)
-  String context(@RequestBody ContextRequest request) {
-    String filePath = requireValue(request.filePath, "filePath")
+  String context(@Valid @RequestBody ContextRequest request) {
+    String filePath = request.filePath
     Integer start = request.start
     Integer end = request.end
     String symbol = request.symbol
@@ -225,23 +247,17 @@ class ShellCommandController {
 
   @GetMapping("/tree")
   String tree(
-    @RequestParam(name = "depth", defaultValue = "4") int depth,
+    @RequestParam(name = "depth", defaultValue = "4") @Min(-1) int depth,
     @RequestParam(name = "dirsOnly", defaultValue = "false") boolean dirsOnly,
-    @RequestParam(name = "maxEntries", defaultValue = "2000") int maxEntries
+    @RequestParam(name = "maxEntries", defaultValue = "2000") @Min(0) int maxEntries
   ) {
     shellCommands.tree(depth, dirsOnly, maxEntries)
-  }
-
-  private static String requireValue(String value, String field) {
-    if (value == null || value.trim().isEmpty()) {
-      throw new IllegalArgumentException("Missing required field: ${field}")
-    }
-    value
   }
 
   @Canonical
   @CompileStatic
   static class ChatRequest {
+    @NotBlank
     String prompt
     String session
     PersonaMode persona
@@ -256,6 +272,7 @@ class ShellCommandController {
   @CompileStatic
   static class ReviewRequest {
     String code
+    @NotBlank
     String prompt
     String session
     String model
@@ -267,6 +284,8 @@ class ShellCommandController {
     ReviewSeverity minSeverity
     Boolean noColor
     Boolean logReview
+    Boolean security
+    Boolean sast
   }
 
   @Canonical
@@ -281,6 +300,7 @@ class ShellCommandController {
   @Canonical
   @CompileStatic
   static class PasteRequest {
+    @NotBlank
     String content
     String endMarker
     Boolean send
@@ -295,7 +315,13 @@ class ShellCommandController {
     String patchFile
     Boolean cached
     Boolean check
+    @NotNull
     Boolean confirm
+
+    @AssertTrue(message = "Confirmation required for git apply. Set confirm=true to proceed.")
+    boolean isConfirmed() {
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
@@ -304,7 +330,13 @@ class ShellCommandController {
     List<String> paths
     String file
     String hunks
+    @NotNull
     Boolean confirm
+
+    @AssertTrue(message = "Confirmation required for stage. Set confirm=true to proceed.")
+    boolean isConfirmed() {
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
@@ -315,13 +347,21 @@ class ShellCommandController {
     Double temperature
     Integer maxTokens
     String hint
+    Boolean secretScan
+    Boolean allowSecrets
   }
 
   @Canonical
   @CompileStatic
   static class GitPushRequest {
     Boolean force
+    @NotNull
     Boolean confirm
+
+    @AssertTrue(message = "Confirmation required for git push. Set confirm=true to proceed.")
+    boolean isConfirmed() {
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
@@ -335,12 +375,21 @@ class ShellCommandController {
   @Canonical
   @CompileStatic
   static class RunRequest {
+    @NotBlank
     String command
+    @Min(1L)
     Long timeoutMillis
+    @Min(1)
     Integer maxOutputChars
     String session
+    @NotNull
     Boolean confirm
     Boolean agentRequested
+
+    @AssertTrue(message = "Confirmation required for run command. Set confirm=true to proceed.")
+    boolean isConfirmationProvided() {
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
@@ -350,32 +399,61 @@ class ShellCommandController {
     String patchFile
     Boolean dryRun
     Boolean confirm
+
+    @AssertTrue(message = "Confirmation required when dryRun is false for apply patch.")
+    boolean isConfirmationProvidedWhenRequired() {
+      if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
+        return true
+      }
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
   @CompileStatic
   static class ApplyBlocksRequest {
+    @NotBlank
     String filePath
     String blocks
     String blocksFile
     Boolean dryRun
     Boolean confirm
+
+    @AssertTrue(message = "Confirmation required when dryRun is false for apply blocks.")
+    boolean isConfirmationProvidedWhenRequired() {
+      if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
+        return true
+      }
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
   @CompileStatic
   static class RevertRequest {
+    @NotBlank
     String filePath
     Boolean dryRun
+    Boolean confirm
+
+    @AssertTrue(message = "Confirmation required when dryRun is false for revert.")
+    boolean isConfirmationProvidedWhenRequired() {
+      if (dryRun == null || Boolean.TRUE.equals(dryRun)) {
+        return true
+      }
+      Boolean.TRUE.equals(confirm)
+    }
   }
 
   @Canonical
   @CompileStatic
   static class ContextRequest {
+    @NotBlank
     String filePath
     Integer start
     Integer end
     String symbol
+    @Min(0)
     Integer padding
   }
 }
