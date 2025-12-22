@@ -2,6 +2,7 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
@@ -19,6 +20,7 @@ class ContextBudgetManager {
   private final int mainBias
   private final int testPenalty
 
+  @Autowired
   ContextBudgetManager(
     @Value('${context.max.chars:12000}') int maxChars,
     @Value('${context.max.tokens:0}') int maxTokens,

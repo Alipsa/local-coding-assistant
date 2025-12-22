@@ -7,6 +7,7 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
@@ -46,7 +47,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-@ShellComponent
+@ShellComponent("lcaShellCommands")
 @CompileStatic
 class ShellCommands {
 
@@ -68,6 +69,8 @@ class ShellCommands {
   private final SastTool sastTool
   private final Path reviewLogPath
   private volatile boolean applyAllConfirmed = false
+  private volatile boolean batchMode = false
+  private volatile boolean assumeYes = false
 
   ShellCommands(
     CodingAssistantAgent codingAssistantAgent,
@@ -102,6 +105,7 @@ class ShellCommands {
     )
   }
 
+  @Autowired
   ShellCommands(
     CodingAssistantAgent codingAssistantAgent,
     Ai ai,
@@ -1412,6 +1416,14 @@ ${rendered}
 
   @CompileStatic
   protected ConfirmChoice confirmAction(String prompt) {
+    if (batchMode) {
+      if (assumeYes) {
+        return ConfirmChoice.ALL
+      }
+      throw new IllegalStateException(
+        "Confirmation required in batch mode. Re-run with --yes or pass --confirm false."
+      )
+    }
     BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
     print("${prompt.trim()} [y/N/a]: ")
     String response = reader.readLine()
@@ -1423,6 +1435,14 @@ ${rendered}
       return ConfirmChoice.YES
     }
     ConfirmChoice.NO
+  }
+
+  void configureBatchMode(boolean enabled, boolean assumeYes) {
+    this.batchMode = enabled
+    this.assumeYes = assumeYes
+    if (assumeYes) {
+      this.applyAllConfirmed = true
+    }
   }
 
   @CompileStatic

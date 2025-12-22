@@ -39,3 +39,9 @@ These examples show end-to-end flows for editing, reviewing, searching, and git 
 ```
 /run "./mvnw -q -DskipTests=true package" --timeout-millis 120000
 ```
+
+## Batch mode flow
+```
+java -jar local-coding-assistant.jar \
+  -c "status; review --paths src/main/groovy; commit-suggest"
+```

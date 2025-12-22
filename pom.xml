@@ -242,6 +242,7 @@
         </executions>
         <configuration>
           <includeClasspath>PROJECT_AND_PLUGIN</includeClasspath>
+          <parameters>true</parameters>
           <targetBytecode>${java.version}</targetBytecode>
         </configuration>
         <dependencies>

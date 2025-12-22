@@ -290,7 +290,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
 ### 15.1 CLI flag and mode selection
 
-* **15.1.1 [ ] Add a `-c` / `--command` option**
+* **15.1.1 [x] Add a `-c` / `--command` option**
 
   * Accept a single string containing one or more CLI commands.
   * Presence of `-c/--command` switches the app into *batch mode*:
@@ -299,19 +299,19 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
     * Execute the supplied commands.
     * Exit when done.
 
-* **15.1.2 [ ] Add `--batch-file` for script files**
+* **15.1.2 [x] Add `--batch-file` for script files**
 
   * Accept a path to a file containing one command per line (or semicolon-separated blocks).
   * Treat `--batch-file` as mutually exclusive with `-c/--command`.
   * Consider supporting `--batch-file -` to read from stdin for shell pipelines.
 
-* **15.1.3 [ ] Keep interactive mode as default**
+* **15.1.3 [x] Keep interactive mode as default**
 
   * If neither `-c` nor `--batch-file` is present, start the existing Spring Shell interactive session as today.
 
 ### 15.2 Command parsing and execution semantics
 
-* **15.2.1 [ ] Command separator rules**
+* **15.2.1 [x] Command separator rules**
 
   * Support `;` as a command separator in the `-c` string.
 
@@ -319,7 +319,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
   * Trim whitespace around each command.
   * Ignore empty segments (e.g., consecutive `;;` or trailing semicolon).
 
-* **15.2.2 [ ] Quoting and escaping**
+* **15.2.2 [x] Quoting and escaping**
 
   * Clearly define how quoting works inside `-c`:
 
@@ -327,7 +327,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
     * Inside the `-c` string, treat `"` and `'` just as the Spring Shell parser does for normal commands.
   * Document any limitations (e.g., no way to include a literal `;` unless escaped or quoted).
 
-* **15.2.3 [ ] Execution order & failure handling**
+* **15.2.3 [x] Execution order & failure handling**
 
   * Execute commands sequentially in the order given.
   * On failure:
@@ -340,7 +340,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
 ### 15.3 Exit codes and testability
 
-* **15.3.1 [ ] Exit code contract**
+* **15.3.1 [x] Exit code contract**
 
   * Define how the process exit code is derived in batch mode:
 
@@ -348,7 +348,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
     * Non-zero if any command fails (e.g., use the first failing command’s code or a generic `1`).
   * Make this explicit in the README for CI use.
 
-* **15.3.2 [ ] Per-command status reporting**
+* **15.3.2 [x] Per-command status reporting**
 
   * Print a short status line before/after each command, e.g.:
 
@@ -362,11 +362,11 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
 ### 15.4 Output formatting for batch mode
 
-* **15.4.1 [ ] Human-readable default output**
+* **15.4.1 [x] Human-readable default output**
 
   * Keep the normal, nicely formatted output for human usage, including streaming where available.
 
-* **15.4.2 [ ] Optional machine-friendly mode (for tests)**
+* **15.4.2 [x] Optional machine-friendly mode (for tests)**
 
   * Add a flag like `--batch-json` or `--batch-compact` to:
 
@@ -381,7 +381,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
 ### 15.5 Interaction with confirmations and safety gates
 
-* **15.5.1 [ ] Respect existing confirmation prompts**
+* **15.5.1 [x] Respect existing confirmation prompts**
 
   * Batch mode must still honour confirmation gates from:
 
@@ -392,7 +392,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
     * If a command requires confirmation and none is provided, the command should fail cleanly rather than silently proceeding.
 
-* **15.5.2 [ ] Non-interactive confirmation override for CI**
+* **15.5.2 [x] Non-interactive confirmation override for CI**
 
   * Add a flag like `--yes` / `--assume-yes` that:
 
@@ -405,21 +405,21 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
 ### 15.6 Session configuration and environment
 
-* **16.6.1 [ ] Reuse the same configuration as interactive mode**
+* **15.6.1 [x] Reuse the same configuration as interactive mode**
 
   * Batch mode should:
 
     * Respect the same config files (model, temperature, default paths, workspace root, `.aiexclude`, etc.).
     * Respect the same security limits (workspace root, deny-listed commands).
 
-* **15.6.2 [ ] Working directory semantics**
+* **15.6.2 [x] Working directory semantics**
 
   * Document that all commands in batch mode execute relative to the process working directory (`$PWD`) where `java -jar` is invoked.
   * If the current directory is not a git repo, commands like `status`/`diff`/`commit-suggest` should behave as specified in 8.4 (graceful “git unavailable” messages).
 
 ### 15.7 Error handling and diagnostics
 
-* **15.7.1 [ ] Clear error reporting**
+* **15.7.1 [x] Clear error reporting**
 
   * If parsing the `-c` string fails (e.g., invalid Spring Shell command), print a clear error and exit non-zero.
   * If `--batch-file` cannot be read, print a clear error and exit non-zero.
@@ -433,7 +433,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 
 ### 15.8 Integration and tests
 
-* **15.8.1 [ ] Wire batch mode into application startup**
+* **15.8.1 [x] Wire batch mode into application startup**
 
   * On startup:
 
@@ -441,7 +441,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
     * If `-c` or `--batch-file` is present, execute batch mode logic and exit *before* starting the interactive Spring Shell loop.
     * Otherwise, proceed with interactive mode as today.
 
-* **15.8.2 [ ] End-to-end integration tests**
+* **15.8.2 [x] End-to-end integration tests**
 
   * Add tests that:
 
@@ -456,7 +456,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
       * Presence of key output markers.
       * Expected file/git side effects in a temporary test repo.
 
-* **15.8.3 [ ] Document batch mode usage**
+* **15.8.3 [x] Document batch mode usage**
 
   * Update `README.md` and `docs/` with:
 

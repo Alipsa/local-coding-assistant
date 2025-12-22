@@ -5,6 +5,7 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
@@ -30,6 +31,7 @@ class ModelRegistry {
   private volatile Health cachedHealth = null
   private volatile long healthCachedAt = 0L
 
+  @Autowired
   ModelRegistry(
     @Value('${spring.ai.ollama.base-url:http://localhost:11434}') String baseUrl,
     @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis,
