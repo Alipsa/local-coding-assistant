@@ -472,6 +472,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
 * **16 [ ] Add support for AGENTS.md**
   * If an AGENTS.md file is present in the project root, load its contents and provide it as context to the agent.
   * This allows users to define custom agent behaviours, guidelines, or constraints specific to their project.
+  * The format and capabilities should align with the AGENTS.md specification from https://github.com/agentsmd/agents.md and https://agents.md/.
   * Document the expected format and usage of AGENTS.md in the project documentation.
   
 * **17 [ ] Tutorials and examples**

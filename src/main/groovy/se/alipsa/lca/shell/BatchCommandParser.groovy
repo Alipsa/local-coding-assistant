@@ -70,7 +70,7 @@ class BatchCommandParser {
     Files.newBufferedReader(file, StandardCharsets.UTF_8).withCloseable { reader ->
       String line
       while ((line = reader.readLine()) != null) {
-        if (line == null || line.trim().isEmpty()) {
+        if (line.trim().isEmpty()) {
           continue
         }
         commands.addAll(splitCommands(line))
@@ -81,13 +81,14 @@ class BatchCommandParser {
 
   static List<String> readCommandsFromStdIn() {
     List<String> commands = new ArrayList<>()
-    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))
-    String line
-    while ((line = reader.readLine()) != null) {
-      if (line == null || line.trim().isEmpty()) {
-        continue
+    new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)).withCloseable { reader ->
+      String line
+      while ((line = reader.readLine()) != null) {
+        if (line.trim().isEmpty()) {
+          continue
+        }
+        commands.addAll(splitCommands(line))
       }
-      commands.addAll(splitCommands(line))
     }
     commands
   }
