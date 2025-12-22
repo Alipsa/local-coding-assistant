@@ -6,7 +6,7 @@ class ContextBudgetManagerSpec extends Specification {
 
   def "trims context beyond budget"() {
     given:
-    ContextBudgetManager manager = new ContextBudgetManager(20, 0, new TokenEstimator())
+    ContextBudgetManager manager = new ContextBudgetManager(20, 0, new TokenEstimator(), 2, -1)
     String text = "1234567890123456789012345"
     def hits = [new CodeSearchTool.SearchHit("f", 1, 1, "snippet")]
 
@@ -20,7 +20,7 @@ class ContextBudgetManagerSpec extends Specification {
 
   def "keeps most relevant hits within budget"() {
     given:
-    ContextBudgetManager manager = new ContextBudgetManager(50, 5, new TokenEstimator())
+    ContextBudgetManager manager = new ContextBudgetManager(50, 5, new TokenEstimator(), 2, -1)
     def hits = [
       new CodeSearchTool.SearchHit("src/main/App.groovy", 10, 1, "a" * 30),
       new CodeSearchTool.SearchHit("src/test/AppSpec.groovy", 5, 1, "b" * 30)

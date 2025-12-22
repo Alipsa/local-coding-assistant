@@ -124,7 +124,7 @@ java -jar local-coding-assistant-0.10.0-SNAPSHOT.jar \
   -c "status; review --paths src/main/groovy; commit-suggest"
 ```
 
-Batch file (one command per line, supports `;` too):
+Batch file (one command per line; each line can include `;`-separated commands):
 ```
 java -jar local-coding-assistant-0.10.0-SNAPSHOT.jar --batch-file scripts/batch.txt
 ```

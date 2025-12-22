@@ -17,7 +17,7 @@ class ShellCommandExclusionsConfiguration {
   private static final String EMBABEL_SHELL_BEAN = "shellCommands"
 
   @Bean
-  static BeanDefinitionRegistryPostProcessor embabelShellCommandExcluder() {
+  BeanDefinitionRegistryPostProcessor embabelShellCommandExcluder() {
     return new BeanDefinitionRegistryPostProcessor() {
       @Override
       void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {

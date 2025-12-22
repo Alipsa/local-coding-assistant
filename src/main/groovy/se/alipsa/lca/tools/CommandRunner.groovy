@@ -133,10 +133,12 @@ class CommandRunner {
       outThread.join(500)
       errThread.join(500)
       int exitCode = -1
-      try {
-        exitCode = process.exitValue()
-      } catch (IllegalThreadStateException ignored) {
-        exitCode = -1
+      if (!timedOut) {
+        try {
+          exitCode = process.exitValue()
+        } catch (IllegalThreadStateException ignored) {
+          exitCode = -1
+        }
       }
       writeFooter(logWriter, started, Instant.now(), exitCode, timedOut)
       boolean truncated = outCollector.truncated || errCollector.truncated

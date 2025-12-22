@@ -45,7 +45,7 @@ class BatchShellRunnerSpec extends Specification {
     !runner.run([] as String[])
   }
 
-  def "run fails when batch flags are missing command input"() {
+  def "run ignores batch flags without command input"() {
     given:
     TestExitHandler exitHandler = new TestExitHandler()
     BatchShellRunner runner = new BatchShellRunner(
@@ -59,8 +59,8 @@ class BatchShellRunnerSpec extends Specification {
     boolean handled = runner.run(["--batch-json"] as String[])
 
     then:
-    handled
-    exitHandler.exitCode == 1
+    !handled
+    exitHandler.exitCode == null
   }
 
   private static class TestExitHandler implements BatchExitHandler {

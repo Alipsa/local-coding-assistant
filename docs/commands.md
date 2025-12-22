@@ -240,7 +240,7 @@ Usage:
 
 Options:
 - `-c`, `--command`: Command string (supports `;` separators).
-- `--batch-file`: Path to a file with one command per line (use `-` for stdin).
+- `--batch-file`: Path to a file with one command per line (each line can include `;` separators; use `-` for stdin).
 - `--batch-json`: Emit a JSON summary line per command (JSONL).
 - `--yes`: Auto-confirm prompts in batch mode (off by default).
 

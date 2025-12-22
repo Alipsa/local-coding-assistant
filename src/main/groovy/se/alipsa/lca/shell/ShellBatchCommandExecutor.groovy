@@ -26,6 +26,7 @@ class ShellBatchCommandExecutor implements BatchCommandExecutor {
     this.resultHandlerService = resultHandlerService
     this.parser = new DefaultParser()
     try {
+      // Spring Shell does not expose evaluate(Input) publicly; keep in sync with Spring Shell upgrades.
       this.evaluateMethod = Shell.class.getDeclaredMethod("evaluate", Input)
       this.evaluateMethod.setAccessible(true)
     } catch (ReflectiveOperationException e) {
@@ -42,29 +43,32 @@ class ShellBatchCommandExecutor implements BatchCommandExecutor {
       return outcome
     }
     try {
-      ParsedLine parsed = parser.parse(command, command.length() + 1)
-      Input input = new BatchInput(command, parsed.words())
-      Object result = evaluateMethod.invoke(shell, input)
-      if (result == Shell.NO_INPUT) {
-        outcome.result = null
-        return outcome
+      try {
+        ParsedLine parsed = parser.parse(command, command.length() + 1)
+        Input input = new BatchInput(command, parsed.words())
+        Object result = evaluateMethod.invoke(shell, input)
+        if (result == Shell.NO_INPUT) {
+          outcome.result = null
+          return outcome
+        }
+        if (result instanceof ExitRequest) {
+          ExitRequest exit = (ExitRequest) result
+          outcome.exitRequested = true
+          outcome.exitCode = exit.status()
+          return outcome
+        }
+        outcome.result = result
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e
+        if (cause instanceof Exception) {
+          throw (Exception) cause
+        }
+        throw new RuntimeException(cause)
       }
-      if (result instanceof ExitRequest) {
-        ExitRequest exit = (ExitRequest) result
-        outcome.exitRequested = true
-        outcome.exitCode = exit.status()
-        return outcome
-      }
-      outcome.result = result
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause() != null ? e.getCause() : e
-      if (cause instanceof ExitRequest) {
-        ExitRequest exit = (ExitRequest) cause
-        outcome.exitRequested = true
-        outcome.exitCode = exit.status()
-        return outcome
-      }
-      outcome.error = cause
+    } catch (ExitRequest e) {
+      outcome.exitRequested = true
+      outcome.exitCode = e.status()
+      return outcome
     } catch (Exception e) {
       outcome.error = e
     }

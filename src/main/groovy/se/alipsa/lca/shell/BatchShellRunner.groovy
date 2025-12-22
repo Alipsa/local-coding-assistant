@@ -57,14 +57,9 @@ class BatchShellRunner implements ShellRunner {
       return true
     }
     if (!options.enabled) {
-      if (options.batchJson || options.assumeYes) {
-        printError("Batch flags require --command or --batch-file.")
-        exitHandler.exit(1)
-        return true
-      }
       return false
     }
-    shellContext?.setInteractionMode(InteractionMode.NONINTERACTIVE)
+    shellContext.setInteractionMode(InteractionMode.NONINTERACTIVE)
     shellCommands.configureBatchMode(true, options.assumeYes)
     List<String> commands
     try {
