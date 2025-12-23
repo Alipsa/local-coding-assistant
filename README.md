@@ -32,6 +32,8 @@ Spring Shell exposes the commands.
 4. Begin adding agents and tools under `src/main/java/se/alipsa/lca` to shape the coding workflows
    (editing, reviewing, searching, git operations).
 
+See [Quickstart](docs/quickstart.md) for more details.
+
 ## Tutorial
 Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode examples in `docs/examples/`.
 
