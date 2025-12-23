@@ -1,0 +1,3 @@
+status --short-format
+run --command "./mvnw test" --timeout-millis 120000
+review --paths src/main/groovy --prompt "Spot regressions from recent changes."
