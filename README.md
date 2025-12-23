@@ -43,6 +43,8 @@ Spring Shell exposes the commands.
 ## Safety
 - Add a `.aiexclude` file at the project root to block the assistant from reading or modifying sensitive files.
   Patterns are glob-like and applied relative to the repo (for example: `.env`, `*.pem`, `credentials.*`, `build/`).
+- Add an `AGENTS.md` file at the project root to define project-specific agent guidance
+  (see `docs/agents.md` for format and usage).
 - Configure command execution policy with `assistant.command.allowlist` and `assistant.command.denylist`
   in `src/main/resources/application.properties` (comma-separated prefixes like `mvn*,git*`).
 - Local-only mode (`assistant.local-only=true`) disables remote REST access and web search unless you opt in.

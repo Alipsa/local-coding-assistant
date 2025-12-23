@@ -21,6 +21,7 @@ Notes:
   For API keys, configure `assistant.rest.api-key-scopes` to grant scopes.
 - Numeric parameters are validated (for example: `limit`/`page`/`timeoutMillis`/`maxOutputChars` min 1,
   `context`/`maxChars`/`maxTokens`/`padding` min 0, `depth` min -1).
+- `/api/code/generateAndReview` uses the default session settings and system prompt for all requests.
 
 ## Examples
 

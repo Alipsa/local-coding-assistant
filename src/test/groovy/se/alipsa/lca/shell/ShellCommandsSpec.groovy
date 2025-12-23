@@ -8,6 +8,7 @@ import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.agent.Personas
 import se.alipsa.lca.review.ReviewSeverity
+import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.GitTool
 import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
@@ -29,7 +30,20 @@ import java.nio.file.Path
 
 class ShellCommandsSpec extends Specification {
 
-  SessionState sessionState = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback-model")
+  AgentsMdProvider agentsMdProvider = Stub() {
+    appendToSystemPrompt(_) >> { String base -> base }
+  }
+  SessionState sessionState = new SessionState(
+    "default-model",
+    0.7d,
+    0.35d,
+    0,
+    "",
+    true,
+    false,
+    "fallback-model",
+    agentsMdProvider
+  )
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
   FileEditingTool fileEditingTool = Mock()
