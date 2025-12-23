@@ -1,5 +1,14 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 1.0.0, 2025-12-23
+- Highlights: Added non-interactive batch mode, REST API parity, project-specific AGENTS.md guidance, a git-aware /tree command, and a full tutorial with examples.
+- Batch Mode: CLI -c/--batch-file execution with safer confirmations (--yes/--assume-yes), clearer diagnostics and exit handling, plus example batch files and a helper script in docs/examples/.
+- Security & Safety: .aiexclude enforcement across tools, command allow/deny policies, secret scanning for commit suggestions, optional SAST integration for reviews, stronger log sanitisation, and
+  hardened REST/OIDC/rate limiting behaviour.
+- REST & CLI Parity: /api/cli endpoints mirror shell commands with improved validation and safer defaults; non-interactive git push confirmation control added.
+- Docs & Examples: New docs/tutorial.md, refreshed command/workflow docs, and a runnable sample project in examples/sample-project/.
+- Breaking/Behaviour Changes: A2A interoperability removed to reduce complexity.
+
 ## Version 0.9.0, 2025-12-19
 - Fixed resolveModel NPE risk by guarding case-insensitive comparisons when the desired model is null.
 - Strengthened ModelRegistry caching concurrency: health caching now uses a single synchronized fetch/update to avoid redundant calls; listModels already double-checks with synchronized reads/writes.

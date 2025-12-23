@@ -1,5 +1,5 @@
 - Read the README.md for basic project understanding.
-- Use spelling rules for American English
+- Use spelling rules for British English
 - Avoid using deprecated classes or methods if possible, prefer modern alternatives.
 - All code should be written in Groovy 5.0.3 with @CompileStatic where possible.
 - Use Embabel 0.3.0+ and Spring Boot 3.5.x
