@@ -469,7 +469,7 @@ java -jar local-coding-assistant-0.15.0-SNAPSHOT.jar \
     * Explanation of exit codes and confirmation behaviour.
     * Safety cautions when combining `--yes` with destructive commands.
 
-* **16 [ ] Add support for AGENTS.md**
+* **16 [x] Add support for AGENTS.md**
   * If an AGENTS.md file is present in the project root, load its contents and provide it as context to the agent.
   * This allows users to define custom agent behaviours, guidelines, or constraints specific to their project.
   * The format and capabilities should align with the AGENTS.md specification from https://github.com/agentsmd/agents.md and https://agents.md/.
