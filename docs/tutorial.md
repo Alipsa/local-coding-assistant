@@ -101,14 +101,4 @@ Example batch command files live in `docs/examples/`:
 Run them with:
 `java -jar local-coding-assistant.jar --batch-file docs/examples/batch-basic.txt`
 
-Batch mode stops on the first failure. Use `--yes` to auto-confirm prompts when running in CI.
-
-## Screenshots and recordings (optional)
-If you want to include a terminal recording:
-1. Install `asciinema`.
-2. Record:
-   `asciinema rec docs/examples/recordings/quickstart.cast`
-3. Replay locally:
-   `asciinema play docs/examples/recordings/quickstart.cast`
-
-Store screenshots under `images/tutorial/` and reference them here once captured.
+Batch mode stops on the first failure. Use `--yes` to auto-confirm prompts when running in CI
