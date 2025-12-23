@@ -9,6 +9,7 @@ import se.alipsa.lca.tools.AgentsMdProvider
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.Objects
 
 @Component
 @CompileStatic
@@ -45,7 +46,7 @@ class SessionState {
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
     this.localOnly = localOnly
     this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
-    this.agentsMdProvider = agentsMdProvider
+    this.agentsMdProvider = Objects.requireNonNull(agentsMdProvider, "agentsMdProvider must not be null")
   }
 
   SessionSettings update(

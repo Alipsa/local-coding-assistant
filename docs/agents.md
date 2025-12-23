@@ -22,5 +22,6 @@ Example `AGENTS.md`:
 ```
 
 Notes:
-- The file is read from the current working directory where the process runs.
+- The file is read from the project root as resolved by `FileEditingTool`
+  (defaults to the current working directory).
 - If `AGENTS.md` is missing or empty, no extra guidance is added.

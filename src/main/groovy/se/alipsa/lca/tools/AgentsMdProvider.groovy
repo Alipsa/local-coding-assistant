@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.atomic.AtomicReference
 
 @Component
 @CompileStatic
@@ -20,8 +21,8 @@ class AgentsMdProvider {
 
   private final Path agentsPath
   private final int maxChars
-  private volatile String cachedContent
-  private volatile long cachedModified = -1L
+  private final Object cacheLock = new Object()
+  private final AtomicReference<CacheEntry> cache = new AtomicReference<>()
 
   AgentsMdProvider(
     FileEditingTool fileEditingTool,
@@ -56,37 +57,64 @@ class AgentsMdProvider {
       log.warn("Failed to read AGENTS.md timestamp at {}", agentsPath, e)
       return null
     }
-    String cached = cachedContent
-    if (cached != null && cachedModified == modified) {
-      return cached
+    CacheEntry cached = cache.get()
+    if (cached != null && cached.modified == modified) {
+      return cached.content
     }
-    if (!Files.isReadable(agentsPath)) {
-      log.warn("AGENTS.md exists but is not readable: {}", agentsPath)
-      return null
+    synchronized (cacheLock) {
+      cached = cache.get()
+      if (cached != null && cached.modified == modified) {
+        return cached.content
+      }
+      if (!Files.isReadable(agentsPath)) {
+        log.warn("AGENTS.md exists but is not readable: {}", agentsPath)
+        cache.set(new CacheEntry(modified, null))
+        return null
+      }
+      String content
+      try {
+        content = Files.readString(agentsPath, StandardCharsets.UTF_8)
+      } catch (IOException e) {
+        log.warn("Failed to read AGENTS.md at {}", agentsPath, e)
+        cache.set(new CacheEntry(modified, null))
+        return null
+      }
+      String trimmed = content != null ? content.trim() : ""
+      if (trimmed.isEmpty()) {
+        cache.set(new CacheEntry(modified, null))
+        return null
+      }
+      if (maxChars > 0) {
+        trimmed = truncateToMaxCodePoints(trimmed, maxChars).trim()
+      }
+      cache.set(new CacheEntry(modified, trimmed))
+      return trimmed
     }
-    String content
-    try {
-      content = Files.readString(agentsPath, StandardCharsets.UTF_8)
-    } catch (IOException e) {
-      log.warn("Failed to read AGENTS.md at {}", agentsPath, e)
-      return null
-    }
-    String trimmed = content != null ? content.trim() : ""
-    if (trimmed.isEmpty()) {
-      cachedContent = null
-      cachedModified = modified
-      return null
-    }
-    if (maxChars > 0 && trimmed.length() > maxChars) {
-      trimmed = trimmed.substring(0, maxChars).trim()
-    }
-    cachedContent = trimmed
-    cachedModified = modified
-    trimmed
   }
 
   private void clearCache() {
-    cachedContent = null
-    cachedModified = -1L
+    cache.set(null)
+  }
+
+  private static String truncateToMaxCodePoints(String value, int maxChars) {
+    if (value == null || maxChars <= 0) {
+      return value ?: ""
+    }
+    int codePoints = value.codePointCount(0, value.length())
+    if (codePoints <= maxChars) {
+      return value
+    }
+    int endIndex = value.offsetByCodePoints(0, maxChars)
+    value.substring(0, endIndex)
+  }
+
+  private static final class CacheEntry {
+    final long modified
+    final String content
+
+    CacheEntry(long modified, String content) {
+      this.modified = modified
+      this.content = content
+    }
   }
 }
