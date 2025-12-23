@@ -1,0 +1,3 @@
+- Use Groovy 5.0.3 and @CompileStatic where possible.
+- Use 2-space indentation and a 120-character max line length.
+- Write Spock 2.4 tests for new functionality.

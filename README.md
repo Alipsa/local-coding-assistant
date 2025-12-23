@@ -32,6 +32,9 @@ Spring Shell exposes the commands.
 4. Begin adding agents and tools under `src/main/java/se/alipsa/lca` to shape the coding workflows
    (editing, reviewing, searching, git operations).
 
+## Tutorial
+Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode examples in `docs/examples/`.
+
 ## Configuration
 - Update `spring.ai.ollama.base-url` and `embabel.models.default-llm` in
   `src/main/resources/application.properties` to point at your Ollama host and preferred model.
