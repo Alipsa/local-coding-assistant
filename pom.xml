@@ -11,7 +11,7 @@
   </parent>
   <groupId>se.alipsa.lca</groupId>
   <artifactId>local-coding-assistant</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Local Coding Assistant</name>
   <description>The Local Coding assistant is an AI LLM interface based on Ollama and Embabel</description>
@@ -36,7 +36,7 @@
     <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-    <embabel-agent.version>0.3.0</embabel-agent.version>
+    <embabel-agent.version>0.3.1</embabel-agent.version>
     <extra-enforcer-rules.version>1.11.0</extra-enforcer-rules.version>
     <groovy.version>5.0.3</groovy.version>
     <junit.version>6.0.1</junit.version>
@@ -316,7 +316,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.6.0</version>
+        <version>3.6.1</version>
         <executions>
           <execution>
             <id>attach-groovydoc-as-javadoc</id>
