@@ -3,7 +3,7 @@
 This tutorial walks through basic usage, creating a new project from scratch, and common workflows
 for the Local Coding Assistant.
 
-## Prereqs
+## Prerequisites
 - Java 21 installed and available on your PATH.
 - Ollama running locally with `qwen3-coder:30b` pulled (run `./models.sh` if needed).
 - This repository cloned locally.
