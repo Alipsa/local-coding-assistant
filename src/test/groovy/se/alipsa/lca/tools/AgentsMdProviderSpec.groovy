@@ -60,6 +60,16 @@ class AgentsMdProviderSpec extends Specification {
     provider.readAgents() == "abcd"
   }
 
+  def "readAgents returns null when truncation leaves only whitespace"() {
+    given:
+    Files.writeString(tempDir.resolve("AGENTS.md"), "  content")
+    AgentsMdProvider provider = new AgentsMdProvider(new FileEditingTool(tempDir), 2)
+
+    expect:
+    provider.readAgents() == null
+    provider.appendToSystemPrompt("base") == "base"
+  }
+
   def "readAgents truncates without splitting surrogate pairs"() {
     given:
     String emoji = new String(Character.toChars(0x1F600))

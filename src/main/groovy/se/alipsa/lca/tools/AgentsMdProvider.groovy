@@ -85,7 +85,11 @@ class AgentsMdProvider {
         return null
       }
       if (maxChars > 0) {
-        trimmed = truncateToMaxCodePoints(trimmed, maxChars).trim()
+        trimmed = truncateToMaxCodePoints(content, maxChars).trim()
+        if (trimmed.isEmpty()) {
+          cache.set(new CacheEntry(modified, null))
+          return null
+        }
       }
       cache.set(new CacheEntry(modified, trimmed))
       return trimmed

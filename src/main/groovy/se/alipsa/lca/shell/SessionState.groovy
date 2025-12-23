@@ -92,7 +92,7 @@ class SessionState {
     String base = settings.systemPrompt != null && settings.systemPrompt.trim()
       ? settings.systemPrompt
       : defaultSystemPrompt
-    agentsMdProvider != null ? agentsMdProvider.appendToSystemPrompt(base) : (base ?: "")
+    agentsMdProvider.appendToSystemPrompt(base)
   }
 
   String getDefaultModel() {
