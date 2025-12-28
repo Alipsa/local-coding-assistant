@@ -15,10 +15,12 @@
 Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
 
 ## What this project is today
+- Interactive shell as the user interface with slash commands for chat, planning, code review, editing, git operations, and more. REST commands are also available.
+- Embabel agents for code crafting, review, planning and git operations with safety guardrails.
 - Spring Boot entry point with Embabel agents enabled
   (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
 - Ollama-first configuration using `qwen3-coder:30b` (see `src/main/resources/application.properties`).
-- Helper scripts for launching the shell (`scripts/shell.sh`) and installing a DeepSeek model locally (`deepseek.sh`).
+- Helper scripts for launching the shell (`lca / lca.zsh`) and installing the models locally.
 - Documentation stub for Ollama setup (`docs/llm-docs.md`).
 
 ## Launcher script (lca)
