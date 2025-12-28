@@ -117,5 +117,7 @@ class CommandInputNormaliserSpec extends Specification {
     normaliser.normalise("/! ls -la") == "/! --command \"ls -la\""
     normaliser.normalise("/sh git status") == "/sh --command \"git status\""
     normaliser.normalise("/! --command \"ls -la\"") == "/! --command \"ls -la\""
+    normaliser.normalise("/!") == "/!"
+    normaliser.normalise("/sh") == "/sh"
   }
 }

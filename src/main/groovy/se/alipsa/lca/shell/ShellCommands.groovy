@@ -96,6 +96,8 @@ Do not execute any commands.
   private static final int WEB_SEARCH_SUMMARY_MAX_CHARS = 1200
   private static final long DIRECT_SHELL_TIMEOUT_MILLIS = 60000L
   private static final int DIRECT_SHELL_MAX_OUTPUT_CHARS = 8000
+  private static final int DIRECT_SHELL_SUMMARY_MAX_CHARS = 400
+  private static final int DIRECT_SHELL_CONVERSATION_MAX_CHARS = 2000
   private final CodingAssistantAgent codingAssistantAgent
   private final Ai ai
   private final AgentPlatform agentPlatform
@@ -880,11 +882,7 @@ Do not execute any commands.
       DIRECT_SHELL_MAX_OUTPUT_CHARS,
       listener
     )
-    String summary = summarizeOutput(
-      result?.output,
-      5,
-      Math.min(400, Math.max(1, DIRECT_SHELL_MAX_OUTPUT_CHARS))
-    )
+    String summary = summarizeOutput(result?.output, 5, DIRECT_SHELL_SUMMARY_MAX_CHARS)
     sessionState.appendHistory(
       session,
       "Shell command: ${trimmed}",
@@ -1710,8 +1708,7 @@ ${rendered}
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
     }
-    int maxChars = Math.min(2000, Math.max(1, DIRECT_SHELL_MAX_OUTPUT_CHARS))
-    String outputSummary = summarizeOutput(result.output, 20, maxChars)
+    String outputSummary = summarizeOutput(result.output, 20, DIRECT_SHELL_CONVERSATION_MAX_CHARS)
     builder.append("\nOutput:\n").append(outputSummary)
     conversation.addMessage(new UserMessage(builder.toString()))
   }
