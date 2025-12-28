@@ -6,6 +6,8 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.intent.IntentCommandRouter
+import se.alipsa.lca.intent.IntentRoutingPlan
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.shell.ShellCommands
 import spock.lang.Specification
@@ -17,12 +19,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ShellCommandControllerSpec extends Specification {
 
   ShellCommands commands = Mock(ShellCommands)
+  IntentCommandRouter router = Mock(IntentCommandRouter)
   LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
   MockMvc mvc
 
   def setup() {
     validator.afterPropertiesSet()
-    mvc = MockMvcBuilders.standaloneSetup(new ShellCommandController(commands))
+    mvc = MockMvcBuilders.standaloneSetup(new ShellCommandController(commands, router))
       .setValidator(validator)
       .build()
   }
@@ -36,6 +39,31 @@ class ShellCommandControllerSpec extends Specification {
     then:
     response.andExpect(status().isOk())
     1 * commands.chat("hello", "default", PersonaMode.CODER, null, null, null, null, null) >> "ok"
+  }
+
+  def "plan endpoint delegates with defaults"() {
+    when:
+    def response = mvc.perform(post("/api/cli/plan")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: "plan it"])))
+
+    then:
+    response.andExpect(status().isOk())
+    1 * commands.plan("plan it", "default", PersonaMode.ARCHITECT, null, null, null, null, null) >> "ok"
+  }
+
+  def "route endpoint delegates to intent router"() {
+    given:
+    router.route("route it") >> new IntentRoutingPlan(["/chat --prompt \"route it\""], 0.4d, "fallback")
+
+    when:
+    def response = mvc.perform(post("/api/cli/route")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: "route it"])))
+
+    then:
+    response.andExpect(status().isOk())
+    1 * router.route("route it")
   }
 
   def "review endpoint delegates with options"() {
@@ -136,5 +164,27 @@ class ShellCommandControllerSpec extends Specification {
     then:
     response.andExpect(status().isBadRequest())
     0 * commands.chat(_, _, _, _, _, _, _, _)
+  }
+
+  def "plan requires non-blank prompt"() {
+    when:
+    def response = mvc.perform(post("/api/cli/plan")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: " "])))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * commands.plan(_, _, _, _, _, _, _, _)
+  }
+
+  def "route requires non-blank prompt"() {
+    when:
+    def response = mvc.perform(post("/api/cli/route")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: " "])))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * router.route(_)
   }
 }

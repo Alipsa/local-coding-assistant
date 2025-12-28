@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.intent.IntentCommandRouter
+import se.alipsa.lca.intent.IntentRoutingFormatter
+import se.alipsa.lca.intent.IntentRoutingPlan
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.shell.ShellCommands
 
@@ -26,9 +29,11 @@ import se.alipsa.lca.shell.ShellCommands
 class ShellCommandController {
 
   private final ShellCommands shellCommands
+  private final IntentCommandRouter intentCommandRouter
 
-  ShellCommandController(ShellCommands shellCommands) {
+  ShellCommandController(ShellCommands shellCommands, IntentCommandRouter intentCommandRouter) {
     this.shellCommands = shellCommands
+    this.intentCommandRouter = intentCommandRouter
   }
 
   @PostMapping(path = "/chat", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -46,6 +51,29 @@ class ShellCommandController {
       request.maxTokens,
       request.systemPrompt
     )
+  }
+
+  @PostMapping(path = "/plan", consumes = MediaType.APPLICATION_JSON_VALUE)
+  String plan(@Valid @RequestBody PlanRequest request) {
+    String prompt = request.prompt
+    String session = request.session ?: "default"
+    PersonaMode persona = request.persona ?: PersonaMode.ARCHITECT
+    shellCommands.plan(
+      prompt,
+      session,
+      persona,
+      request.model,
+      request.temperature,
+      request.reviewTemperature,
+      request.maxTokens,
+      request.systemPrompt
+    )
+  }
+
+  @PostMapping(path = "/route", consumes = MediaType.APPLICATION_JSON_VALUE)
+  String route(@Valid @RequestBody RouteRequest request) {
+    IntentRoutingPlan plan = intentCommandRouter.route(request.prompt)
+    IntentRoutingFormatter.format(plan)
   }
 
   @PostMapping(path = "/review", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -266,6 +294,27 @@ class ShellCommandController {
     Double reviewTemperature
     Integer maxTokens
     String systemPrompt
+  }
+
+  @Canonical
+  @CompileStatic
+  static class PlanRequest {
+    @NotBlank
+    String prompt
+    String session
+    PersonaMode persona
+    String model
+    Double temperature
+    Double reviewTemperature
+    Integer maxTokens
+    String systemPrompt
+  }
+
+  @Canonical
+  @CompileStatic
+  static class RouteRequest {
+    @NotBlank
+    String prompt
   }
 
   @Canonical

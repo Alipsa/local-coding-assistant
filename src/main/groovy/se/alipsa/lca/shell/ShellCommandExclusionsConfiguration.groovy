@@ -9,7 +9,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProce
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @CompileStatic
 class ShellCommandExclusionsConfiguration {
 
@@ -17,7 +17,7 @@ class ShellCommandExclusionsConfiguration {
   private static final String EMBABEL_SHELL_BEAN = "shellCommands"
 
   @Bean
-  BeanDefinitionRegistryPostProcessor embabelShellCommandExcluder() {
+  static BeanDefinitionRegistryPostProcessor embabelShellCommandExcluder() {
     return new BeanDefinitionRegistryPostProcessor() {
       @Override
       void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {

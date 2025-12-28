@@ -1,13 +1,29 @@
 # Command Reference
 
-All commands are available as `command` or `/command`. Options use Spring Shell naming (kebab-case).
+All commands use a leading slash (`/command`). Options use Spring Shell naming (kebab-case).
+Plain text input is routed into commands when intent routing is enabled; otherwise it maps to
+`/chat --prompt "<text>"`.
 Examples use named options for consistency.
+
+## Intent routing configuration
+These settings control how natural language input is routed into commands.
+
+```properties
+assistant.intent.enabled=true
+assistant.intent.model=tinyllama
+assistant.intent.fallback-model=gpt-oss:20b
+assistant.intent.temperature=0.0
+assistant.intent.max-tokens=256
+assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
+assistant.intent.destructive-commands=/edit,/apply,/run,/gitapply,/git-push
+assistant.intent.confidence-threshold=0.8
+```
 
 ## chat (/chat)
 Send a prompt to the assistant.
 
 Usage:
-`chat --prompt "<text>"`
+`/chat --prompt "<text>"`
 
 Options:
 - `--session`: Session id for persisting options.
@@ -18,11 +34,81 @@ Options:
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
 
+## config (/config)
+View or update shell settings.
+
+Usage:
+`/config [--auto-paste <true|false>] [--local-only <true|false>] [--web-search <mode>] [--intent <mode>]`
+
+Examples:
+`/config`
+`/config --local-only false`
+`/config --web-search htmlunit`
+`/config --web-search disabled`
+`/config --intent disabled`
+`/config local-only false`
+`/config intent enabled`
+
+Notes:
+- `local-only` applies to the current session and can be toggled without editing config files.
+- `web-search` accepts `htmlunit`, `jsoup`, `disabled`, or `default`.
+- `intent` accepts `enabled`, `disabled`, or `default`.
+- Output shows `web-search: <primary> (fallback <secondary>)` or `web-search: disabled`.
+
+## help (/help)
+Show available slash commands and config options.
+
+Usage:
+`/help`
+
+## plan (/plan)
+Create a numbered plan using CLI commands.
+
+Usage:
+`/plan --prompt "<text>"`
+
+Example:
+`/plan --prompt "Review src/main/groovy and suggest improvements"`
+
+Notes:
+- Outputs a numbered list where each step starts with a command and a short explanation.
+- No commands are executed; the output is for guidance only.
+
+Options:
+- `--session`: Session id for persisting options.
+- `--persona`: Persona mode (`CODER`, `ARCHITECT`, `REVIEWER`).
+- `--model`: Override model for the session.
+- `--temperature`: Override craft temperature.
+- `--review-temperature`: Override review temperature.
+- `--max-tokens`: Override max tokens.
+- `--system-prompt`: Extra system prompt guidance.
+
+## route (/route)
+Preview how the intent router would map text to commands.
+
+Usage:
+`/route --prompt "<text>"`
+
+Notes:
+- This command does not execute any commands.
+- Useful for debugging or verifying routing behaviour.
+
+## intent-debug (/intent-debug)
+Toggle routing debug output without executing commands.
+
+Usage:
+`/intent-debug [on|off]`
+
+Notes:
+- When enabled, routed input prints the router JSON and suggested commands.
+- No commands are executed while debug mode is enabled.
+- Use `/config --intent disabled` to disable routing for the current session.
+
 ## review (/review)
 Request a structured review with findings and tests.
 
 Usage:
-`review --prompt "<text>" [--code "<code>"]`
+`/review --prompt "<text>" [--code "<code>"]`
 
 Options:
 - `--prompt`: Review request or guidance.
@@ -50,7 +136,7 @@ Options:
 Run web search through the agent tool.
 
 Usage:
-`search --query "<text>"`
+`/search --query "<text>"`
 
 Options:
 - `--limit`: Number of results to show (min 1).
@@ -64,7 +150,7 @@ Options:
 Search repository files with ripgrep and optional context packing.
 
 Usage:
-`codesearch --query "<pattern>"`
+`/codesearch --query "<pattern>"`
 
 Options:
 - `--paths`: Paths or globs to search (repeatable).
@@ -78,7 +164,7 @@ Options:
 Open `$EDITOR` to draft a prompt.
 
 Usage:
-`edit [--seed <text>] [--send]`
+`/edit [--seed <text>] [--send]`
 
 Options:
 - `--seed`: Prefill the editor with content.
@@ -90,7 +176,7 @@ Options:
 Paste multiline input (end with `/end`).
 
 Usage:
-`paste [--content <text>] [--send]`
+`/paste [--content <text>] [--send]`
 
 Options:
 - `--content`: Prefilled content (otherwise read from stdin).
@@ -118,7 +204,7 @@ Options:
 Apply a patch using `git apply` with confirmation.
 
 Usage:
-`gitapply [--patch "<text>"] [--patch-file <path>]`
+`/gitapply [--patch "<text>"] [--patch-file <path>]`
 
 Options:
 - `--patch-file`: Patch file relative to project root.
@@ -165,7 +251,7 @@ Check connectivity to the Ollama base URL.
 Execute a project command with timeout and truncation.
 
 Usage:
-`run --command "<command>"`
+`/run --command "<command>"`
 
 Options:
 - `--timeout-millis`: Timeout in milliseconds (min 1).
@@ -178,7 +264,7 @@ Options:
 Apply a unified diff patch with optional dry run and backups.
 
 Usage:
-`apply [--patch "<text>"] [--patch-file <path>]`
+`/apply [--patch "<text>"] [--patch-file <path>]`
 
 Options:
 - `--patch-file`: Patch file relative to project root.
@@ -189,7 +275,7 @@ Options:
 Apply Search-and-Replace blocks to a file.
 
 Usage:
-`applyBlocks --file-path <path> [--blocks <text>] [--blocks-file <path>]`
+`/applyBlocks --file-path <path> [--blocks <text>] [--blocks-file <path>]`
 
 Options:
 - `--file-path`: Target file path relative to project root.
@@ -202,7 +288,7 @@ Options:
 Restore a file using the most recent patch backup.
 
 Usage:
-`revert --file-path <path>`
+`/revert --file-path <path>`
 
 Options:
 - `--file-path`: File path relative to project root.
@@ -212,7 +298,7 @@ Options:
 Show a snippet for targeted edits by line range or symbol.
 
 Usage:
-`context --file-path <path> [--start <n> --end <n>] [--symbol <name>]`
+`/context --file-path <path> [--start <n> --end <n>] [--symbol <name>]`
 
 Options:
 - `--file-path`: File path relative to project root.
@@ -225,7 +311,7 @@ Options:
 Show repository tree (respects `.gitignore` when available).
 
 Usage:
-`tree [--depth <n>] [--dirs-only] [--max-entries <n>]`
+`/tree [--depth <n>] [--dirs-only] [--max-entries <n>]`
 
 Options:
 - `--depth`: Max depth (`-1` for unlimited, min -1).
@@ -236,7 +322,7 @@ Options:
 Run one or more commands without starting the interactive shell.
 
 Usage:
-`java -jar local-coding-assistant.jar -c "status; review --paths src/main/groovy"`
+`java -jar local-coding-assistant.jar -c "/status; /review --paths src/main/groovy"`
 
 Options:
 - `-c`, `--command`: Command string (supports `;` separators).

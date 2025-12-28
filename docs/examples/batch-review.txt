@@ -1,2 +1,2 @@
-review --paths src/main/groovy --prompt "Review for error handling, logging gaps, and missing tests."
-reviewlog --min-severity MEDIUM --limit 5
+/review --paths src/main/groovy --prompt "Review for error handling, logging gaps, and missing tests."
+/reviewlog --min-severity MEDIUM --limit 5

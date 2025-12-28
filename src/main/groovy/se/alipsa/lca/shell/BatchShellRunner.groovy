@@ -13,6 +13,7 @@ import org.springframework.shell.ShellRunner
 import org.springframework.shell.command.CommandHandlingResult
 import org.springframework.shell.context.InteractionMode
 import org.springframework.shell.context.ShellContext
+import org.springframework.shell.result.CommandNotFoundMessageProvider
 import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.LogSanitizer
 
@@ -28,6 +29,7 @@ class BatchShellRunner implements ShellRunner {
 
   private static final Logger log = LoggerFactory.getLogger(BatchShellRunner)
   private static final int SUMMARY_LIMIT = 200
+  private static final CommandNotFoundMessageProvider NOT_FOUND_PROVIDER = new CommandNotFoundSuggestionProvider()
 
   private final BatchCommandExecutor executor
   private final ShellCommands shellCommands
@@ -158,7 +160,7 @@ class BatchShellRunner implements ShellRunner {
       }
     }
     if (result instanceof CommandNotFound) {
-      return sanitizeSummary(((CommandNotFound) result).message ?: "Command not found.")
+      return sanitizeSummary(formatNotFound((CommandNotFound) result))
     }
     if (result instanceof CommandNotCurrentlyAvailable) {
       return sanitizeSummary(((CommandNotCurrentlyAvailable) result).message ?: "Command not currently available.")
@@ -181,6 +183,20 @@ class BatchShellRunner implements ShellRunner {
       return sanitized.substring(0, SUMMARY_LIMIT)
     }
     sanitized
+  }
+
+  private static String formatNotFound(CommandNotFound notFound) {
+    if (notFound == null) {
+      return "Command not found."
+    }
+    CommandNotFoundMessageProvider.ProviderContext context = CommandNotFoundMessageProvider.contextOf(
+      notFound,
+      notFound.words,
+      notFound.registrations,
+      notFound.text
+    )
+    String message = NOT_FOUND_PROVIDER.apply(context)
+    message ?: notFound.message ?: "Command not found."
   }
 
   private void emitJsonResult(

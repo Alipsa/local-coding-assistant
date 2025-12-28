@@ -61,37 +61,57 @@ Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode exa
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.
 REST usage is documented in `docs/rest.md`.
+Plain text input is routed into commands when intent routing is enabled; otherwise it maps to
+`/chat --prompt "<text>"`.
 
-- `chat` (`/chat`): Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
+Intent routing configuration lives in `src/main/resources/application.properties`:
+```
+assistant.intent.enabled=true
+assistant.intent.model=tinyllama
+assistant.intent.fallback-model=gpt-oss:20b
+assistant.intent.temperature=0.0
+assistant.intent.max-tokens=256
+assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
+assistant.intent.destructive-commands=/edit,/apply,/run,/gitapply,/git-push
+assistant.intent.confidence-threshold=0.8
+```
+
+- `/chat`: Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.
-- `review` (`/review`): Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
+- `/config`: Update session settings (auto-paste, local-only, web-search, intent routing).
+- `/plan`: Generate a numbered plan of CLI commands. Options: `--persona`, `--session`, `--model`,
+  `--temperature`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
+- `/route`: Preview intent routing output without executing commands.
+- `/intent-debug`: Print routing JSON and planned commands without executing.
+- `/review`: Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
   `--min-severity`, `--no-color`, `--log-review`, `--security`, `--sast`, plus model/temperature overrides.
-- `reviewlog` (`/reviewlog`): Show recent review entries. Options: `--min-severity`, `--path-filter`, `--limit`,
+- `/reviewlog`: Show recent review entries. Options: `--min-severity`, `--path-filter`, `--limit`,
   `--page`, `--since`, `--no-color`.
-- `search` (`/search`): Web search through the agent tool. Options: `--limit`, `--provider`, `--timeout-millis`,
+- `/search`: Web search through the agent tool. Options: `--limit`, `--provider`, `--timeout-millis`,
   `--headless`, `--enable-web-search`.
-- `codesearch` (`/codesearch`): Ripgrep-backed repo search. Options: `--paths`, `--context`, `--limit`, `--pack`,
+- `/codesearch`: Ripgrep-backed repo search. Options: `--paths`, `--context`, `--limit`, `--pack`,
   `--max-chars`, `--max-tokens`.
-- `edit` (`/edit`): Open `$EDITOR` to draft prompts. Options: `--seed`, `--send`, `--session`, `--persona`.
-- `paste` (`/paste`): Paste multiline input (end with `/end`). Options: `--content`, `--end-marker`, `--send`,
+- `/edit`: Open `$EDITOR` to draft prompts. Options: `--seed`, `--send`, `--session`, `--persona`.
+- `/paste`: Paste multiline input (end with `/end`). Options: `--content`, `--end-marker`, `--send`,
   `--session`, `--persona`.
-- `status` (`/status`): Git status. Options: `--short-format`.
-- `diff` (`/diff`): Git diff. Options: `--staged`, `--context`, `--paths`, `--stat`.
-- `gitapply` (`/gitapply`): Apply a patch via git. Options: `--patch-file`, `--cached`, `--check`, `--confirm`.
-- `stage` (`/stage`): Stage files or hunks. Options: `--paths`, `--file`, `--hunks`, `--confirm`.
-- `commit-suggest` (`/commit-suggest`): Draft a commit message. Options: `--session`, `--model`, `--temperature`,
+- `/status`: Git status. Options: `--short-format`.
+- `/diff`: Git diff. Options: `--staged`, `--context`, `--paths`, `--stat`.
+- `/gitapply`: Apply a patch via git. Options: `--patch-file`, `--cached`, `--check`, `--confirm`.
+- `/stage`: Stage files or hunks. Options: `--paths`, `--file`, `--hunks`, `--confirm`.
+- `/commit-suggest`: Draft a commit message. Options: `--session`, `--model`, `--temperature`,
   `--max-tokens`, `--hint`, `--secret-scan`, `--allow-secrets`.
-- `git-push` (`/git-push`): Push with confirmation. Options: `--force`.
-- `model` (`/model`): List or set models. Options: `--list`, `--set`, `--session`.
-- `health` (`/health`): Check Ollama connectivity.
-- `run` (`/run`): Execute a command with timeout and truncation. Options: `--timeout-millis`, `--max-output-chars`,
+- `/help`: Show available slash commands and `/config` options.
+- `/git-push`: Push with confirmation. Options: `--force`.
+- `/model`: List or set models. Options: `--list`, `--set`, `--session`.
+- `/health`: Check Ollama connectivity.
+- `/run`: Execute a command with timeout and truncation. Options: `--timeout-millis`, `--max-output-chars`,
   `--confirm`, `--agent-requested`.
-- `apply` (`/apply`): Apply unified diff patches. Options: `--patch-file`, `--dry-run`, `--confirm`.
-- `applyBlocks` (`/applyBlocks`): Apply Search-and-Replace blocks. Options: `--blocks`, `--blocks-file`, `--dry-run`,
+- `/apply`: Apply unified diff patches. Options: `--patch-file`, `--dry-run`, `--confirm`.
+- `/applyBlocks`: Apply Search-and-Replace blocks. Options: `--blocks`, `--blocks-file`, `--dry-run`,
   `--confirm`.
-- `revert` (`/revert`): Restore from the latest patch backup. Options: `--dry-run`.
-- `context` (`/context`): Show targeted edit context. Options: `--start`, `--end`, `--symbol`, `--padding`.
-- `tree` (`/tree`): Show repository tree (respects `.gitignore`). Options: `--depth`, `--dirs-only`, `--max-entries`.
+- `/revert`: Restore from the latest patch backup. Options: `--dry-run`.
+- `/context`: Show targeted edit context. Options: `--start`, `--end`, `--symbol`, `--padding`.
+- `/tree`: Show repository tree (respects `.gitignore`). Options: `--depth`, `--dirs-only`, `--max-entries`.
 
 ## Quickstart examples
 Full end-to-end flows are in `docs/quickstart.md`.
@@ -111,6 +131,11 @@ Review flow:
 /reviewlog --min-severity MEDIUM --limit 3
 ```
 
+Plan flow:
+```
+/plan --prompt "Review src/main/groovy and suggest improvements"
+```
+
 Search + git flow:
 ```
 /codesearch --query "applyPatch" --paths src/main/groovy
@@ -125,7 +150,7 @@ Run one or more commands non-interactively and exit when done.
 Inline command string:
 ```
 java -jar local-coding-assistant-<version>.jar \
-  -c "status; review --paths src/main/groovy; commit-suggest"
+  -c "/status; /review --paths src/main/groovy; /commit-suggest"
 ```
 
 Batch file (one command per line; each line can include `;`-separated commands):

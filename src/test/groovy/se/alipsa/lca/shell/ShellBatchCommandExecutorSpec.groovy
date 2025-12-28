@@ -19,7 +19,7 @@ class ShellBatchCommandExecutorSpec extends Specification {
     CommandCatalog catalog = CommandCatalog.of()
     catalog.register(
       CommandRegistration.builder()
-        .command("hello")
+        .command("/hello")
         .withTarget()
         .function { "hi" }
         .and()
@@ -32,10 +32,14 @@ class ShellBatchCommandExecutorSpec extends Specification {
     ExitCodeMappings exitCodeMappings = Stub()
     Terminal terminal = TerminalBuilder.builder().dumb(true).build()
     Shell shell = new Shell(resultHandlerService, catalog, terminal, shellContext, exitCodeMappings)
-    ShellBatchCommandExecutor executor = new ShellBatchCommandExecutor(shell, resultHandlerService)
+    ShellBatchCommandExecutor executor = new ShellBatchCommandExecutor(
+      shell,
+      resultHandlerService,
+      new CommandInputNormaliser(new ShellSettings(true))
+    )
 
     when:
-    BatchCommandOutcome outcome = executor.execute("hello")
+    BatchCommandOutcome outcome = executor.execute("/hello")
 
     then:
     outcome.error == null

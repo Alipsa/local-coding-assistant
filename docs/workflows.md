@@ -28,6 +28,43 @@ Notes:
 - Review output is sectioned and includes `Findings` and `Tests` sections.
 - The log stores the structured output without ANSI color codes.
 
+## Planning workflow
+1. Run `/plan` with a clear goal and any path hints.
+2. Follow the numbered steps manually, or refine the plan with another `/plan`.
+
+Example:
+`/plan --prompt "Review src/main/groovy and suggest improvements"`
+
+Notes:
+- Plans are guidance only; no commands are executed.
+- Each step begins with a command and a short explanation.
+
+## Natural language routing
+When intent routing is enabled, plain text input is mapped into CLI commands before execution.
+
+Example input:
+`Please review src/main/groovy and suggest improvements`
+
+Example routing preview:
+1. `/review --prompt "Please review src/main/groovy and suggest improvements" --paths "src/main/groovy"`
+2. `/plan --prompt "Please review src/main/groovy and suggest improvements"`
+
+Example confirmation for a destructive command:
+```
+Interpreted as:
+ 1) /edit --file-path src/App.groovy
+Confirm routed command? [y/N]:
+```
+
+Notes:
+- Routed commands run in interactive mode only; batch mode is unchanged.
+- Destructive commands still require confirmation.
+- Use `/route` to preview routing without executing commands.
+- Use `/config intent disabled` to disable routing for the current session.
+- Use `/config intent enabled` to re-enable routing for the current session.
+- Use `/intent-debug on` to show routing JSON without execution.
+- Routing can be toggled with `assistant.intent.enabled` and tuned via `assistant.intent.*` settings.
+
 ## Search and context workflow
 1. Use `/tree` to understand the project layout quickly.
 2. Use `/codesearch` for local ripgrep-powered search.
@@ -37,6 +74,8 @@ Notes:
 Notes:
 - Search output includes counts and result numbering.
 - Web search can be disabled at the session or request level.
+- Use `/config web-search disabled` to disable web search for the current session.
+- Use `/config web-search htmlunit` or `/config web-search jsoup` to set the primary fetcher.
 
 ## Git workflow
 1. Check repository state with `/status`.

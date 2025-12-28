@@ -1,16 +1,25 @@
 package se.alipsa.lca.shell
 
 import com.embabel.agent.api.common.Ai
-import com.embabel.agent.domain.io.UserInput
+import com.embabel.agent.api.common.PromptRunner
+import com.embabel.agent.core.Agent
+import com.embabel.agent.core.AgentPlatform
+import com.embabel.agent.core.AgentProcess
+import com.embabel.agent.core.ProcessOptions
+import com.embabel.agent.spi.ContextRepository
+import com.embabel.chat.AssistantMessage
+import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
+import se.alipsa.lca.agent.ChatRequest
 import se.alipsa.lca.agent.CodingAssistantAgent
-import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
-import se.alipsa.lca.agent.Personas
+import se.alipsa.lca.agent.ReviewRequest
+import se.alipsa.lca.agent.ReviewResponse
+import se.alipsa.lca.intent.IntentRoutingSettings
+import se.alipsa.lca.intent.IntentRoutingState
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.GitTool
-import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.CommandPolicy
@@ -18,6 +27,7 @@ import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
+import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
@@ -25,6 +35,8 @@ import se.alipsa.lca.tools.SastTool
 import spock.lang.Specification
 import spock.lang.TempDir
 
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -40,9 +52,12 @@ class ShellCommandsSpec extends Specification {
     0,
     "",
     true,
-    false,
+    "htmlunit",
+    "jsoup",
+    600L,
     "fallback-model",
-    agentsMdProvider
+    agentsMdProvider,
+    new LocalOnlyState(false)
   )
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
@@ -65,11 +80,23 @@ class ShellCommandsSpec extends Specification {
     isModelAvailable(_) >> true
     checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
+  IntentRoutingState intentRoutingState = new IntentRoutingState()
+  IntentRoutingSettings intentRoutingSettings = new IntentRoutingSettings(true, "/edit")
+  AgentPlatform agentPlatform = Mock()
+  ContextRepository contextRepository = Stub()
+  ShellSettings shellSettings = new ShellSettings(true)
+  Agent chatAgent = new Agent("lca-chat", "local", "1.0.0", "Chat agent", Set.of(), List.of(), Set.of())
+  Agent reviewAgent = new Agent("lca-review", "local", "1.0.0", "Review agent", Set.of(), List.of(), Set.of())
+  AgentProcess chatProcess = Mock()
+  AgentProcess reviewProcess = Mock()
   @TempDir
   Path tempDir
   ShellCommands commands
 
   def setup() {
+    agentPlatform.agents() >> [chatAgent, reviewAgent]
+    chatProcess.run() >> chatProcess
+    reviewProcess.run() >> reviewProcess
     commands = new ShellCommands(
       agent,
       ai,
@@ -83,16 +110,26 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("reviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
   }
 
   def "chat uses persona mode and session overrides"() {
     given:
-    CodeSnippet snippet = new CodeSnippet("result")
-    agent.craftCode(_, ai, PersonaMode.ARCHITECT, _, _) >> snippet
+    ChatRequest captured = null
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("result")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ChatRequest } as ChatRequest
+        chatProcess
+    }
 
     when:
     def response = commands.chat(
@@ -108,27 +145,97 @@ class ShellCommandsSpec extends Specification {
 
     then:
     response == "result"
-    1 * agent.craftCode(
-      { UserInput ui -> ui.getContent() == "prompt text" },
-      ai,
+    captured != null
+    captured.persona == PersonaMode.ARCHITECT
+    captured.options.model == "custom-model"
+    captured.options.temperature == 0.9d
+    captured.options.maxTokens == 2048
+    captured.systemPrompt == "extra system"
+  }
+
+  def "plan uses planning format and architect persona"() {
+    given:
+    ChatRequest captured = null
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("plan output")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ChatRequest } as ChatRequest
+        chatProcess
+    }
+
+    when:
+    def response = commands.plan(
+      "Create a plan",
+      "s2",
       PersonaMode.ARCHITECT,
-      { LlmOptions opts ->
-        opts.getModel() == "custom-model" &&
-        opts.getTemperature() == 0.9d &&
-        opts.getMaxTokens() == 2048
-      },
-      "extra system"
-    ) >> snippet
+      null,
+      null,
+      null,
+      null,
+      null
+    )
+
+    then:
+    response == "plan output"
+    captured != null
+    captured.persona == PersonaMode.ARCHITECT
+    captured.responseFormat != null
+    captured.responseFormat.contains("numbered list")
+    captured.systemPrompt.contains("Available commands:")
+  }
+
+  def "plan includes recent web search summary in prompt"() {
+    given:
+    ChatRequest captured = null
+    UserMessage capturedUserMessage = null
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("plan output")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ChatRequest } as ChatRequest
+        capturedUserMessage = inputs.find { it instanceof UserMessage } as UserMessage
+        chatProcess
+    }
+    def results = [
+      new WebSearchTool.SearchResult("Result 1", "http://example.com", "Snippet 1")
+    ]
+
+    when:
+    commands.search("out of memory", 2, "s2", "duckduckgo", 15000L, true, null)
+    def response = commands.plan(
+      "Based on your investigation, suggest a plan.",
+      "s2",
+      PersonaMode.ARCHITECT,
+      null,
+      null,
+      null,
+      null,
+      null
+    )
+
+    then:
+    1 * agent.search("out of memory", { WebSearchTool.SearchOptions opts ->
+      opts.sessionId == "s2" &&
+      opts.fetcherName == "htmlunit" &&
+      opts.fallbackFetcherName == "jsoup"
+    }) >> results
+    response == "plan output"
+    captured != null
+    capturedUserMessage != null
+    capturedUserMessage.textContent.contains("Recent investigation context:")
+    capturedUserMessage.textContent.contains("Web search results for \"out of memory\"")
   }
 
   def "review uses review options and system prompt override"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it",
-      Personas.REVIEWER
+    ReviewRequest captured = null
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ReviewRequest } as ReviewRequest
+        reviewProcess
+    }
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -154,37 +261,64 @@ class ShellCommandsSpec extends Specification {
     response.contains("[High] src/App.groovy:10 - bug")
     !response.contains("\u001B[")
     response.contains("Tests:")
-    1 * agent.reviewCode(
-      { UserInput ui -> ui.getContent() == "check safety" },
-      { CodeSnippet snippet -> snippet.text.contains("println 'hi'") && snippet.text.contains("src/App.groovy") },
+    captured != null
+    captured.prompt == "check safety"
+    captured.payload.contains("println 'hi'")
+    captured.payload.contains("src/App.groovy")
+    captured.options.model == "default-model"
+    captured.options.temperature == 0.2d
+    captured.options.maxTokens == 1024
+    captured.systemPrompt == "system"
+  }
+
+  def "chat ensures a context exists when session id is provided"() {
+    given:
+    ContextRepository repo = Mock()
+    AgentPlatform platform = agentPlatform
+    ShellCommands withRepo = new ShellCommands(
+      agent,
       ai,
-      { LlmOptions opts ->
-        opts.getModel() == "default-model" &&
-        opts.getTemperature() == 0.2d &&
-        opts.getMaxTokens() == 1024
-      },
-      "system",
-      _
-    ) >> reviewed
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      platform,
+      repo,
+      tempDir.resolve("reviews-context.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("context response")
+    platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
+
+    when:
+    def response = withRepo.chat("Hello", "context-session", PersonaMode.CODER, null, null, null, null, null)
+
+    then:
+    response == "context response"
+    1 * repo.findById("context-session") >> null
+    1 * repo.save({ it instanceof com.embabel.agent.spi.support.SimpleContext && it.id == "context-session" })
   }
 
   def "paste can forward content to chat"() {
     given:
-    CodeSnippet snippet = new CodeSnippet("assistant response")
-    agent.craftCode(_, ai, PersonaMode.CODER, _, _) >> snippet
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("assistant response")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
 
     when:
     def result = commands.paste("multi\nline", "/end", true, "default", PersonaMode.CODER)
 
     then:
     result == "assistant response"
-    1 * agent.craftCode(
-      { UserInput ui -> ui.getContent() == "multi\nline" },
-      ai,
-      PersonaMode.CODER,
-      _ as LlmOptions,
-      ""
-    ) >> snippet
   }
 
   def "search formats results"() {
@@ -201,7 +335,9 @@ class ShellCommandsSpec extends Specification {
     1 * agent.search("query", { WebSearchTool.SearchOptions opts ->
       opts.limit == 1 &&
       opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
-      opts.webSearchEnabled
+      opts.webSearchEnabled &&
+      opts.fetcherName == "htmlunit" &&
+      opts.fallbackFetcherName == "jsoup"
     }) >> results
     out.contains("=== Web Search ===")
     out.contains("Results: 2")
@@ -215,6 +351,66 @@ class ShellCommandsSpec extends Specification {
 
     then:
     thrown(IllegalArgumentException)
+  }
+
+  def "search can prompt to disable local-only mode"() {
+    given:
+    SessionState localState = new SessionState(
+      "default-model",
+      0.7d,
+      0.35d,
+      0,
+      "",
+      true,
+      "htmlunit",
+      "jsoup",
+      600L,
+      "fallback-model",
+      agentsMdProvider,
+      new LocalOnlyState(true)
+    )
+    ShellCommands localCommands = new ShellCommands(
+      agent,
+      ai,
+      localState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("reviews-local.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+    def results = [new WebSearchTool.SearchResult("T1", "http://example.com", "S1")]
+    InputStream originalIn = System.in
+    System.in = new ByteArrayInputStream("y\n".bytes)
+
+    when:
+    def out = localCommands.search("query", 1, "default", "duckduckgo", 15000L, true, null)
+
+    then:
+    1 * agent.search("query", { WebSearchTool.SearchOptions opts ->
+      opts.limit == 1 &&
+      opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
+      opts.webSearchEnabled &&
+      opts.fetcherName == "htmlunit" &&
+      opts.fallbackFetcherName == "jsoup"
+    }) >> results
+    out.contains("=== Web Search ===")
+    !localState.isLocalOnly("default")
+
+    cleanup:
+    System.in = originalIn
   }
 
   def "edit returns edited text when send is false"() {
@@ -297,12 +493,10 @@ class ShellCommandsSpec extends Specification {
 
   def "review writes to log path"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [Low] general - note\nTests:\n- test",
-      Personas.REVIEWER
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] general - note\nTests:\n- test"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -329,9 +523,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("other.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -371,12 +570,10 @@ class ShellCommandsSpec extends Specification {
 
   def "reviewlog filters by severity and path"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test",
-      Personas.REVIEWER
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
     commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
@@ -390,12 +587,10 @@ class ShellCommandsSpec extends Specification {
 
   def "reviewlog respects pagination and since"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test",
-      Personas.REVIEWER
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
     def instants = [java.time.Instant.parse("2025-01-01T00:00:00Z"), java.time.Instant.parse("2025-01-01T00:00:10Z")].iterator()
     ShellCommands clocked = new ShellCommands(
@@ -411,9 +606,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("reviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected java.time.Instant nowInstant() {
@@ -453,9 +653,14 @@ class ShellCommandsSpec extends Specification {
       runTool,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("commit.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -531,9 +736,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("stage.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -565,9 +775,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("stage.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     staging.configureBatchMode(true, false)
 
@@ -596,9 +811,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("stage.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       ConfirmChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
@@ -634,9 +854,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("status.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -674,9 +899,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("sast.log").toString(),
       null,
-      sastTool
+      sastTool,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
     method.accessible = true
@@ -709,9 +939,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("diff.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -741,9 +976,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("apply.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -782,9 +1022,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("push.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -825,9 +1070,14 @@ class ShellCommandsSpec extends Specification {
       runner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("runReviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -864,9 +1114,14 @@ class ShellCommandsSpec extends Specification {
       runner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("run2.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -896,9 +1151,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       fallbackRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("model.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -929,13 +1189,152 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       downRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("health.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     expect:
     cmds.health().contains("unreachable")
+  }
+
+  def "version returns resolved version"() {
+    given:
+    ShellCommands versioned = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("version.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+
+    expect:
+    versioned.version().contains("lca version: 0.0-test")
+    versioned.version().contains("Embabel version:")
+    versioned.version().contains("Spring-boot version:")
+    versioned.version().contains("Models: default-model (fallback: fallback-model)")
+  }
+
+  def "config reports and updates auto-paste"() {
+    when:
+    def initial = commands.config(null, null, null, null, null, null)
+
+    then:
+    initial.contains("=== Configuration ===")
+    initial.contains("Auto-paste: enabled")
+    initial.contains("Local-only: disabled")
+    initial.contains("web-search: htmlunit (fallback jsoup)")
+    initial.contains("Intent routing: enabled")
+
+    when:
+    def disabled = commands.config(false, null, null, null, null, null)
+
+    then:
+    disabled.contains("Auto-paste: disabled")
+
+    when:
+    def enabled = commands.config(true, null, null, null, null, null)
+
+    then:
+    enabled.contains("Auto-paste: enabled")
+  }
+
+  def "config updates local-only for the session"() {
+    when:
+    def enabled = commands.config(null, true, null, null, null, null)
+
+    then:
+    enabled.contains("Local-only: enabled")
+
+    when:
+    def disabled = commands.config(null, false, null, null, null, null)
+
+    then:
+    disabled.contains("Local-only: disabled")
+  }
+
+  def "config updates web search fetchers for the session"() {
+    when:
+    def updated = commands.config(null, null, "jsoup", null, null, null)
+
+    then:
+    updated.contains("web-search: jsoup (fallback htmlunit)")
+  }
+
+  def "config disables web search for the session"() {
+    when:
+    def updated = commands.config(null, null, "disabled", null, null, null)
+
+    then:
+    updated.contains("web-search: disabled")
+    !sessionState.isWebSearchDesired("default")
+  }
+
+  def "config updates intent routing for the session"() {
+    when:
+    def disabled = commands.config(null, null, null, null, null, "disabled")
+
+    then:
+    disabled.contains("Intent routing: disabled")
+    intentRoutingState.enabledOverride == Boolean.FALSE
+
+    when:
+    def enabled = commands.config(null, null, null, null, null, "enabled")
+
+    then:
+    enabled.contains("Intent routing: enabled")
+    intentRoutingState.enabledOverride == Boolean.TRUE
+
+    when:
+    def reset = commands.config(null, null, null, null, null, "default")
+
+    then:
+    reset.contains("Intent routing: enabled")
+    intentRoutingState.enabledOverride == null
+  }
+
+  def "help lists commands alphabetically and includes config options"() {
+    when:
+    String output = commands.help()
+    List<String> commandLines = output.readLines().findAll { String line ->
+      line.startsWith("- /")
+    }
+    List<String> listed = commandLines.collect { String line ->
+      line.split(":")[0].substring(2)
+    }
+    List<String> sorted = new ArrayList<>(listed)
+    sorted.sort()
+
+    then:
+    output.contains("=== Help ===")
+    output.contains("Config options (/config):")
+    output.contains("- intent: enabled|disabled|default")
+    output.contains("- web-search: htmlunit|jsoup|disabled|default")
+    listed == sorted
+    !output.contains("/clear")
+    !output.contains("/history")
+    !output.contains("/stacktrace")
+    !output.contains("/script")
   }
 
   def "tree formats repository output"() {
@@ -963,9 +1362,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("tree.log").toString(),
       treeTool,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -990,9 +1394,14 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
+      contextRepository,
       tempDir.resolve("commit.log").toString(),
       null,
-      null
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
   }
 }

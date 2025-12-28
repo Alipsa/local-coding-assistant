@@ -6,6 +6,8 @@ import com.embabel.agent.domain.io.UserInput
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
+import se.alipsa.lca.tools.LocalOnlyState
+import se.alipsa.lca.shell.SessionState
 import spock.lang.Specification
 
 class CodingAssistantAgentSpec extends Specification {
@@ -13,6 +15,10 @@ class CodingAssistantAgentSpec extends Specification {
   FileEditingTool fileEditingTool = Mock(FileEditingTool)
   CodeSearchTool codeSearchTool = Mock(CodeSearchTool)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
+  SessionState sessionState = Stub(SessionState) {
+    getWebSearchFetcher(_) >> "htmlunit"
+    getWebSearchFallbackFetcher(_) >> "jsoup"
+  }
   CodingAssistantAgent agent = new CodingAssistantAgent(
     220,
     180,
@@ -20,10 +26,11 @@ class CodingAssistantAgentSpec extends Specification {
     0.65d,
     0.25d,
     true,
-    false,
     fileEditingTool,
     webSearchTool,
-    codeSearchTool
+    codeSearchTool,
+    new LocalOnlyState(false),
+    sessionState
   )
 
   def "craftCode builds a repository-aware plan and output format"() {
@@ -261,10 +268,11 @@ class CodingAssistantAgentSpec extends Specification {
       0.65d,
       0.25d,
       true,
-      true,
       fileEditingTool,
       searchTool,
-      codeSearchTool
+      codeSearchTool,
+      new LocalOnlyState(true),
+      sessionState
     )
 
     when:

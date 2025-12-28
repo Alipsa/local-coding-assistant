@@ -6,11 +6,11 @@ class BatchModeOptionsSpec extends Specification {
 
   def "parses command mode flags"() {
     when:
-    BatchModeOptions options = BatchModeOptions.parse(["-c", "status; review --paths src"] as String[])
+    BatchModeOptions options = BatchModeOptions.parse(["-c", "/status; /review --paths src"] as String[])
 
     then:
     options.enabled
-    options.commandText == "status; review --paths src"
+    options.commandText == "/status; /review --paths src"
     options.batchFile == null
     !options.batchJson
     !options.assumeYes
@@ -39,7 +39,7 @@ class BatchModeOptionsSpec extends Specification {
 
   def "rejects command and batch file combination"() {
     when:
-    BatchModeOptions.parse(["-c", "status", "--batch-file", "batch.txt"] as String[])
+    BatchModeOptions.parse(["-c", "/status", "--batch-file", "batch.txt"] as String[])
 
     then:
     thrown(IllegalArgumentException)

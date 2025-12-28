@@ -1,35 +1,27 @@
 package se.alipsa.lca.agent
 
-import com.microsoft.playwright.Browser
-import com.microsoft.playwright.BrowserType
-import com.microsoft.playwright.ElementHandle
-import com.microsoft.playwright.Page
-import com.microsoft.playwright.Playwright
+import org.jsoup.Jsoup
 import se.alipsa.lca.tools.WebSearchTool
 import spock.lang.Specification
 
 class WebSearchSpec extends Specification {
 
-  def "search parses and sanitizes results with options"() {
+  def "search parses and sanitises results with options"() {
     given:
-    def mockPlaywright = Mock(Playwright)
-    def mockBrowserType = Mock(BrowserType)
-    def mockBrowser = Mock(Browser)
-    def mockPage = Mock(Page)
-    def mockElement = Mock(ElementHandle)
-    def mockTitleElement = Mock(ElementHandle)
-    def mockSnippetElement = Mock(ElementHandle)
-
-    mockPlaywright.chromium() >> mockBrowserType
-    mockBrowserType.launch(_ as BrowserType.LaunchOptions) >> mockBrowser
-    mockBrowser.newPage() >> mockPage
-    mockPage.querySelectorAll(_) >> [mockElement]
-    mockElement.querySelector("h2 a") >> mockTitleElement
-    mockTitleElement.innerText() >> "Test    Title"
-    mockTitleElement.getAttribute("href") >> "http://example.com"
-    mockElement.querySelector("span.result__snippet") >> mockSnippetElement
-    mockSnippetElement.innerText() >> "Test   Snippet with   spacing"
-    def tool = new WebSearchTool({ mockPlaywright } as java.util.function.Supplier<Playwright>)
+    String html = """
+      <html>
+        <body>
+          <div class="results">
+            <div class="result">
+              <a class="result__a" href="http://example.com">Test    Title</a>
+              <a class="result__snippet">Test   Snippet with   spacing</a>
+            </div>
+          </div>
+        </body>
+      </html>
+      """.stripIndent()
+    def fetcher = Mock(WebSearchTool.SearchFetcher)
+    def tool = new WebSearchTool(fetcher)
 
     when:
     def results = tool.search(
@@ -49,51 +41,51 @@ class WebSearchSpec extends Specification {
     results[0].title == "Test Title"
     results[0].url == "http://example.com"
     results[0].snippet.startsWith("Test Snippet with spacing")
-    1 * mockPage.setDefaultTimeout(1000L)
-    1 * mockPage.navigate("https://duckduckgo.com/")
-    1 * mockPage.fill(_, _)
-    1 * mockPage.press(_, _)
-    1 * mockPage.waitForSelector("div.results--mainline", _ as com.microsoft.playwright.Page.WaitForSelectorOptions)
-    1 * mockBrowser.close()
-    1 * mockPlaywright.close()
+    1 * fetcher.fetch(WebSearchTool.SearchProvider.DUCKDUCKGO, "test query", _) >> Jsoup.parse(html)
   }
 
   def "search uses cache for repeated queries in the same session"() {
     given:
-    int supplierCalls = 0
-    def mockPlaywright = Mock(Playwright)
-    def mockBrowserType = Mock(BrowserType)
-    def mockBrowser = Mock(Browser)
-    def mockPage = Mock(Page)
-    def mockElement = Mock(ElementHandle)
-    def mockTitleElement = Mock(ElementHandle)
-    mockPlaywright.chromium() >> mockBrowserType
-    mockBrowserType.launch(_ as BrowserType.LaunchOptions) >> mockBrowser
-    mockBrowser.newPage() >> mockPage
-    mockPage.querySelectorAll(_) >> [mockElement]
-    mockElement.querySelector("h2 a") >> mockTitleElement
-    mockTitleElement.innerText() >> "Cached"
-    mockTitleElement.getAttribute("href") >> "http://example.com"
-    def tool = new WebSearchTool({
-      supplierCalls++
-      mockPlaywright
-    } as java.util.function.Supplier<Playwright>)
+    int fetchCalls = 0
+    String html = """
+      <html>
+        <body>
+          <div class="results">
+            <div class="result">
+              <a class="result__a" href="http://example.com">Cached</a>
+            </div>
+          </div>
+        </body>
+      </html>
+      """.stripIndent()
+    def fetcher = { WebSearchTool.SearchProvider provider, String query, WebSearchTool.SearchOptions opts ->
+      fetchCalls++
+      Jsoup.parse(html)
+    } as WebSearchTool.SearchFetcher
+    def tool = new WebSearchTool(fetcher)
 
     when:
-    def first = tool.search("cached query", new WebSearchTool.SearchOptions(limit: 3, sessionId: "s1", webSearchEnabled: true))
-    def second = tool.search("cached query", new WebSearchTool.SearchOptions(limit: 2, sessionId: "s1", webSearchEnabled: true))
+    def first = tool.search(
+      "cached query",
+      new WebSearchTool.SearchOptions(limit: 3, sessionId: "s1", webSearchEnabled: true)
+    )
+    def second = tool.search(
+      "cached query",
+      new WebSearchTool.SearchOptions(limit: 2, sessionId: "s1", webSearchEnabled: true)
+    )
 
     then:
-    supplierCalls == 1
+    fetchCalls == 1
     first.size() == 1
     second.size() == 1
   }
 
   def "returns disabled result when web search is disabled"() {
     given:
-    def tool = new WebSearchTool({
+    def fetcher = { WebSearchTool.SearchProvider provider, String query, WebSearchTool.SearchOptions opts ->
       throw new IllegalStateException("Should not be called when disabled")
-    } as java.util.function.Supplier<Playwright>)
+    } as WebSearchTool.SearchFetcher
+    def tool = new WebSearchTool(fetcher)
 
     when:
     def results = tool.search("query", new WebSearchTool.SearchOptions(webSearchEnabled: false))
@@ -105,9 +97,10 @@ class WebSearchSpec extends Specification {
 
   def "returns failure result on exception"() {
     given:
-    def tool = new WebSearchTool({
+    def fetcher = { WebSearchTool.SearchProvider provider, String query, WebSearchTool.SearchOptions opts ->
       throw new RuntimeException("boom")
-    } as java.util.function.Supplier<Playwright>)
+    } as WebSearchTool.SearchFetcher
+    def tool = new WebSearchTool(fetcher)
 
     when:
     def results = tool.search("query", new WebSearchTool.SearchOptions(webSearchEnabled: true))
@@ -121,10 +114,11 @@ class WebSearchSpec extends Specification {
   def "returns empty list for blank query without calling supplier"() {
     given:
     int calls = 0
-    def tool = new WebSearchTool({
+    def fetcher = { WebSearchTool.SearchProvider provider, String query, WebSearchTool.SearchOptions opts ->
       calls++
-      Mock(Playwright)
-    } as java.util.function.Supplier<Playwright>)
+      Jsoup.parse("<html></html>")
+    } as WebSearchTool.SearchFetcher
+    def tool = new WebSearchTool(fetcher)
 
     when:
     def results = tool.search("   ", new WebSearchTool.SearchOptions(webSearchEnabled: true))
@@ -132,5 +126,42 @@ class WebSearchSpec extends Specification {
     then:
     results.isEmpty()
     calls == 0
+  }
+
+  def "htmlunit fetcher builds query url and parses response"() {
+    given:
+    String html = """
+      <html>
+        <body>
+          <div class="results">
+            <div class="result">
+              <a class="result__a" href="http://example.com">Title</a>
+              <a class="result__snippet">Snippet</a>
+            </div>
+          </div>
+        </body>
+      </html>
+      """.stripIndent()
+    def fetcher = new WebSearchTool.HtmlUnitSearchFetcher() {
+      String requestedUrl
+
+      @Override
+      protected String fetchContent(String requestUrl, WebSearchTool.SearchOptions options) {
+        requestedUrl = requestUrl
+        return html
+      }
+    }
+
+    when:
+    def document = fetcher.fetch(
+      WebSearchTool.SearchProvider.DUCKDUCKGO,
+      "hello world",
+      new WebSearchTool.SearchOptions(timeoutMillis: 500L)
+    )
+
+    then:
+    document.select("a.result__a").text() == "Title"
+    fetcher.requestedUrl.startsWith("https://duckduckgo.com/html/")
+    fetcher.requestedUrl.contains("q=hello+world")
   }
 }

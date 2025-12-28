@@ -4,6 +4,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 import org.springframework.web.server.ResponseStatusException
+import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.WebSearchTool
 import spock.lang.Specification
 
@@ -13,12 +14,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class WebSearchControllerSpec extends Specification {
 
   WebSearchTool webSearchTool = Mock()
+  SessionState sessionState = Mock()
   LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
   MockMvc mvc
 
   def setup() {
     validator.afterPropertiesSet()
-    mvc = MockMvcBuilders.standaloneSetup(new WebSearchController(webSearchTool, true, false))
+    mvc = MockMvcBuilders.standaloneSetup(new WebSearchController(webSearchTool, sessionState, true, false))
       .setValidator(validator)
       .build()
   }
@@ -32,6 +34,7 @@ class WebSearchControllerSpec extends Specification {
     then:
     response.andExpect(status().isBadRequest())
     0 * webSearchTool.search(_, _)
+    0 * sessionState.storeToolSummary(_, _)
   }
 
   def "delegates search with validated defaults"() {
@@ -49,13 +52,21 @@ class WebSearchControllerSpec extends Specification {
         opts.limit == 3 &&
         opts.timeoutMillis == 2000L &&
         opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
+        opts.sessionId == "default" &&
         opts.webSearchEnabled
-    }) >> List.of()
+    }) >> [
+      new WebSearchTool.SearchResult("Result", "http://example.com", "Snippet")
+    ]
+    1 * sessionState.storeToolSummary("default", {
+      SessionState.ToolSummary summary ->
+        summary.source == "web-search" &&
+          summary.summary.contains("groovy validation")
+    })
   }
 
   def "rejects local-only web search with a generic message"() {
     given:
-    WebSearchController controller = new WebSearchController(webSearchTool, true, true)
+    WebSearchController controller = new WebSearchController(webSearchTool, sessionState, true, true)
     WebSearchController.SearchRequest request = new WebSearchController.SearchRequest(query: "groovy search")
 
     when:

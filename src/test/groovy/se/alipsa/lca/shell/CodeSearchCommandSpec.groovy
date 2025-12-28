@@ -1,8 +1,7 @@
 package se.alipsa.lca.shell
 
+import com.embabel.agent.core.AgentPlatform
 import se.alipsa.lca.agent.CodingAssistantAgent
-import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
-import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
@@ -10,6 +9,7 @@ import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.GitTool
+import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.TokenEstimator
@@ -30,9 +30,12 @@ class CodeSearchCommandSpec extends Specification {
     0,
     "",
     true,
-    false,
+    "htmlunit",
+    "jsoup",
+    600L,
     "fallback",
-    agentsMdProvider
+    agentsMdProvider,
+    new LocalOnlyState(false)
   )
   CodingAssistantAgent agent = Mock()
   FileEditingTool fileEditingTool = Stub()
@@ -49,6 +52,7 @@ class CodeSearchCommandSpec extends Specification {
     listModels() >> List.of()
     checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
+  ShellSettings shellSettings = new ShellSettings(true)
   @TempDir
   Path tempDir
   ShellCommands commands
@@ -67,7 +71,12 @@ class CodeSearchCommandSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      Stub(AgentPlatform),
+      Stub(com.embabel.agent.spi.ContextRepository),
       tempDir.resolve("reviews.log").toString(),
+      null,
+      null,
+      shellSettings,
       null,
       null
     )

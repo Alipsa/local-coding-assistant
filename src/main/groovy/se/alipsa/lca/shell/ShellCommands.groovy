@@ -1,7 +1,14 @@
 package se.alipsa.lca.shell
 
 import com.embabel.agent.api.common.Ai
-import com.embabel.agent.domain.io.UserInput
+import com.embabel.agent.core.Agent
+import com.embabel.agent.core.AgentPlatform
+import com.embabel.agent.core.AgentProcess
+import com.embabel.agent.core.ProcessOptions
+import com.embabel.agent.spi.ContextRepository
+import com.embabel.agent.spi.support.SimpleContext
+import com.embabel.chat.AssistantMessage
+import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
@@ -9,17 +16,22 @@ import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.SpringBootVersion
+import org.springframework.shell.ExitRequest
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
 import se.alipsa.lca.agent.CodingAssistantAgent
-import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
+import se.alipsa.lca.agent.ChatRequest
 import se.alipsa.lca.agent.PersonaMode
-import se.alipsa.lca.agent.Personas
+import se.alipsa.lca.agent.ReviewRequest
+import se.alipsa.lca.agent.ReviewResponse
 import se.alipsa.lca.review.ReviewFinding
 import se.alipsa.lca.review.ReviewParser
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.review.ReviewSummary
+import se.alipsa.lca.intent.IntentRoutingSettings
+import se.alipsa.lca.intent.IntentRoutingState
 import se.alipsa.lca.shell.SessionState.SessionSettings
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.FileEditingTool
@@ -38,6 +50,7 @@ import se.alipsa.lca.tools.SastTool
 import se.alipsa.lca.tools.LogSanitizer
 
 import java.io.BufferedReader
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.IOException
 import java.time.Instant
@@ -46,14 +59,45 @@ import java.time.format.DateTimeParseException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.Properties
+import java.util.Locale
 
 @ShellComponent("lcaShellCommands")
 @CompileStatic
 class ShellCommands {
 
   private static final Logger log = LoggerFactory.getLogger(ShellCommands)
+  private static final String CHAT_AGENT_NAME = "lca-chat"
+  private static final String REVIEW_AGENT_NAME = "lca-review"
+  private static final String DEFAULT_SESSION = "default"
+  private static final List<String> PLAN_COMMANDS = List.of(
+    "/chat",
+    "/plan",
+    "/review",
+    "/edit",
+    "/apply",
+    "/run",
+    "/gitapply",
+    "/git-push",
+    "/search"
+  )
+  private static final String PLAN_RESPONSE_FORMAT = """
+Respond with a numbered list only.
+Each step must start with a command from the allow-list and include a short explanation.
+Format: 1. /review src/main/groovy - Review code quality.
+Do not execute any commands.
+""".stripIndent().trim()
+  private static final Set<String> INTENT_ON_VALUES = Set.of("on", "enable", "enabled", "true", "yes", "y")
+  private static final Set<String> INTENT_OFF_VALUES = Set.of("off", "disable", "disabled", "false", "no", "n")
+  private static final Set<String> INTENT_DEFAULT_VALUES = Set.of("default", "reset", "auto")
+  private static final Set<String> WEB_SEARCH_DISABLED_VALUES = Set.of("disabled", "disable", "off", "false", "no", "n")
+  private static final Set<String> WEB_SEARCH_DEFAULT_VALUES = Set.of("default", "reset", "auto")
+  private static final int WEB_SEARCH_SUMMARY_LIMIT = 3
+  private static final int WEB_SEARCH_SUMMARY_MAX_CHARS = 1200
   private final CodingAssistantAgent codingAssistantAgent
   private final Ai ai
+  private final AgentPlatform agentPlatform
+  private final ContextRepository contextRepository
   private final SessionState sessionState
   private final EditorLauncher editorLauncher
   private final FileEditingTool fileEditingTool
@@ -64,6 +108,9 @@ class ShellCommands {
   private final CommandRunner commandRunner
   private final CommandPolicy commandPolicy
   private final ModelRegistry modelRegistry
+  private final ShellSettings shellSettings
+  private final IntentRoutingState intentRoutingState
+  private final IntentRoutingSettings intentRoutingSettings
   private final TreeTool treeTool
   private final SecretScanner secretScanner
   private final SastTool sastTool
@@ -71,6 +118,133 @@ class ShellCommands {
   private volatile boolean applyAllConfirmed = false
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
+
+  @ShellMethod(key = ["/exit", "/quit"], value = "Exit the shell.")
+  ExitRequest exitShell() {
+    new ExitRequest(0)
+  }
+
+  @ShellMethod(key = ["/version"], value = "Show the running application version.")
+  String version() {
+    List<String> lines = new ArrayList<String>()
+    lines.add("lca version: ${resolveVersion()}".toString())
+    lines.add("Embabel version: ${resolveEmbabelVersion()}".toString())
+    lines.add("Spring-boot version: ${resolveSpringBootVersion()}".toString())
+    List<String> modelInfo = resolveModelVersionInfo()
+    if (!modelInfo.isEmpty()) {
+      lines.addAll(modelInfo)
+    }
+    lines.join("\n")
+  }
+
+  @ShellMethod(key = ["/config"], value = "View or update shell settings.")
+  String config(
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      help = "Enable or disable auto-paste detection (true/false)"
+    ) Boolean autoPaste,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      value = "local-only",
+      help = "Enable or disable local-only mode for this session (true/false)"
+    ) Boolean localOnly,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      value = "web-search",
+      help = "Set web search for this session (htmlunit/jsoup/disabled/default)"
+    ) String webSearch,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      value = "web-search-fetcher",
+      help = "Set web search fetcher for this session (htmlunit/jsoup/default)"
+    ) String webSearchFetcher,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      value = "web-search-fallback",
+      help = "Set fallback web search fetcher (htmlunit/jsoup/none/default)"
+    ) String webSearchFallback,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      value = "intent",
+      help = "Enable or disable intent routing for this session (enabled/disabled/default)"
+    ) String intent
+  ) {
+    if (autoPaste != null) {
+      shellSettings.setAutoPasteEnabled(autoPaste)
+    }
+    if (localOnly != null) {
+      sessionState.setLocalOnlyOverride(DEFAULT_SESSION, localOnly)
+    }
+    if (webSearch != null) {
+      applyWebSearchMode(DEFAULT_SESSION, webSearch)
+    } else {
+      if (webSearchFetcher != null) {
+        sessionState.setWebSearchFetcherOverride(DEFAULT_SESSION, webSearchFetcher)
+      }
+      if (webSearchFallback != null) {
+        sessionState.setWebSearchFallbackFetcherOverride(DEFAULT_SESSION, webSearchFallback)
+      }
+    }
+    if (intent != null) {
+      applyIntentMode(intent)
+    }
+    String autoPasteState = shellSettings.isAutoPasteEnabled() ? "enabled" : "disabled"
+    String localOnlyState = sessionState.isLocalOnly(DEFAULT_SESSION) ? "enabled" : "disabled"
+    String webSearchState = formatWebSearchState(DEFAULT_SESSION)
+    String intentState = formatIntentState()
+    formatSection(
+      "Configuration",
+      "Auto-paste: ${autoPasteState}\n" +
+        "Local-only: ${localOnlyState}\n" +
+        "web-search: ${webSearchState}\n" +
+        "Intent routing: ${intentState}"
+    )
+  }
+
+  @ShellMethod(key = ["/help"], value = "Show available slash commands.")
+  String help() {
+    Map<String, String> commands = new LinkedHashMap<>()
+    commands.put("/apply", "Apply a unified diff patch with confirmation.")
+    commands.put("/applyBlocks", "Apply Search-and-Replace blocks to a file.")
+    commands.put("/chat", "Send a prompt to the coding assistant.")
+    commands.put("/codesearch", "Search repository files with ripgrep.")
+    commands.put("/commit-suggest", "Draft a commit message from staged changes.")
+    commands.put("/config", "View or update shell settings.")
+    commands.put("/context", "Show a snippet for targeted edits.")
+    commands.put("/diff", "Show git diff with optional staging.")
+    commands.put("/edit", "Open editor to draft a prompt.")
+    commands.put("/exit", "Exit the shell (alias: /quit).")
+    commands.put("/gitapply", "Apply a patch using git apply (alias: /git-apply).")
+    commands.put("/git-push", "Push the current branch with confirmation.")
+    commands.put("/health", "Check connectivity to Ollama.")
+    commands.put("/help", "Show available slash commands.")
+    commands.put("/intent-debug", "Toggle intent routing debug output.")
+    commands.put("/model", "List or set the active session model.")
+    commands.put("/paste", "Enter paste mode; optionally send to /chat.")
+    commands.put("/plan", "Create a step-by-step plan using CLI commands.")
+    commands.put("/review", "Ask the assistant to review code.")
+    commands.put("/reviewlog", "Show recent reviews from the log.")
+    commands.put("/revert", "Restore a file using the most recent patch backup.")
+    commands.put("/route", "Preview intent routing output.")
+    commands.put("/run", "Execute a project command with timeout and logging.")
+    commands.put("/search", "Run web search through the agent tool.")
+    commands.put("/stage", "Stage files or hunks with confirmation.")
+    commands.put("/status", "Show git status for the current repository.")
+    commands.put("/tree", "Show repository tree.")
+    commands.put("/version", "Show the running application version.")
+    List<String> keys = new ArrayList<>(commands.keySet())
+    keys.sort { String left, String right -> left <=> right }
+    String commandLines = keys.collect { String key ->
+      "- ${key}: ${commands.get(key)}"
+    }.join("\n")
+    String configLines = [
+      "- auto-paste: true|false",
+      "- intent: enabled|disabled|default",
+      "- local-only: true|false",
+      "- web-search: htmlunit|jsoup|disabled|default"
+    ].join("\n")
+    formatSection("Help", "Commands:\n${commandLines}\n\nConfig options (/config):\n${configLines}")
+  }
 
   ShellCommands(
     CodingAssistantAgent codingAssistantAgent,
@@ -85,12 +259,18 @@ class ShellCommands {
     CommandRunner commandRunner,
     CommandPolicy commandPolicy,
     ModelRegistry modelRegistry,
+    AgentPlatform agentPlatform,
+    ContextRepository contextRepository,
     @Value('${review.log.path:.lca/reviews.log}') String reviewLogPath,
     TreeTool treeTool,
-    SastTool sastTool
+    SastTool sastTool,
+    ShellSettings shellSettings,
+    IntentRoutingState intentRoutingState,
+    IntentRoutingSettings intentRoutingSettings
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
+    this.agentPlatform = agentPlatform
     this.sessionState = sessionState
     this.editorLauncher = editorLauncher
     this.fileEditingTool = fileEditingTool
@@ -104,6 +284,10 @@ class ShellCommands {
     this.commandRunner = commandRunner != null ? commandRunner : new CommandRunner(root)
     this.commandPolicy = commandPolicy != null ? commandPolicy : new CommandPolicy("", "")
     this.modelRegistry = modelRegistry
+    this.shellSettings = shellSettings
+    this.intentRoutingState = intentRoutingState
+    this.intentRoutingSettings = intentRoutingSettings
+    this.contextRepository = contextRepository
     this.treeTool = treeTool != null ? treeTool : new TreeTool(root, this.gitTool)
     this.secretScanner = new SecretScanner()
     this.sastTool = sastTool != null ? sastTool : new SastTool(this.commandRunner, this.commandPolicy, "", 60000L, 8000)
@@ -111,7 +295,7 @@ class ShellCommands {
     this.reviewLogPath = Paths.get(reviewPath).toAbsolutePath()
   }
 
-  @ShellMethod(key = ["chat", "/chat"], value = "Send a prompt to the coding assistant.")
+  @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant.")
   String chat(
     @ShellOption(help = "Prompt text; multiline supported by quoting or paste mode") String prompt,
     @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
@@ -140,24 +324,79 @@ class ShellCommands {
     LlmOptions options = sessionState.craftOptions(settings)
     String fallbackNote = resolution.fallbackUsed ? "Note: using fallback model ${resolution.chosen}." : null
     String system = sessionState.systemPrompt(settings)
-    CodeSnippet snippet = codingAssistantAgent.craftCode(
-      new UserInput(prompt),
-      ai,
-      persona,
-      options,
-      system
-    )
-    if (snippet == null) {
+    Agent agent = resolveAgent(CHAT_AGENT_NAME)
+    if (agent == null) {
+      return "Chat agent unavailable; ensure Embabel agents are enabled."
+    }
+    def conversation = sessionState.getOrCreateConversation(session)
+    String planPrompt = buildPlanPrompt(session, prompt)
+    UserMessage userMessage = new UserMessage(planPrompt)
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(persona, options, system, null)
+    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    String replyText = reply?.textContent
+    if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
     }
-    sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${snippet.text}")
+    sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + snippet.text
+      return fallbackNote + "\n" + replyText
     }
-    snippet.text
+    replyText
   }
 
-  @ShellMethod(key = ["review", "/review"], value = "Ask the assistant to review code.")
+  @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands.")
+  String plan(
+    @ShellOption(help = "Planning request; multiline supported by quoting or paste mode") String prompt,
+    @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
+    @ShellOption(defaultValue = "ARCHITECT", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
+  ) {
+    requireNonBlank(prompt, "prompt")
+    String health = ensureOllamaHealth()
+    if (health != null) {
+      return health
+    }
+    ModelResolution resolution = resolveModel(model)
+    SessionSettings settings = sessionState.update(
+      session,
+      resolution.chosen,
+      temperature,
+      reviewTemperature,
+      maxTokens,
+      systemPrompt,
+      null
+    )
+    LlmOptions options = sessionState.craftOptions(settings)
+    String fallbackNote = resolution.fallbackUsed ? "Note: using fallback model ${resolution.chosen}." : null
+    String baseSystem = sessionState.systemPrompt(settings)
+    String planSystem = buildPlanSystemPrompt(baseSystem)
+    Agent agent = resolveAgent(CHAT_AGENT_NAME)
+    if (agent == null) {
+      return "Chat agent unavailable; ensure Embabel agents are enabled."
+    }
+    def conversation = sessionState.getOrCreateConversation(session)
+    String planPrompt = buildPlanPrompt(session, prompt)
+    UserMessage userMessage = new UserMessage(planPrompt)
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(persona, options, planSystem, PLAN_RESPONSE_FORMAT)
+    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    String replyText = reply?.textContent
+    if (replyText == null || replyText.trim().isEmpty()) {
+      return "No response generated."
+    }
+    sessionState.appendHistory(session, "User: ${prompt}", "Assistant (plan): ${replyText}")
+    if (fallbackNote != null) {
+      return fallbackNote + "\n" + replyText
+    }
+    replyText
+  }
+
+  @ShellMethod(key = ["/review"], value = "Ask the assistant to review code.")
   String review(
     @ShellOption(defaultValue = "", help = "Code to review; optional when providing paths or staged diff") String code,
     @ShellOption(help = "Review context or request") String prompt,
@@ -190,16 +429,19 @@ class ShellCommands {
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
     String reviewPayload = buildReviewPayload(code, paths, staged)
-    def result = codingAssistantAgent.reviewCode(
-      new UserInput(prompt),
-      new CodeSnippet(reviewPayload),
-      ai,
-      reviewOptions,
-      system,
-      security ? Personas.SECURITY_REVIEWER : Personas.REVIEWER
-    )
+    Agent agent = resolveAgent(REVIEW_AGENT_NAME)
+    if (agent == null) {
+      printProgressDone("Review")
+      return "Review agent unavailable; ensure Embabel agents are enabled."
+    }
+    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security)
+    ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
-    ReviewSummary summary = ReviewParser.parse(result.review)
+    String reviewText = response?.review
+    if (reviewText == null || reviewText.trim().isEmpty()) {
+      return "No review response generated."
+    }
+    ReviewSummary summary = ReviewParser.parse(reviewText)
     String rendered = renderReview(summary, severityThreshold, !noColor)
     String sastBlock = buildSastBlock(sast, paths)
     if (resolution.fallbackUsed) {
@@ -213,7 +455,7 @@ class ShellCommands {
     output
   }
 
-  @ShellMethod(key = ["reviewlog", "/reviewlog"], value = "Show recent reviews from the log with filters.")
+  @ShellMethod(key = ["/reviewlog"], value = "Show recent reviews from the log with filters.")
   String reviewLog(
     @ShellOption(defaultValue = "LOW", help = "Minimum severity to show") ReviewSeverity minSeverity,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Path substring filter") String pathFilter,
@@ -251,7 +493,7 @@ class ShellCommands {
     }.join("\n\n---\n\n")
   }
 
-  @ShellMethod(key = ["search", "/search"], value = "Run web search through the agent tool.")
+  @ShellMethod(key = ["/search"], value = "Run web search through the agent tool.")
   String search(
     @ShellOption(help = "Query to search") String query,
     @ShellOption(defaultValue = "5", help = "Number of results to show") int limit,
@@ -264,17 +506,20 @@ class ShellCommands {
     requireNonBlank(query, "query")
     requireMin(limit, 1, "limit")
     requireMin(timeoutMillis, 1, "timeoutMillis")
-    boolean defaultEnabled = sessionState.isWebSearchEnabled(session)
+    String sessionId = session != null && session.trim() ? session.trim() : DEFAULT_SESSION
     Boolean overrideEnabled = enableWebSearch
-    boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
-    if (!allowed) {
-      if (sessionState.isLocalOnly()) {
-        return "Web search is disabled in local-only mode. Set assistant.local-only=false to enable."
-      }
+    boolean desired = overrideEnabled != null ? overrideEnabled : sessionState.isWebSearchDesired(sessionId)
+    if (!desired) {
       return "Web search is disabled for this session. " +
         "Enable globally in application.properties with assistant.web-search.enabled=true, " +
         "or enable for this request by passing --enable-web-search true."
     }
+    if (sessionState.isLocalOnly(sessionId)) {
+      if (!promptDisableLocalOnly(sessionId)) {
+        return "Web search is disabled in local-only mode. Set assistant.local-only=false to enable."
+      }
+    }
+    boolean defaultEnabled = sessionState.isWebSearchEnabled(sessionId)
     printProgressStart("Web search")
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
@@ -282,8 +527,10 @@ class ShellCommands {
         limit: limit,
         headless: headless,
         timeoutMillis: timeoutMillis,
-        sessionId: session,
-        webSearchEnabled: overrideEnabled
+        sessionId: sessionId,
+        webSearchEnabled: overrideEnabled,
+        fetcherName: sessionState.getWebSearchFetcher(sessionId),
+        fallbackFetcherName: sessionState.getWebSearchFallbackFetcher(sessionId)
       ),
       defaultEnabled
     )
@@ -297,8 +544,10 @@ class ShellCommands {
     }
     printProgressDone("Web search")
     if (results == null || results.isEmpty()) {
+      recordWebSearchSummary(sessionId, query, results)
       return formatSection("Web Search", "No web results.")
     }
+    recordWebSearchSummary(sessionId, query, results)
     String body = results.withIndex().collect { WebSearchTool.SearchResult result, int idx ->
       String title = result.title ?: "(no title)"
       String url = result.url ?: "(no url)"
@@ -309,7 +558,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["codesearch", "/codesearch"],
+    key = ["/codesearch"],
     value = "Search repository files with ripgrep and build context."
   )
   String codeSearch(
@@ -347,7 +596,7 @@ class ShellCommands {
     formatSection("Code Search", "Matches: ${hits.size()}\n${body}")
   }
 
-  @ShellMethod(key = ["edit", "/edit"], value = "Open default editor to draft a prompt, optionally send to assistant.")
+  @ShellMethod(key = ["/edit"], value = "Open default editor to draft a prompt, optionally send to assistant.")
   String edit(
     @ShellOption(defaultValue = "", help = "Seed text to prefill in editor") String seed,
     @ShellOption(defaultValue = "false", help = "Send the edited text to /chat when done") boolean send,
@@ -361,7 +610,7 @@ class ShellCommands {
     chat(content, session, persona, null, null, null, null, null)
   }
 
-  @ShellMethod(key = ["paste", "/paste"], value = "Enter paste mode; end input with a line containing only /end.")
+  @ShellMethod(key = ["/paste"], value = "Enter paste mode; end input with a line containing only /end.")
   String paste(
     @ShellOption(
       defaultValue = ShellOption.NULL,
@@ -382,14 +631,14 @@ class ShellCommands {
     chat(body, session, persona, null, null, null, null, null)
   }
 
-  @ShellMethod(key = ["status", "/status"], value = "Show git status for the current repository.")
+  @ShellMethod(key = ["/status"], value = "Show git status for the current repository.")
   String gitStatus(
     @ShellOption(defaultValue = "false", help = "Use short porcelain output") boolean shortFormat
   ) {
     formatGitResult("Status", gitTool.status(shortFormat))
   }
 
-  @ShellMethod(key = ["diff", "/diff"], value = "Show git diff with optional staging and path filters.")
+  @ShellMethod(key = ["/diff"], value = "Show git diff with optional staging and path filters.")
   String gitDiff(
     @ShellOption(defaultValue = "false", help = "Use staged diff (--cached)") boolean staged,
     @ShellOption(defaultValue = "3", help = "Number of context lines") int context,
@@ -402,7 +651,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["gitapply", "/gitapply", "git-apply", "/git-apply"],
+    key = ["/gitapply", "/git-apply"],
     value = "Apply a patch using git apply (optionally to index) with confirmation."
   )
   String gitApply(
@@ -444,7 +693,7 @@ class ShellCommands {
     formatGitResult("Git apply", applied)
   }
 
-  @ShellMethod(key = ["stage", "/stage"], value = "Stage files or specific hunks with confirmation.")
+  @ShellMethod(key = ["/stage"], value = "Stage files or specific hunks with confirmation.")
   String stage(
     @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "File paths to stage") List<String> paths,
     @ShellOption(defaultValue = ShellOption.NULL, help = "File to stage hunks from") String file,
@@ -480,7 +729,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["commit-suggest", "/commit-suggest"],
+    key = ["/commit-suggest"],
     value = "Draft an imperative commit message from staged changes."
   )
   String commitSuggest(
@@ -527,7 +776,7 @@ class ShellCommands {
     message?.trim() ?: "No commit message generated."
   }
 
-  @ShellMethod(key = ["git-push", "/git-push"], value = "Push the current branch with confirmation.")
+  @ShellMethod(key = ["/git-push"], value = "Push the current branch with confirmation.")
   String gitPush(
     @ShellOption(defaultValue = "false", help = "Use --force-with-lease") boolean force,
     @ShellOption(defaultValue = "true", help = "Ask for confirmation before pushing") boolean confirm
@@ -549,7 +798,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["model", "/model"],
+    key = ["/model"],
     value = "List available Ollama models and switch the active session model."
   )
   String model(
@@ -589,7 +838,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["health", "/health"],
+    key = ["/health"],
     value = "Check connectivity to Ollama base URL."
   )
   String health() {
@@ -601,7 +850,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["run", "/run"],
+    key = ["/run"],
     value = "Execute a project command with timeout, truncation, and logging."
   )
   String runCommand(
@@ -644,7 +893,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["apply", "/apply"],
+    key = ["/apply"],
     value = "Apply a unified diff patch with optional dry-run, confirmation, and backups."
   )
   String applyPatch(
@@ -691,7 +940,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["applyBlocks", "/applyBlocks"],
+    key = ["/applyBlocks"],
     value = "Apply Search-and-Replace blocks to a file (<<<<SEARCH ... ==== ... >>>>)."
   )
   String applyBlocks(
@@ -737,7 +986,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["revert", "/revert"],
+    key = ["/revert"],
     value = "Restore a file using the most recent patch backup."
   )
   String revert(
@@ -759,7 +1008,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["context", "/context"],
+    key = ["/context"],
     value = "Show a snippet for targeted edits by line range or symbol."
   )
   String context(
@@ -784,7 +1033,7 @@ class ShellCommands {
   }
 
   @ShellMethod(
-    key = ["tree", "/tree"],
+    key = ["/tree"],
     value = "Show repository tree (respects .gitignore when available)."
   )
   String tree(
@@ -1150,6 +1399,147 @@ ${rendered}
     "=== ${title} ===\n${content}".stripTrailing()
   }
 
+  private void recordWebSearchSummary(String sessionId, String query, List<WebSearchTool.SearchResult> results) {
+    String summary = WebSearchTool.summariseResults(query, results, WEB_SEARCH_SUMMARY_LIMIT, WEB_SEARCH_SUMMARY_MAX_CHARS)
+    SessionState.ToolSummary toolSummary = new SessionState.ToolSummary("web-search", summary, Instant.now())
+    sessionState.storeToolSummary(sessionId, toolSummary)
+  }
+
+  private static String formatFetcherLabel(String value) {
+    if (value == null) {
+      return "disabled"
+    }
+    String trimmed = value.trim()
+    if (!trimmed || trimmed.equalsIgnoreCase("none")) {
+      return "disabled"
+    }
+    trimmed.toLowerCase(Locale.ROOT)
+  }
+
+  private void applyWebSearchMode(String sessionId, String mode) {
+    String trimmed = mode != null ? mode.trim() : ""
+    if (!trimmed) {
+      return
+    }
+    String normalised = trimmed.toLowerCase(Locale.UK)
+    if (WEB_SEARCH_DISABLED_VALUES.contains(normalised)) {
+      sessionState.setWebSearchEnabledOverride(sessionId, false)
+      sessionState.setWebSearchFetcherOverride(sessionId, "none")
+      sessionState.setWebSearchFallbackFetcherOverride(sessionId, "none")
+      return
+    }
+    if (WEB_SEARCH_DEFAULT_VALUES.contains(normalised)) {
+      sessionState.setWebSearchEnabledOverride(sessionId, null)
+      sessionState.setWebSearchFetcherOverride(sessionId, "default")
+      sessionState.setWebSearchFallbackFetcherOverride(sessionId, "default")
+      return
+    }
+    String primary = normaliseWebSearchFetcher(normalised)
+    if (primary == null) {
+      throw new IllegalArgumentException(
+        "Unknown web-search mode '${mode}'. Use htmlunit, jsoup, disabled, or default."
+      )
+    }
+    String fallback = primary == "htmlunit" ? "jsoup" : "htmlunit"
+    sessionState.setWebSearchEnabledOverride(sessionId, true)
+    sessionState.setWebSearchFetcherOverride(sessionId, primary)
+    sessionState.setWebSearchFallbackFetcherOverride(sessionId, fallback)
+  }
+
+  private static String normaliseWebSearchFetcher(String value) {
+    if (value == null) {
+      return null
+    }
+    String trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+    String normalised = trimmed.toLowerCase(Locale.UK)
+    if (normalised == "jdoup") {
+      normalised = "jsoup"
+    }
+    if (normalised == "htmlunit" || normalised == "jsoup") {
+      return normalised
+    }
+    null
+  }
+
+  private String formatWebSearchState(String sessionId) {
+    if (!sessionState.isWebSearchDesired(sessionId)) {
+      return "disabled"
+    }
+    String primary = formatFetcherLabel(sessionState.getWebSearchFetcher(sessionId))
+    if (primary == "disabled") {
+      return "disabled"
+    }
+    String fallback = formatFetcherLabel(sessionState.getWebSearchFallbackFetcher(sessionId))
+    if (fallback == "disabled") {
+      return "${primary} (fallback disabled)"
+    }
+    "${primary} (fallback ${fallback})"
+  }
+
+  private void applyIntentMode(String mode) {
+    if (intentRoutingState == null) {
+      return
+    }
+    String trimmed = mode != null ? mode.trim() : ""
+    if (!trimmed) {
+      return
+    }
+    String normalised = trimmed.toLowerCase(Locale.UK)
+    if (INTENT_ON_VALUES.contains(normalised)) {
+      intentRoutingState.setEnabledOverride(true)
+      return
+    }
+    if (INTENT_OFF_VALUES.contains(normalised)) {
+      intentRoutingState.setEnabledOverride(false)
+      return
+    }
+    if (INTENT_DEFAULT_VALUES.contains(normalised)) {
+      intentRoutingState.clearEnabledOverride()
+      return
+    }
+    throw new IllegalArgumentException("Unknown intent mode '${mode}'. Use enabled, disabled, or default.")
+  }
+
+  private String formatIntentState() {
+    if (intentRoutingState == null) {
+      return "unavailable"
+    }
+    intentRoutingState.isEnabled(intentRoutingSettings) ? "enabled" : "disabled"
+  }
+
+  private String buildPlanPrompt(String sessionId, String prompt) {
+    String base = prompt != null ? prompt.trim() : ""
+    SessionState.ToolSummary summary = sessionState.getRecentToolSummary(sessionId)
+    if (summary == null || summary.summary == null || summary.summary.trim().isEmpty()) {
+      return base
+    }
+    String summaryText = summary.summary.trim()
+    if (base.contains(summaryText)) {
+      return base
+    }
+    StringBuilder builder = new StringBuilder()
+    if (base) {
+      builder.append(base).append("\n\n")
+    }
+    builder.append("Recent investigation context:\n").append(summaryText)
+    builder.toString().stripTrailing()
+  }
+
+  private String buildPlanSystemPrompt(String baseSystemPrompt) {
+    StringBuilder builder = new StringBuilder()
+    if (baseSystemPrompt != null && baseSystemPrompt.trim()) {
+      builder.append(baseSystemPrompt.trim()).append("\n\n")
+    }
+    builder.append("You are a planning assistant for the local coding CLI.\n")
+    builder.append("Available commands: ").append(PLAN_COMMANDS.join(", ")).append(".\n")
+    builder.append("Propose a sequence of steps that matches the user's request.\n")
+    builder.append("Do not execute any commands.")
+    builder.toString()
+  }
+
   private String buildSastBlock(boolean enabled, List<String> paths) {
     if (!enabled) {
       return ""
@@ -1227,12 +1617,171 @@ ${rendered}
     shortened ? "${summary} ..." : summary
   }
 
+  private Agent resolveAgent(String name) {
+    if (agentPlatform == null) {
+      return null
+    }
+    List<Agent> agents = agentPlatform.agents()
+    if (agents == null || agents.isEmpty()) {
+      return null
+    }
+    agents.find { Agent agent -> agent?.name == name }
+  }
+
+  private <T> T runAgent(Agent agent, String sessionId, Class<T> resultType, Object... inputs) {
+    ProcessOptions options = ProcessOptions.DEFAULT
+    if (sessionId != null && sessionId.trim()) {
+      ensureContextExists(sessionId)
+      options = options.withContextId(sessionId)
+    }
+    AgentProcess process = agentPlatform.createAgentProcessFrom(agent, options, inputs)
+    process.run()
+    process.resultOfType(resultType)
+  }
+
+  private void ensureContextExists(String sessionId) {
+    if (contextRepository == null) {
+      return
+    }
+    String contextId = sessionId != null ? sessionId.trim() : ""
+    if (!contextId) {
+      return
+    }
+    try {
+      def existing = contextRepository.findById(contextId)
+      if (existing == null) {
+        contextRepository.save(new SimpleContext(contextId))
+      }
+    } catch (Exception e) {
+      log.debug("Failed to ensure context ${contextId}: ${e.message}", e)
+    }
+  }
+
   private String ensureOllamaHealth() {
     ModelRegistry.Health health = modelRegistry.checkHealth()
     if (!health.reachable) {
       return "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
     }
     null
+  }
+
+  protected String resolveVersion() {
+    String version = readBuildInfoVersion()
+    if (version != null && version.trim()) {
+      return version.trim()
+    }
+    version = getClass().getPackage()?.getImplementationVersion()
+    if (version != null && version.trim()) {
+      return version.trim()
+    }
+    String pomVersion = readPomVersion()
+    pomVersion != null && pomVersion.trim() ? pomVersion.trim() : "unknown"
+  }
+
+  protected String resolveEmbabelVersion() {
+    List<String> candidates = [
+      "com.embabel.agent:embabel-agent-api",
+      "com.embabel.agent:embabel-agent-platform-autoconfigure",
+      "com.embabel.agent:embabel-agent-starter"
+    ]
+    String version = resolveLibraryVersion(candidates)
+    version != null && version.trim() ? version.trim() : "unknown"
+  }
+
+  protected String resolveSpringBootVersion() {
+    String version = SpringBootVersion.getVersion()
+    if (version != null && version.trim()) {
+      return version.trim()
+    }
+    String fromPom = resolveLibraryVersion(["org.springframework.boot:spring-boot"])
+    fromPom != null && fromPom.trim() ? fromPom.trim() : "unknown"
+  }
+
+  protected List<String> resolveModelVersionInfo() {
+    String model = sessionState.getDefaultModel()
+    String fallback = sessionState.getFallbackModel()
+    if (model == null && fallback == null) {
+      return List.of()
+    }
+    List<String> lines = new ArrayList<String>()
+    if (fallback != null && fallback.trim()) {
+      lines.add("Models: ${model ?: "unknown"} (fallback: ${fallback})".toString())
+    } else {
+      lines.add("Models: ${model ?: "unknown"}".toString())
+    }
+    lines
+  }
+
+  private String resolveLibraryVersion(List<String> coordinates) {
+    for (String coordinate : coordinates) {
+      String resolved = resolveLibraryVersion(coordinate)
+      if (resolved != null) {
+        return resolved
+      }
+    }
+    null
+  }
+
+  private String resolveLibraryVersion(String coordinate) {
+    if (coordinate == null || !coordinate.contains(":")) {
+      return null
+    }
+    String[] parts = coordinate.split(":", 2)
+    if (parts.length != 2) {
+      return null
+    }
+    readPomVersion(parts[0], parts[1])
+  }
+
+  private String readBuildInfoVersion() {
+    String path = "META-INF/build-info.properties"
+    InputStream stream = ShellCommands.classLoader.getResourceAsStream(path)
+    if (stream == null) {
+      return null
+    }
+    Properties props = new Properties()
+    try {
+      props.load(stream)
+    } catch (IOException e) {
+      log.debug("Failed to read build-info.properties for version", e)
+      return null
+    } finally {
+      try {
+        stream.close()
+      } catch (IOException ignored) {
+        // Ignore close errors for version lookup.
+      }
+    }
+    props.getProperty("build.version")
+  }
+
+  private String readPomVersion() {
+    readPomVersion("se.alipsa.lca", "local-coding-assistant")
+  }
+
+  private String readPomVersion(String groupId, String artifactId) {
+    if (groupId == null || artifactId == null) {
+      return null
+    }
+    String path = "META-INF/maven/${groupId}/${artifactId}/pom.properties"
+    InputStream stream = ShellCommands.classLoader.getResourceAsStream(path)
+    if (stream == null) {
+      return null
+    }
+    Properties props = new Properties()
+    try {
+      props.load(stream)
+    } catch (IOException e) {
+      log.debug("Failed to read pom.properties for version", e)
+      return null
+    } finally {
+      try {
+        stream.close()
+      } catch (IOException ignored) {
+        // Ignore close errors for version lookup.
+      }
+    }
+    props.getProperty("version")
   }
 
   protected ModelResolution resolveModel(String requested) {
@@ -1341,6 +1890,22 @@ ${rendered}
       return ConfirmChoice.YES
     }
     ConfirmChoice.NO
+  }
+
+  private boolean promptDisableLocalOnly(String sessionId) {
+    if (batchMode) {
+      return false
+    }
+    print("Web search is disabled in local-only mode. Would you like to temporarily disable local-only mode for this session? (y/n): ")
+    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
+    String response = reader.readLine()
+    String normalised = response != null ? response.trim().toLowerCase(Locale.UK) : ""
+    if (normalised == "y" || normalised == "yes") {
+      sessionState.setLocalOnlyOverride(sessionId, false)
+      println("Local-only mode disabled for this session, searching the web...")
+      return true
+    }
+    false
   }
 
   @PackageScope

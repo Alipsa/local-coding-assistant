@@ -11,6 +11,7 @@ import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.agent.Personas
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.AgentsMdProvider
+import se.alipsa.lca.tools.LocalOnlyState
 import spock.lang.Specification
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -24,7 +25,20 @@ class CodingAssistantControllerSpec extends Specification {
     appendToSystemPrompt(_) >> { String base -> base }
   }
   SessionState sessionState =
-    new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback", agentsMdProvider)
+    new SessionState(
+      "default-model",
+      0.7d,
+      0.35d,
+      0,
+      "",
+      true,
+      "htmlunit",
+      "jsoup",
+      600L,
+      "fallback",
+      agentsMdProvider,
+      new LocalOnlyState(false)
+    )
   LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
   MockMvc mvc
 
