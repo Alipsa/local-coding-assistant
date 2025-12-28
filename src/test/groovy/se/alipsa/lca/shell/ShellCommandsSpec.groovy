@@ -1209,7 +1209,7 @@ class ShellCommandsSpec extends Specification {
     String output = shellCommands.shellCommand("echo hi", "shell-session")
 
     then:
-    output.contains("Command blocked by denylist")
+    output == "Command blocked by denylist: echo*"
     0 * runner._
   }
 

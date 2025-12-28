@@ -863,8 +863,7 @@ Do not execute any commands.
     @ShellOption(defaultValue = DEFAULT_SESSION, help = "Session id for history logging") String session
   ) {
     // Intentionally no confirmation prompt to mirror a direct shell mode; rely on CommandPolicy for guardrails.
-    requireNonBlank(command, "command")
-    String trimmed = command.trim()
+    String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
     if (!decision.allowed) {
       return decision.message ?: "Command blocked by policy."
@@ -890,7 +889,7 @@ Do not execute any commands.
       "Exit ${result?.timedOut ? 'timeout' : result?.exitCode}; ${summary}"
     )
     appendShellCommandToConversation(session, trimmed, result)
-    formatDirectShellResult(trimmed, result)
+    return formatDirectShellResult(trimmed, result)
   }
 
   @ShellMethod(
