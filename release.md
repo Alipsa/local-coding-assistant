@@ -1,5 +1,43 @@
 # Release Notes for the local-coding-assistant 
 
+## Version 1.1.0, 2025-12-28
+**Highlights**
+- Added natural‑language intent routing with /route, /intent-debug, and a first‑class /plan command.
+- New direct shell mode (/! with /sh alias) for streaming command output and session context capture.
+- Web search overhaul with HtmlUnit/Jsoup fetchers and session‑level configuration.
+
+**CLI & UX**
+- /help now lists slash commands alphabetically and includes /config options.
+- /config expanded with intent, local-only, and web-search session settings.
+- Command‑not‑found suggestions (“did you mean …”).
+- Local‑only mode prompts to temporarily enable web search for the session.
+
+**Intent Routing & Planning**
+- Intent router pipeline and models (allowlist, confidence, debug preview).
+- /plan produces structured, command‑oriented steps and supports REST usage.
+- Routing disabled for explicit /command input, with /route for preview.
+
+**Web Search**
+- HtmlUnit + Jsoup fetchers with configurable fallback.
+- Session overrides for fetcher selection or disablement.
+- Improved search summarisation and tool output handling.
+
+**Shell & Execution**
+- /! (“bash mode”) runs immediately with streamed output; results appended to session context.
+- /run kept for confirmed, logged execution with truncation controls.
+
+**REST API**
+- Added /plan and /route endpoints to mirror CLI workflows.
+- Updated REST docs and examples.
+
+**Packaging & Tooling**
+- New CLI launch scripts (src/main/bin/lca, src/main/bin/lca.zsh).
+- Additional documentation for commands, workflows, and intent routing.
+
+**Dependencies / Platform**
+- Spring Boot 3.5.7 and Embabel 0.3.1 updates.
+- HtmlUnit and Jsoup added for web search support.
+
 ## Version 1.0.0, 2025-12-23
 - Highlights: Added non-interactive batch mode, REST API parity, project-specific AGENTS.md guidance, a git-aware /tree command, and a full tutorial with examples.
 - Batch Mode: CLI -c/--batch-file execution with safer confirmations (--yes/--assume-yes), clearer diagnostics and exit handling, plus example batch files and a helper script in docs/examples/.

@@ -95,4 +95,5 @@ Notes:
 Notes:
 - Output is truncated for long runs; logs keep full content.
 - Use confirmations when commands originate from agent requests.
-- Use `/!` (alias `/sh`) for direct execution with streamed output and no confirmation.
+- Use `/!` (alias `/sh`) for direct execution with streamed output and no confirmation; it still records
+  session history and conversation context.

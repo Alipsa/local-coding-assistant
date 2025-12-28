@@ -131,5 +131,8 @@ class CommandInputNormaliserSpec extends Specification {
     normaliser.normalise('''/! echo "line1
 line2"''') == '''/! --command "echo \\"line1
 line2\\""'''
+    normaliser.normalise('''/! echo "$HOME"''') == '''/! --command "echo \\"$HOME\\""'''
+    normaliser.normalise('''/! echo "`whoami`"''') == '''/! --command "echo \\"`whoami`\\""'''
+    normaliser.normalise('''/! echo "!bang"''') == '''/! --command "echo \\"!bang\\""'''
   }
 }

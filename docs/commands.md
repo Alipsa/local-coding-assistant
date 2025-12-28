@@ -256,7 +256,11 @@ Usage:
 
 Notes:
 - Runs immediately without confirmation.
-- Output streams as the command runs and a summarised result is added to the session context.
+- Output streams live to the console (up to 8000 characters).
+- A short summary (up to 5 lines / 400 characters) is added to the session history.
+- A larger summary (up to 20 lines / 2000 characters) is added to the session conversation context.
+- Use `/run` if you need custom timeouts or output limits; `/!` uses fixed defaults (60s / 8000 chars).
+- Optional `--session` controls which session receives history/context (defaults to `default`).
 - Respects command allowlist/denylist settings.
 - Uses `bash -lc` under the project root.
 

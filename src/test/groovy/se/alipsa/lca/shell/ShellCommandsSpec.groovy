@@ -1172,7 +1172,8 @@ class ShellCommandsSpec extends Specification {
     then:
     output.contains("Exit: 0")
     listenerCalled
-    sessionState.history("shell-session").any { it.contains("Shell command: echo hi") }
+    sessionState.history("shell-session").contains("Shell command: echo hi")
+    sessionState.history("shell-session").any { it.contains("Exit 0; [OUT] hi") }
     sessionState.getOrCreateConversation("shell-session").messages.any {
       it.textContent?.contains("Shell command executed")
     }
