@@ -29,6 +29,37 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 4. Begin adding agents and tools under `src/main/java/se/alipsa/lca` to shape the coding workflows
    (editing, reviewing, searching, git operations).
 
+## Launcher script (lca)
+If you want to run the latest release without building from source, download the launcher script from GitHub
+Releases. The script stores the executable jar in `~/.local/lib`, starts it, and installs Ollama plus the default
+models when required.
+
+Install the bash launcher (or any POSIX shell) and ensure `~/.local/bin` is on your `PATH`:
+```
+curl -fsSL -o ~/.local/bin/lca \
+  https://github.com/Alipsa/local-coding-assistant/releases/latest/download/lca
+chmod +x ~/.local/bin/lca
+```
+
+If you prefer zsh, download the zsh launcher instead:
+```
+curl -fsSL -o ~/.local/bin/lca \
+  https://github.com/Alipsa/local-coding-assistant/releases/latest/download/lca.zsh
+chmod +x ~/.local/bin/lca
+```
+
+Run the assistant:
+```
+lca
+```
+
+Upgrade to the latest version:
+```
+lca upgrade
+```
+
+If the launcher script itself changes, download it again from the latest GitHub release.
+
 See [Quickstart](docs/quickstart.md) for more details.
 
 ## Tutorial

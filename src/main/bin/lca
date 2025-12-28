@@ -185,6 +185,7 @@ remove_old_jars() {
   local jar
   while IFS= read -r jar; do
     if [[ "$jar" != *"-${keep_version}-exec.jar" ]]; then
+      echo "Removing old jar: $(basename "$jar")"
       rm -f "$jar"
     fi
   done < <(find "$LIB_DIR" -maxdepth 1 -type f -name "${JAR_PATTERN}" 2>/dev/null)
@@ -215,7 +216,7 @@ upgrade_release() {
     return
   fi
   if is_newer_version "$local_version" "$LATEST_VERSION"; then
-    download_latest_release >/dev/null
+    download_latest_release
     remove_old_jars "$LATEST_VERSION"
   else
     echo "You are already using the latest version of the local coding assistant (${local_version})"

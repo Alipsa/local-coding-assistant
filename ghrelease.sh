@@ -151,6 +151,9 @@ if [ ! -f "$EXEC_JAR_PATH" ]; then
 fi
 
 gh release upload "$RELEASE_TAG" "$EXEC_JAR_PATH" --clobber
+echo "  Uploading lca scripts..."
+gh release upload "$RELEASE_TAG" src/main/bin/lca --clobber
+gh release upload "$RELEASE_TAG" src/main/bin/lca.zsh --clobber
 
 echo "---"
 echo "✅ Release '$RELEASE_TAG' created and release.md updated."

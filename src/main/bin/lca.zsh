@@ -185,6 +185,7 @@ remove_old_jars() {
   local jar
   while IFS= read -r jar; do
     if [[ "$jar" != *"-${keep_version}-exec.jar" ]]; then
+      echo "Removing old jar: $(basename "$jar")"
       rm -f "$jar"
     fi
   done < <(find "$LIB_DIR" -maxdepth 1 -type f -name "${JAR_PATTERN}" 2>/dev/null)
@@ -211,7 +212,7 @@ upgrade_release() {
   fi
   fetch_release_info
   if [ -z "$local_version" ]; then
-    download_latest_release >/dev/null
+    download_latest_release
     return
   fi
   if is_newer_version "$local_version" "$LATEST_VERSION"; then
