@@ -63,6 +63,31 @@ class BatchShellRunnerSpec extends Specification {
     exitHandler.exitCode == null
   }
 
+  def "batch mode does not route plain text"() {
+    given:
+    String captured = null
+    BatchCommandExecutor executor = Stub() {
+      execute(_) >> { String command ->
+        captured = command
+        new BatchCommandOutcome("ok", null, false, null)
+      }
+    }
+    ShellCommands shellCommands = Mock()
+    ShellContext shellContext = Mock()
+    TestExitHandler exitHandler = new TestExitHandler()
+    BatchShellRunner runner = new BatchShellRunner(executor, shellCommands, shellContext, exitHandler)
+
+    when:
+    boolean handled = runner.run(["-c", "Please review src/main/groovy"] as String[])
+
+    then:
+    handled
+    1 * shellContext.setInteractionMode(InteractionMode.NONINTERACTIVE)
+    1 * shellCommands.configureBatchMode(true, false)
+    captured == "Please review src/main/groovy"
+    exitHandler.exitCode == 0
+  }
+
   private static class TestExitHandler implements BatchExitHandler {
     Integer exitCode
 
