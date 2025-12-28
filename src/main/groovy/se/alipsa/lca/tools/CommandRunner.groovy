@@ -59,7 +59,22 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
-    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars)
+    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
+  }
+
+  /**
+   * Run a command through bash -lc with streaming output via the supplied listener.
+   */
+  CommandResult runStreaming(
+    String command,
+    long timeoutMillis,
+    int maxOutputChars,
+    OutputListener listener
+  ) {
+    if (command == null || command.trim().isEmpty()) {
+      return new CommandResult(false, false, 1, "No command provided.", false, null)
+    }
+    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars, listener)
   }
 
   /**
@@ -75,14 +90,15 @@ class CommandRunner {
       }
     }
     String commandLabel = formatCommand(commandArgs)
-    runInternal(commandLabel, { startProcess(commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars)
+    runInternal(commandLabel, { startProcess(commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
   }
 
   private CommandResult runInternal(
     String commandLabel,
     ProcessStarter starter,
     long timeoutMillis,
-    int maxOutputChars
+    int maxOutputChars,
+    OutputListener listener
   ) {
     String sanitizedCommand = LogSanitizer.sanitize(commandLabel)
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_TIMEOUT_MILLIS
@@ -111,7 +127,8 @@ class CommandRunner {
         "OUT",
         visibleOutput,
         remaining,
-        remainingLogCapacity
+        remainingLogCapacity,
+        listener
       )
       StreamCollector errCollector = new StreamCollector(
         process.getErrorStream(),
@@ -119,7 +136,8 @@ class CommandRunner {
         "ERR",
         visibleOutput,
         remaining,
-        remainingLogCapacity
+        remainingLogCapacity,
+        listener
       )
       Thread outThread = new Thread(outCollector)
       Thread errThread = new Thread(errCollector)
@@ -271,6 +289,21 @@ class CommandRunner {
     Path logPath
   }
 
+  @FunctionalInterface
+  @CompileStatic
+  static interface OutputListener {
+    /**
+     * Receives a single output line from the command execution.
+     *
+     * Notes:
+     * - Invoked synchronously on the stream reader thread (avoid slow or blocking work).
+     * - Exceptions are caught and logged; they do not stop stream processing.
+     * - Listener failures do not affect the command result; output streaming is best-effort.
+     * - stream parameter will be either "OUT" for standard output or "ERR" for standard error.
+     */
+    void onLine(String stream, String line)
+  }
+
   @CompileStatic
   private static class StreamCollector implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(StreamCollector)
@@ -280,6 +313,7 @@ class CommandRunner {
     private final StringBuffer visibleOutput
     private final AtomicInteger remainingVisible
     private final AtomicInteger remainingLogCapacity
+    private final OutputListener listener
     volatile boolean truncated = false
 
     StreamCollector(
@@ -288,7 +322,8 @@ class CommandRunner {
       String label,
       StringBuffer visibleOutput,
       AtomicInteger remainingVisible,
-      AtomicInteger remainingLogCapacity
+      AtomicInteger remainingLogCapacity,
+      OutputListener listener
     ) {
       this.stream = stream
       this.logWriter = logWriter
@@ -296,6 +331,7 @@ class CommandRunner {
       this.visibleOutput = visibleOutput
       this.remainingVisible = remainingVisible
       this.remainingLogCapacity = remainingLogCapacity
+      this.listener = listener
     }
 
     @Override
@@ -303,6 +339,13 @@ class CommandRunner {
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
         String line
         while ((line = reader.readLine()) != null) {
+          if (listener != null) {
+            try {
+              listener.onLine(label, line)
+            } catch (Exception e) {
+              log.warn("Output listener failed for label '{}': {}", label, e.getMessage())
+            }
+          }
           String sanitizedLine = LogSanitizer.sanitize(line)
           String formatted = "[${label}] ${line}${System.lineSeparator()}".toString()
           String sanitized = "[${label}] ${sanitizedLine}${System.lineSeparator()}".toString()

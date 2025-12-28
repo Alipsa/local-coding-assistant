@@ -29,6 +29,38 @@ class CommandRunnerSpec extends Specification {
     Files.exists(result.logPath)
   }
 
+  def "runStreaming emits output lines to listener"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir)
+    List<String> lines = Collections.synchronizedList(new ArrayList<>())
+    CommandRunner.OutputListener listener = { String stream, String line ->
+      lines.add("${stream}:${line}")
+    } as CommandRunner.OutputListener
+
+    when:
+    CommandRunner.CommandResult result = runner.runStreaming("echo hi", 2000L, 200, listener)
+
+    then:
+    result.success
+    lines.any { it.contains("OUT:hi") }
+  }
+
+  def "runStreaming emits error lines to listener"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir)
+    List<String> lines = Collections.synchronizedList(new ArrayList<>())
+    CommandRunner.OutputListener listener = { String stream, String line ->
+      lines.add("${stream}:${line}")
+    } as CommandRunner.OutputListener
+
+    when:
+    CommandRunner.CommandResult result = runner.runStreaming("echo err 1>&2", 2000L, 200, listener)
+
+    then:
+    result.success
+    lines.any { it.contains("ERR:err") }
+  }
+
   def "run executes argument list without a shell"() {
     given:
     CommandRunner runner = new CommandRunner(tempDir)

@@ -50,6 +50,11 @@ class AgentsMdProvider {
       clearCache()
       return null
     }
+    if (!Files.isRegularFile(agentsPath)) {
+      clearCache()
+      log.warn("AGENTS.md exists but is not a regular file: {}", agentsPath)
+      return null
+    }
     long modified
     try {
       modified = Files.getLastModifiedTime(agentsPath).toMillis()

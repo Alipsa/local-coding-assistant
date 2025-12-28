@@ -108,4 +108,31 @@ class CommandInputNormaliserSpec extends Specification {
     normaliser.normalise("/config intent enabled") == "/config --intent enabled"
     normaliser.normalise("/config web-search disabled") == "/config --web-search disabled"
   }
+
+  def "normalise rewrites direct shell commands"() {
+    given:
+    def normaliser = new CommandInputNormaliser(new ShellSettings(true))
+
+    expect:
+    normaliser.normalise("/! ls -la") == "/! --command \"ls -la\""
+    normaliser.normalise("/sh git status") == "/sh --command \"git status\""
+    normaliser.normalise("/! --command \"ls -la\"") == "/! --command \"ls -la\""
+    normaliser.normalise("/!") == "/!"
+    normaliser.normalise("/sh") == "/sh"
+  }
+
+  def "normalise escapes special characters in direct shell commands"() {
+    given:
+    def normaliser = new CommandInputNormaliser(new ShellSettings(true))
+
+    expect:
+    normaliser.normalise('''/! echo "test's value"''') == '''/! --command "echo \\"test's value\\""'''
+    normaliser.normalise('''/! echo "test\\value"''') == '''/! --command "echo \\"test\\\\value\\""'''
+    normaliser.normalise('''/! echo "line1
+line2"''') == '''/! --command "echo \\"line1
+line2\\""'''
+    normaliser.normalise('''/! echo "$HOME"''') == '''/! --command "echo \\"$HOME\\""'''
+    normaliser.normalise('''/! echo "`whoami`"''') == '''/! --command "echo \\"`whoami`\\""'''
+    normaliser.normalise('''/! echo "!bang"''') == '''/! --command "echo \\"!bang\\""'''
+  }
 }

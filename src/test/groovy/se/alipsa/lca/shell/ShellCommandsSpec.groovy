@@ -1132,6 +1132,125 @@ class ShellCommandsSpec extends Specification {
     output.contains("Output truncated")
   }
 
+  def "shellCommand streams output and updates conversation history"() {
+    given:
+    boolean listenerCalled = false
+    CommandRunner runner = Mock() {
+      1 * runStreaming("echo hi", 60000L, 8000, _ as CommandRunner.OutputListener) >> {
+        String cmd, long timeout, int maxChars, CommandRunner.OutputListener listener ->
+          listener.onLine("OUT", "hi")
+          listenerCalled = true
+          new CommandRunner.CommandResult(true, false, 0, "[OUT] hi", false, tempDir.resolve("run.log"))
+      }
+    }
+    ShellCommands shellCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      runner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("shell.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+
+    when:
+    String output = shellCommands.shellCommand("echo hi", "shell-session")
+
+    then:
+    output.contains("Exit: 0")
+    listenerCalled
+    sessionState.history("shell-session").contains("Shell command: echo hi")
+    sessionState.history("shell-session").any { it.contains("Exit 0; [OUT] hi") }
+    sessionState.getOrCreateConversation("shell-session").messages.any {
+      it.textContent?.contains("Shell command executed")
+    }
+  }
+
+  def "shellCommand returns policy block message"() {
+    given:
+    CommandRunner runner = Mock()
+    CommandPolicy policy = new CommandPolicy("", "echo*")
+    ShellCommands shellCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      runner,
+      policy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("shell.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+
+    when:
+    String output = shellCommands.shellCommand("echo hi", "shell-session")
+
+    then:
+    output == "Command blocked by denylist: echo*"
+    0 * runner._
+  }
+
+  def "shellCommand reports timeout and truncation"() {
+    given:
+    CommandRunner runner = Stub() {
+      runStreaming("long task", 60000L, 8000, _ as CommandRunner.OutputListener) >>
+        new CommandRunner.CommandResult(false, true, -1, "data", true, null)
+    }
+    ShellCommands shellCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      runner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("shell.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+
+    when:
+    String output = shellCommands.shellCommand("long task", "shell-session")
+
+    then:
+    output.contains("timed out")
+    output.contains("Output truncated")
+  }
+
   def "model command falls back when requested model missing"() {
     given:
     ModelRegistry fallbackRegistry = Stub() {

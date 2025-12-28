@@ -94,6 +94,10 @@ Do not execute any commands.
   private static final Set<String> WEB_SEARCH_DEFAULT_VALUES = Set.of("default", "reset", "auto")
   private static final int WEB_SEARCH_SUMMARY_LIMIT = 3
   private static final int WEB_SEARCH_SUMMARY_MAX_CHARS = 1200
+  private static final long DIRECT_SHELL_TIMEOUT_MILLIS = 60000L
+  private static final int DIRECT_SHELL_MAX_OUTPUT_CHARS = 8000
+  private static final int DIRECT_SHELL_SUMMARY_MAX_CHARS = 400
+  private static final int DIRECT_SHELL_CONVERSATION_MAX_CHARS = 2000
   private final CodingAssistantAgent codingAssistantAgent
   private final Ai ai
   private final AgentPlatform agentPlatform
@@ -204,6 +208,7 @@ Do not execute any commands.
   @ShellMethod(key = ["/help"], value = "Show available slash commands.")
   String help() {
     Map<String, String> commands = new LinkedHashMap<>()
+    commands.put("/!", "Execute a shell command directly (alias: /sh).")
     commands.put("/apply", "Apply a unified diff patch with confirmation.")
     commands.put("/applyBlocks", "Apply Search-and-Replace blocks to a file.")
     commands.put("/chat", "Send a prompt to the coding assistant.")
@@ -850,6 +855,44 @@ Do not execute any commands.
   }
 
   @ShellMethod(
+    key = ["/!", "/sh"],
+    value = "Execute a shell command directly with streaming output."
+  )
+  String shellCommand(
+    @ShellOption(help = "Command to execute (runs via bash -lc)") String command,
+    @ShellOption(defaultValue = DEFAULT_SESSION, help = "Session id for history logging") String session
+  ) {
+    // Intentionally no confirmation prompt to mirror a direct shell mode; rely on CommandPolicy for guardrails.
+    String trimmed = requireNonBlank(command, "command").trim()
+    CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
+    if (!decision.allowed) {
+      return decision.message ?: "Command blocked by policy."
+    }
+    CommandRunner.OutputListener listener = { String stream, String line ->
+      if ("ERR" == stream) {
+        System.err.println(line)
+        System.err.flush()
+      } else {
+        println(line)
+      }
+    } as CommandRunner.OutputListener
+    CommandRunner.CommandResult result = commandRunner.runStreaming(
+      trimmed,
+      DIRECT_SHELL_TIMEOUT_MILLIS,
+      DIRECT_SHELL_MAX_OUTPUT_CHARS,
+      listener
+    )
+    String summary = summarizeOutput(result?.output, 5, DIRECT_SHELL_SUMMARY_MAX_CHARS)
+    sessionState.appendHistory(
+      session,
+      "Shell command: ${trimmed}",
+      "Exit ${result?.timedOut ? 'timeout' : result?.exitCode}; ${summary}"
+    )
+    appendShellCommandToConversation(session, trimmed, result)
+    return formatDirectShellResult(trimmed, result)
+  }
+
+  @ShellMethod(
     key = ["/run"],
     value = "Execute a project command with timeout, truncation, and logging."
   )
@@ -861,10 +904,7 @@ Do not execute any commands.
     @ShellOption(defaultValue = "true", help = "Ask for confirmation before running") boolean confirm,
     @ShellOption(defaultValue = "false", help = "Set when the request originates from the agent") boolean agentRequested
   ) {
-    String trimmed = command != null ? command.trim() : ""
-    if (!trimmed) {
-      throw new IllegalArgumentException("Command must not be empty.")
-    }
+    String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
     if (!decision.allowed) {
       return decision.message ?: "Command blocked by policy."
@@ -1602,6 +1642,29 @@ ${rendered}
     builder.toString().stripTrailing()
   }
 
+  private static String formatDirectShellResult(String command, CommandRunner.CommandResult result) {
+    if (result == null) {
+      return "No command result."
+    }
+    StringBuilder builder = new StringBuilder()
+    builder.append("Command: ").append(command)
+    builder.append("\nExit: ")
+    if (result.timedOut) {
+      builder.append("timed out after ").append(DIRECT_SHELL_TIMEOUT_MILLIS).append(" ms")
+    } else {
+      builder.append(result.exitCode)
+    }
+    builder.append(result.success ? " (success)" : " (failed)")
+    if (result.truncated) {
+      builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
+    }
+    builder.append("\nOutput: streamed to console.")
+    if (result.logPath != null) {
+      builder.append("\nLog: ").append(result.logPath)
+    }
+    builder.toString().stripTrailing()
+  }
+
   private static String summarizeOutput(String output, int maxLines, int maxChars) {
     if (output == null || output.trim().isEmpty()) {
       return "no output"
@@ -1615,6 +1678,37 @@ ${rendered}
     }
     boolean shortened = lines.length > linesToTake || trimmed.length() > summary.length()
     shortened ? "${summary} ..." : summary
+  }
+
+  private void appendShellCommandToConversation(
+    String sessionId,
+    String command,
+    CommandRunner.CommandResult result
+  ) {
+    String sessionKey = sessionId ?: DEFAULT_SESSION
+    def conversation = sessionState.getOrCreateConversation(sessionKey)
+    StringBuilder builder = new StringBuilder()
+    builder.append("Shell command executed:\n")
+    builder.append('$ ').append(command)
+    builder.append("\nExit: ")
+    if (result == null) {
+      builder.append("unknown")
+      builder.append("\nOutput: no output")
+      conversation.addMessage(new UserMessage(builder.toString()))
+      return
+    }
+    if (result.timedOut) {
+      builder.append("timed out after ").append(DIRECT_SHELL_TIMEOUT_MILLIS).append(" ms")
+    } else {
+      builder.append(result.exitCode)
+    }
+    builder.append(result.success ? " (success)" : " (failed)")
+    if (result.truncated) {
+      builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
+    }
+    String outputSummary = summarizeOutput(result.output, 20, DIRECT_SHELL_CONVERSATION_MAX_CHARS)
+    builder.append("\nOutput:\n").append(outputSummary)
+    conversation.addMessage(new UserMessage(builder.toString()))
   }
 
   private Agent resolveAgent(String name) {
