@@ -14,6 +14,8 @@
 
 Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
 
+It requires at least 16 GB of free RAM to run comfortably.
+
 ## What this project is today
 - Interactive shell as the user interface with slash commands for chat, planning, code review, editing, git operations, and more. REST commands are also available.
 - Embabel agents for code crafting, review, planning and git operations with safety guardrails.
