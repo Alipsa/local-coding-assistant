@@ -137,6 +137,37 @@ class ShellCommandsSpec extends Specification {
     captured.systemPrompt == "extra system"
   }
 
+  def "plan uses planning format and architect persona"() {
+    given:
+    ChatRequest captured = null
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("plan output")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ChatRequest } as ChatRequest
+        chatProcess
+    }
+
+    when:
+    def response = commands.plan(
+      "Create a plan",
+      "s2",
+      PersonaMode.ARCHITECT,
+      null,
+      null,
+      null,
+      null,
+      null
+    )
+
+    then:
+    response == "plan output"
+    captured != null
+    captured.persona == PersonaMode.ARCHITECT
+    captured.responseFormat != null
+    captured.responseFormat.contains("numbered list")
+    captured.systemPrompt.contains("Available commands:")
+  }
+
   def "review uses review options and system prompt override"() {
     given:
     ReviewRequest captured = null

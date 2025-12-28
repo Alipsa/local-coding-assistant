@@ -10,4 +10,5 @@ class ChatRequest {
   PersonaMode persona
   LlmOptions options
   String systemPrompt
+  String responseFormat
 }

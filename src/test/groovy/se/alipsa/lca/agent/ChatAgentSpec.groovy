@@ -21,7 +21,7 @@ class ChatAgentSpec extends Specification {
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)
-    ChatRequest request = new ChatRequest(PersonaMode.CODER, LlmOptions.withModel("m"), "extra")
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, LlmOptions.withModel("m"), "extra", null)
 
     when:
     def reply = agent.respond(conversation, userMessage, request, ai)
@@ -30,5 +30,32 @@ class ChatAgentSpec extends Specification {
     reply.textContent == "ok"
     conversation.messages.any { it instanceof AssistantMessage && it.textContent == "ok" }
     1 * runner.withSystemPrompt({ String prompt -> prompt.contains("Additional system guidance: extra") }) >> runner
+  }
+
+  def "respond uses response format override when provided"() {
+    given:
+    PromptRunner runner = Mock()
+    Ai ai = Mock()
+    ai.withLlm(_ as LlmOptions) >> runner
+    runner.withPromptContributor(_) >> runner
+    runner.respond(_ as List) >> new AssistantMessage("ok")
+    ChatAgent agent = new ChatAgent(200)
+    def conversation = new InMemoryConversation()
+    def userMessage = new UserMessage("Hello")
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, LlmOptions.withModel("m"), "", "FORMAT ONLY")
+    String[] captured = new String[1]
+
+    when:
+    def reply = agent.respond(conversation, userMessage, request, ai)
+
+    then:
+    reply.textContent == "ok"
+    1 * runner.withSystemPrompt({ String prompt -> prompt.contains("FORMAT ONLY") }) >> { String prompt ->
+      captured[0] = prompt
+      runner
+    }
+    captured[0] != null
+    !captured[0].contains("Implementation:")
   }
 }

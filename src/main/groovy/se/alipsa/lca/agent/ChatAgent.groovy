@@ -22,6 +22,18 @@ import java.util.Objects
 class ChatAgent {
 
   private final int snippetWordCount
+  private static final String DEFAULT_RESPONSE_FORMAT = """
+Respond with:
+Plan:
+- short bullet list of steps rooted in the repository
+Implementation:
+```groovy
+// target-file-or-class
+// implementation
+```
+Notes:
+- risks, required configuration, and follow-up tasks
+""".stripIndent().trim()
 
   ChatAgent(@Value('${snippetWordCount:200}') int snippetWordCount) {
     this.snippetWordCount = snippetWordCount
@@ -38,7 +50,7 @@ class ChatAgent {
       conversation.addMessage(userMessage)
     }
     PersonaTemplate template = personaTemplate(request.persona)
-    String systemPrompt = buildSystemPrompt(template, request.systemPrompt)
+    String systemPrompt = buildSystemPrompt(template, request)
     LlmOptions options = request.options ?: LlmOptions.withDefaultLlm()
     AssistantMessage reply = ai
       .withLlm(options)
@@ -49,8 +61,10 @@ class ChatAgent {
     reply
   }
 
-  private String buildSystemPrompt(PersonaTemplate template, String systemPromptOverride) {
-    String extraSystem = systemPromptOverride?.trim()
+  private String buildSystemPrompt(PersonaTemplate template, ChatRequest request) {
+    String extraSystem = request?.systemPrompt?.trim()
+    String responseFormat = request?.responseFormat?.trim()
+    String formatBlock = responseFormat ?: DEFAULT_RESPONSE_FORMAT
     """
 You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
 Follow these rules:
@@ -62,17 +76,7 @@ Follow these rules:
 ${template.instructions}
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
-
-Respond with:
-Plan:
-- short bullet list of steps rooted in the repository
-Implementation:
-```groovy
-// target-file-or-class
-// implementation
-```
-Notes:
-- risks, required configuration, and follow-up tasks
+${formatBlock}
 """.stripIndent().trim()
   }
 

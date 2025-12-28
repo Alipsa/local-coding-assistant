@@ -48,6 +48,23 @@ class ShellCommandController {
     )
   }
 
+  @PostMapping(path = "/plan", consumes = MediaType.APPLICATION_JSON_VALUE)
+  String plan(@Valid @RequestBody PlanRequest request) {
+    String prompt = request.prompt
+    String session = request.session ?: "default"
+    PersonaMode persona = request.persona ?: PersonaMode.ARCHITECT
+    shellCommands.plan(
+      prompt,
+      session,
+      persona,
+      request.model,
+      request.temperature,
+      request.reviewTemperature,
+      request.maxTokens,
+      request.systemPrompt
+    )
+  }
+
   @PostMapping(path = "/review", consumes = MediaType.APPLICATION_JSON_VALUE)
   String review(@Valid @RequestBody ReviewRequest request) {
     String prompt = request.prompt
@@ -257,6 +274,20 @@ class ShellCommandController {
   @Canonical
   @CompileStatic
   static class ChatRequest {
+    @NotBlank
+    String prompt
+    String session
+    PersonaMode persona
+    String model
+    Double temperature
+    Double reviewTemperature
+    Integer maxTokens
+    String systemPrompt
+  }
+
+  @Canonical
+  @CompileStatic
+  static class PlanRequest {
     @NotBlank
     String prompt
     String session

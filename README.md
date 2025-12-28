@@ -65,6 +65,8 @@ Plain text input is treated as `/chat --prompt "<text>"`.
 
 - `/chat`: Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.
+- `/plan`: Generate a numbered plan of CLI commands. Options: `--persona`, `--session`, `--model`,
+  `--temperature`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
 - `/review`: Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
   `--min-severity`, `--no-color`, `--log-review`, `--security`, `--sast`, plus model/temperature overrides.
 - `/reviewlog`: Show recent review entries. Options: `--min-severity`, `--path-filter`, `--limit`,
@@ -110,6 +112,11 @@ Review flow:
 ```
 /review --paths src/main/groovy --prompt "Look for error handling and logging gaps"
 /reviewlog --min-severity MEDIUM --limit 3
+```
+
+Plan flow:
+```
+/plan --prompt "Review src/main/groovy and suggest improvements"
 ```
 
 Search + git flow:

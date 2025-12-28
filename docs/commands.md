@@ -19,6 +19,28 @@ Options:
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
 
+## plan (/plan)
+Create a numbered plan using CLI commands.
+
+Usage:
+`/plan --prompt "<text>"`
+
+Example:
+`/plan --prompt "Review src/main/groovy and suggest improvements"`
+
+Notes:
+- Outputs a numbered list where each step starts with a command and a short explanation.
+- No commands are executed; the output is for guidance only.
+
+Options:
+- `--session`: Session id for persisting options.
+- `--persona`: Persona mode (`CODER`, `ARCHITECT`, `REVIEWER`).
+- `--model`: Override model for the session.
+- `--temperature`: Override craft temperature.
+- `--review-temperature`: Override review temperature.
+- `--max-tokens`: Override max tokens.
+- `--system-prompt`: Extra system prompt guidance.
+
 ## review (/review)
 Request a structured review with findings and tests.
 

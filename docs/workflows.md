@@ -28,6 +28,17 @@ Notes:
 - Review output is sectioned and includes `Findings` and `Tests` sections.
 - The log stores the structured output without ANSI color codes.
 
+## Planning workflow
+1. Run `/plan` with a clear goal and any path hints.
+2. Follow the numbered steps manually, or refine the plan with another `/plan`.
+
+Example:
+`/plan --prompt "Review src/main/groovy and suggest improvements"`
+
+Notes:
+- Plans are guidance only; no commands are executed.
+- Each step begins with a command and a short explanation.
+
 ## Search and context workflow
 1. Use `/tree` to understand the project layout quickly.
 2. Use `/codesearch` for local ripgrep-powered search.

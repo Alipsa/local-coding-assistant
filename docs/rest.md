@@ -31,6 +31,12 @@ POST /api/cli/chat
 {"prompt":"Summarize the repo layout","persona":"ARCHITECT"}
 ```
 
+Plan:
+```
+POST /api/cli/plan
+{"prompt":"Review src/main/groovy and suggest improvements","persona":"ARCHITECT"}
+```
+
 Review:
 ```
 POST /api/cli/review

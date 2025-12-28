@@ -64,6 +64,23 @@ class ShellCommands {
   private static final Logger log = LoggerFactory.getLogger(ShellCommands)
   private static final String CHAT_AGENT_NAME = "lca-chat"
   private static final String REVIEW_AGENT_NAME = "lca-review"
+  private static final List<String> PLAN_COMMANDS = List.of(
+    "/chat",
+    "/plan",
+    "/review",
+    "/edit",
+    "/apply",
+    "/run",
+    "/gitapply",
+    "/git-push",
+    "/search"
+  )
+  private static final String PLAN_RESPONSE_FORMAT = """
+Respond with a numbered list only.
+Each step must start with a command from the allow-list and include a short explanation.
+Format: 1. /review src/main/groovy - Review code quality.
+Do not execute any commands.
+""".stripIndent().trim()
   private final CodingAssistantAgent codingAssistantAgent
   private final Ai ai
   private final AgentPlatform agentPlatform
@@ -197,13 +214,63 @@ class ShellCommands {
     def conversation = sessionState.getOrCreateConversation(session)
     UserMessage userMessage = new UserMessage(prompt)
     conversation.addMessage(userMessage)
-    ChatRequest request = new ChatRequest(persona, options, system)
+    ChatRequest request = new ChatRequest(persona, options, system, null)
     AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
+    if (fallbackNote != null) {
+      return fallbackNote + "\n" + replyText
+    }
+    replyText
+  }
+
+  @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands.")
+  String plan(
+    @ShellOption(help = "Planning request; multiline supported by quoting or paste mode") String prompt,
+    @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
+    @ShellOption(defaultValue = "ARCHITECT", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
+  ) {
+    requireNonBlank(prompt, "prompt")
+    String health = ensureOllamaHealth()
+    if (health != null) {
+      return health
+    }
+    ModelResolution resolution = resolveModel(model)
+    SessionSettings settings = sessionState.update(
+      session,
+      resolution.chosen,
+      temperature,
+      reviewTemperature,
+      maxTokens,
+      systemPrompt,
+      null
+    )
+    LlmOptions options = sessionState.craftOptions(settings)
+    String fallbackNote = resolution.fallbackUsed ? "Note: using fallback model ${resolution.chosen}." : null
+    String baseSystem = sessionState.systemPrompt(settings)
+    String planSystem = buildPlanSystemPrompt(baseSystem)
+    Agent agent = resolveAgent(CHAT_AGENT_NAME)
+    if (agent == null) {
+      return "Chat agent unavailable; ensure Embabel agents are enabled."
+    }
+    def conversation = sessionState.getOrCreateConversation(session)
+    UserMessage userMessage = new UserMessage(prompt)
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(persona, options, planSystem, PLAN_RESPONSE_FORMAT)
+    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    String replyText = reply?.textContent
+    if (replyText == null || replyText.trim().isEmpty()) {
+      return "No response generated."
+    }
+    sessionState.appendHistory(session, "User: ${prompt}", "Assistant (plan): ${replyText}")
     if (fallbackNote != null) {
       return fallbackNote + "\n" + replyText
     }
@@ -1204,6 +1271,18 @@ ${rendered}
   private static String formatSection(String title, String body) {
     String content = body ?: ""
     "=== ${title} ===\n${content}".stripTrailing()
+  }
+
+  private String buildPlanSystemPrompt(String baseSystemPrompt) {
+    StringBuilder builder = new StringBuilder()
+    if (baseSystemPrompt != null && baseSystemPrompt.trim()) {
+      builder.append(baseSystemPrompt.trim()).append("\n\n")
+    }
+    builder.append("You are a planning assistant for the local coding CLI.\n")
+    builder.append("Available commands: ").append(PLAN_COMMANDS.join(", ")).append(".\n")
+    builder.append("Propose a sequence of steps that matches the user's request.\n")
+    builder.append("Do not execute any commands.")
+    builder.toString()
   }
 
   private String buildSastBlock(boolean enabled, List<String> paths) {

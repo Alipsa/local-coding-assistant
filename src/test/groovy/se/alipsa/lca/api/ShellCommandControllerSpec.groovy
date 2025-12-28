@@ -38,6 +38,17 @@ class ShellCommandControllerSpec extends Specification {
     1 * commands.chat("hello", "default", PersonaMode.CODER, null, null, null, null, null) >> "ok"
   }
 
+  def "plan endpoint delegates with defaults"() {
+    when:
+    def response = mvc.perform(post("/api/cli/plan")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: "plan it"])))
+
+    then:
+    response.andExpect(status().isOk())
+    1 * commands.plan("plan it", "default", PersonaMode.ARCHITECT, null, null, null, null, null) >> "ok"
+  }
+
   def "review endpoint delegates with options"() {
     when:
     def response = mvc.perform(post("/api/cli/review")
@@ -136,5 +147,16 @@ class ShellCommandControllerSpec extends Specification {
     then:
     response.andExpect(status().isBadRequest())
     0 * commands.chat(_, _, _, _, _, _, _, _)
+  }
+
+  def "plan requires non-blank prompt"() {
+    when:
+    def response = mvc.perform(post("/api/cli/plan")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([prompt: " "])))
+
+    then:
+    response.andExpect(status().isBadRequest())
+    0 * commands.plan(_, _, _, _, _, _, _, _)
   }
 }
