@@ -21,16 +21,8 @@ Local-first coding assistant that runs on your machine and talks only to Ollama-
 - Helper scripts for launching the shell (`scripts/shell.sh`) and installing a DeepSeek model locally (`deepseek.sh`).
 - Documentation stub for Ollama setup (`docs/llm-docs.md`).
 
-## Getting started
-1. Install Java 21 and ensure the Ollama daemon is running.
-2. Pull a code-capable model. `./models.sh` will install the appropriate models.
-3. Start the interactive shell: `./scripts/shell.sh`. The script sets `AGENT_APPLICATION` and launches Spring Shell
-   with Embabel agents loaded.
-4. Begin adding agents and tools under `src/main/java/se/alipsa/lca` to shape the coding workflows
-   (editing, reviewing, searching, git operations).
-
 ## Launcher script (lca)
-If you want to run the latest release without building from source, download the launcher script from GitHub
+If you want to run the latest release, download the launcher script from GitHub
 Releases. The script stores the executable jar in `~/.local/lib`, starts it, and installs Ollama plus the default
 models when required.
 
@@ -145,6 +137,11 @@ assistant.intent.confidence-threshold=0.8
 - `/revert`: Restore from the latest patch backup. Options: `--dry-run`.
 - `/context`: Show targeted edit context. Options: `--start`, `--end`, `--symbol`, `--padding`.
 - `/tree`: Show repository tree (respects `.gitignore`). Options: `--depth`, `--dirs-only`, `--max-entries`.
+
+## Running from source
+1. Install Java 21 and maven 3.9.9 or later
+2. Pull a code-capable model. `./models.sh` will install the appropriate models.
+3. Start the interactive shell: `./scripts/shell.sh`. The script sets `AGENT_APPLICATION` and launches Spring Shell with Embabel agents loaded.
 
 ## Quickstart examples
 Full end-to-end flows are in `docs/quickstart.md`.
