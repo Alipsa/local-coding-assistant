@@ -17,7 +17,18 @@ class CommandInputNormaliserSpec extends Specification {
     def normaliser = new CommandInputNormaliser(new ShellSettings(true))
 
     expect:
-    normaliser.normalise("/help") == "help"
+    normaliser.normalise("/stacktrace") == "stacktrace"
+    normaliser.normalise("/clear") == "clear"
+    normaliser.normalise("/history") == "history"
+    normaliser.normalise("/script") == "script"
+  }
+
+  def "normalise keeps /help as a custom command"() {
+    given:
+    def normaliser = new CommandInputNormaliser(new ShellSettings(true))
+
+    expect:
+    normaliser.normalise("/help") == "/help"
   }
 
   def "normalise keeps /version as a custom command"() {
@@ -94,5 +105,7 @@ class CommandInputNormaliserSpec extends Specification {
     expect:
     normaliser.normalise("/config local-only false") == "/config --local-only false"
     normaliser.normalise("/config auto-paste true") == "/config --auto-paste true"
+    normaliser.normalise("/config intent enabled") == "/config --intent enabled"
+    normaliser.normalise("/config web-search disabled") == "/config --web-search disabled"
   }
 }

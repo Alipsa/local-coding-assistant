@@ -19,6 +19,7 @@ import org.springframework.lang.NonNull
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.WebSearchTool
+import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.CodeSearchTool
 
 import java.time.Instant
@@ -128,6 +129,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   private final WebSearchTool webSearchAgent
   private final CodeSearchTool codeSearchTool
   private final LocalOnlyState localOnlyState
+  private final SessionState sessionState
 
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
@@ -139,7 +141,8 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent,
     CodeSearchTool codeSearchTool,
-    LocalOnlyState localOnlyState
+    LocalOnlyState localOnlyState,
+    SessionState sessionState
   ) {
     this.snippetWordCount = snippetWordCount
     this.reviewWordCount = reviewWordCount
@@ -153,6 +156,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.webSearchAgent = webSearchAgent
     this.codeSearchTool = codeSearchTool
     this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
+    this.sessionState = Objects.requireNonNull(sessionState, "sessionState must not be null")
   }
 
   @AchievesGoal(
@@ -296,11 +300,18 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   @Action(description = "Search the web for a given query with options")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query, WebSearchTool.SearchOptions options) {
-    String sessionId = options?.sessionId
+    WebSearchTool.SearchOptions input = options ?: new WebSearchTool.SearchOptions()
+    String sessionId = input.sessionId
     if (localOnlyState.isLocalOnly(sessionId)) {
       return []
     }
-    WebSearchTool.SearchOptions resolved = WebSearchTool.withDefaults(options, webSearchEnabledDefault)
+    if (input.fetcherName == null) {
+      input.fetcherName = sessionState.getWebSearchFetcher(sessionId)
+    }
+    if (input.fallbackFetcherName == null) {
+      input.fallbackFetcherName = sessionState.getWebSearchFallbackFetcher(sessionId)
+    }
+    WebSearchTool.SearchOptions resolved = WebSearchTool.withDefaults(input, webSearchEnabledDefault)
     webSearchAgent.search(query, resolved)
   }
 

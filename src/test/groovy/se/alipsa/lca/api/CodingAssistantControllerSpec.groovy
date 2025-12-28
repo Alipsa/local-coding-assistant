@@ -25,7 +25,20 @@ class CodingAssistantControllerSpec extends Specification {
     appendToSystemPrompt(_) >> { String base -> base }
   }
   SessionState sessionState =
-    new SessionState("default-model", 0.7d, 0.35d, 0, "", true, "fallback", agentsMdProvider, new LocalOnlyState(false))
+    new SessionState(
+      "default-model",
+      0.7d,
+      0.35d,
+      0,
+      "",
+      true,
+      "htmlunit",
+      "jsoup",
+      600L,
+      "fallback",
+      agentsMdProvider,
+      new LocalOnlyState(false)
+    )
   LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean()
   MockMvc mvc
 

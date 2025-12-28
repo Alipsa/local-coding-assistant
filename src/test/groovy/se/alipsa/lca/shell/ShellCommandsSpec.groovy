@@ -6,13 +6,17 @@ import com.embabel.agent.core.Agent
 import com.embabel.agent.core.AgentPlatform
 import com.embabel.agent.core.AgentProcess
 import com.embabel.agent.core.ProcessOptions
+import com.embabel.agent.spi.ContextRepository
 import com.embabel.chat.AssistantMessage
+import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
 import se.alipsa.lca.agent.ChatRequest
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.agent.ReviewRequest
 import se.alipsa.lca.agent.ReviewResponse
+import se.alipsa.lca.intent.IntentRoutingSettings
+import se.alipsa.lca.intent.IntentRoutingState
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.GitTool
@@ -48,6 +52,9 @@ class ShellCommandsSpec extends Specification {
     0,
     "",
     true,
+    "htmlunit",
+    "jsoup",
+    600L,
     "fallback-model",
     agentsMdProvider,
     new LocalOnlyState(false)
@@ -73,7 +80,10 @@ class ShellCommandsSpec extends Specification {
     isModelAvailable(_) >> true
     checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
+  IntentRoutingState intentRoutingState = new IntentRoutingState()
+  IntentRoutingSettings intentRoutingSettings = new IntentRoutingSettings(true, "/edit")
   AgentPlatform agentPlatform = Mock()
+  ContextRepository contextRepository = Stub()
   ShellSettings shellSettings = new ShellSettings(true)
   Agent chatAgent = new Agent("lca-chat", "local", "1.0.0", "Chat agent", Set.of(), List.of(), Set.of())
   Agent reviewAgent = new Agent("lca-review", "local", "1.0.0", "Review agent", Set.of(), List.of(), Set.of())
@@ -101,10 +111,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("reviews.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
   }
 
@@ -171,6 +184,47 @@ class ShellCommandsSpec extends Specification {
     captured.systemPrompt.contains("Available commands:")
   }
 
+  def "plan includes recent web search summary in prompt"() {
+    given:
+    ChatRequest captured = null
+    UserMessage capturedUserMessage = null
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("plan output")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ChatRequest } as ChatRequest
+        capturedUserMessage = inputs.find { it instanceof UserMessage } as UserMessage
+        chatProcess
+    }
+    def results = [
+      new WebSearchTool.SearchResult("Result 1", "http://example.com", "Snippet 1")
+    ]
+
+    when:
+    commands.search("out of memory", 2, "s2", "duckduckgo", 15000L, true, null)
+    def response = commands.plan(
+      "Based on your investigation, suggest a plan.",
+      "s2",
+      PersonaMode.ARCHITECT,
+      null,
+      null,
+      null,
+      null,
+      null
+    )
+
+    then:
+    1 * agent.search("out of memory", { WebSearchTool.SearchOptions opts ->
+      opts.sessionId == "s2" &&
+      opts.fetcherName == "htmlunit" &&
+      opts.fallbackFetcherName == "jsoup"
+    }) >> results
+    response == "plan output"
+    captured != null
+    capturedUserMessage != null
+    capturedUserMessage.textContent.contains("Recent investigation context:")
+    capturedUserMessage.textContent.contains("Web search results for \"out of memory\"")
+  }
+
   def "review uses review options and system prompt override"() {
     given:
     ReviewRequest captured = null
@@ -217,6 +271,44 @@ class ShellCommandsSpec extends Specification {
     captured.systemPrompt == "system"
   }
 
+  def "chat ensures a context exists when session id is provided"() {
+    given:
+    ContextRepository repo = Mock()
+    AgentPlatform platform = agentPlatform
+    ShellCommands withRepo = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      platform,
+      repo,
+      tempDir.resolve("reviews-context.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("context response")
+    platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
+
+    when:
+    def response = withRepo.chat("Hello", "context-session", PersonaMode.CODER, null, null, null, null, null)
+
+    then:
+    response == "context response"
+    1 * repo.findById("context-session") >> null
+    1 * repo.save({ it instanceof com.embabel.agent.spi.support.SimpleContext && it.id == "context-session" })
+  }
+
   def "paste can forward content to chat"() {
     given:
     chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("assistant response")
@@ -243,7 +335,9 @@ class ShellCommandsSpec extends Specification {
     1 * agent.search("query", { WebSearchTool.SearchOptions opts ->
       opts.limit == 1 &&
       opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
-      opts.webSearchEnabled
+      opts.webSearchEnabled &&
+      opts.fetcherName == "htmlunit" &&
+      opts.fallbackFetcherName == "jsoup"
     }) >> results
     out.contains("=== Web Search ===")
     out.contains("Results: 2")
@@ -268,6 +362,9 @@ class ShellCommandsSpec extends Specification {
       0,
       "",
       true,
+      "htmlunit",
+      "jsoup",
+      600L,
       "fallback-model",
       agentsMdProvider,
       new LocalOnlyState(true)
@@ -286,10 +383,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("reviews-local.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     def results = [new WebSearchTool.SearchResult("T1", "http://example.com", "S1")]
     InputStream originalIn = System.in
@@ -302,7 +402,9 @@ class ShellCommandsSpec extends Specification {
     1 * agent.search("query", { WebSearchTool.SearchOptions opts ->
       opts.limit == 1 &&
       opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
-      opts.webSearchEnabled
+      opts.webSearchEnabled &&
+      opts.fetcherName == "htmlunit" &&
+      opts.fallbackFetcherName == "jsoup"
     }) >> results
     out.contains("=== Web Search ===")
     !localState.isLocalOnly("default")
@@ -422,10 +524,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("other.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -502,10 +607,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("reviews.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected java.time.Instant nowInstant() {
@@ -546,10 +654,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("commit.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -626,10 +737,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("stage.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -662,10 +776,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("stage.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     staging.configureBatchMode(true, false)
 
@@ -695,10 +812,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("stage.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       ConfirmChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
@@ -735,10 +855,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("status.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -777,10 +900,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("sast.log").toString(),
       null,
       sastTool,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
     method.accessible = true
@@ -814,10 +940,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("diff.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -848,10 +977,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("apply.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -891,10 +1023,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("push.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -936,10 +1071,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("runReviews.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -977,10 +1115,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("run2.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -1011,10 +1152,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       fallbackRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("model.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -1046,10 +1190,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       downRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("health.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     expect:
@@ -1072,10 +1219,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("version.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     expect:
@@ -1087,21 +1237,23 @@ class ShellCommandsSpec extends Specification {
 
   def "config reports and updates auto-paste"() {
     when:
-    def initial = commands.config(null, null)
+    def initial = commands.config(null, null, null, null, null, null)
 
     then:
     initial.contains("=== Configuration ===")
     initial.contains("Auto-paste: enabled")
     initial.contains("Local-only: disabled")
+    initial.contains("web-search: htmlunit (fallback jsoup)")
+    initial.contains("Intent routing: enabled")
 
     when:
-    def disabled = commands.config(false, null)
+    def disabled = commands.config(false, null, null, null, null, null)
 
     then:
     disabled.contains("Auto-paste: disabled")
 
     when:
-    def enabled = commands.config(true, null)
+    def enabled = commands.config(true, null, null, null, null, null)
 
     then:
     enabled.contains("Auto-paste: enabled")
@@ -1109,16 +1261,80 @@ class ShellCommandsSpec extends Specification {
 
   def "config updates local-only for the session"() {
     when:
-    def enabled = commands.config(null, true)
+    def enabled = commands.config(null, true, null, null, null, null)
 
     then:
     enabled.contains("Local-only: enabled")
 
     when:
-    def disabled = commands.config(null, false)
+    def disabled = commands.config(null, false, null, null, null, null)
 
     then:
     disabled.contains("Local-only: disabled")
+  }
+
+  def "config updates web search fetchers for the session"() {
+    when:
+    def updated = commands.config(null, null, "jsoup", null, null, null)
+
+    then:
+    updated.contains("web-search: jsoup (fallback htmlunit)")
+  }
+
+  def "config disables web search for the session"() {
+    when:
+    def updated = commands.config(null, null, "disabled", null, null, null)
+
+    then:
+    updated.contains("web-search: disabled")
+    !sessionState.isWebSearchDesired("default")
+  }
+
+  def "config updates intent routing for the session"() {
+    when:
+    def disabled = commands.config(null, null, null, null, null, "disabled")
+
+    then:
+    disabled.contains("Intent routing: disabled")
+    intentRoutingState.enabledOverride == Boolean.FALSE
+
+    when:
+    def enabled = commands.config(null, null, null, null, null, "enabled")
+
+    then:
+    enabled.contains("Intent routing: enabled")
+    intentRoutingState.enabledOverride == Boolean.TRUE
+
+    when:
+    def reset = commands.config(null, null, null, null, null, "default")
+
+    then:
+    reset.contains("Intent routing: enabled")
+    intentRoutingState.enabledOverride == null
+  }
+
+  def "help lists commands alphabetically and includes config options"() {
+    when:
+    String output = commands.help()
+    List<String> commandLines = output.readLines().findAll { String line ->
+      line.startsWith("- /")
+    }
+    List<String> listed = commandLines.collect { String line ->
+      line.split(":")[0].substring(2)
+    }
+    List<String> sorted = new ArrayList<>(listed)
+    sorted.sort()
+
+    then:
+    output.contains("=== Help ===")
+    output.contains("Config options (/config):")
+    output.contains("- intent: enabled|disabled|default")
+    output.contains("- web-search: htmlunit|jsoup|disabled|default")
+    listed == sorted
+    !output.contains("/clear")
+    !output.contains("/history")
+    !output.contains("/stacktrace")
+    !output.contains("/script")
   }
 
   def "tree formats repository output"() {
@@ -1147,10 +1363,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("tree.log").toString(),
       treeTool,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
 
     when:
@@ -1176,10 +1395,13 @@ class ShellCommandsSpec extends Specification {
       commandPolicy,
       modelRegistry,
       agentPlatform,
+      contextRepository,
       tempDir.resolve("commit.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
     )
   }
 }

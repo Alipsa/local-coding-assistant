@@ -27,6 +27,9 @@ class ResolveModelSpec extends Specification {
     0,
     "",
     true,
+    "htmlunit",
+    "jsoup",
+    600L,
     "fallback-model",
     agentsMdProvider,
     new LocalOnlyState(false)
@@ -144,13 +147,16 @@ class ResolveModelSpec extends Specification {
         budgetManager,
         runner,
         commandPolicy,
-      registry,
-      agentPlatform,
-      ".",
-      null,
-      null,
-      new ShellSettings(true)
-    )
+        registry,
+        agentPlatform,
+        null,
+        ".",
+        null,
+        null,
+        new ShellSettings(true),
+        null,
+        null
+      )
+    }
   }
-}
 }

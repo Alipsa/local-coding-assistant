@@ -22,7 +22,6 @@ class IntentRoutingCommands {
 
   private static final Set<String> ON_VALUES = Set.of("on", "enable", "enabled", "true", "yes", "y")
   private static final Set<String> OFF_VALUES = Set.of("off", "disable", "disabled", "false", "no", "n")
-  private static final Set<String> DEFAULT_VALUES = Set.of("default", "reset", "auto")
 
   IntentRoutingCommands(
     IntentCommandRouter router,
@@ -41,32 +40,6 @@ class IntentRoutingCommands {
     }
     IntentRoutingPlan plan = router.route(prompt)
     IntentRoutingFormatter.format(plan)
-  }
-
-  @ShellMethod(key = ["/intent"], value = "Enable or disable natural language routing for this session.")
-  String intent(
-    @ShellOption(defaultValue = ShellOption.NULL, help = "on, off, or default") String mode
-  ) {
-    if (routingState == null) {
-      return "Intent routing state is unavailable."
-    }
-    if (mode == null || mode.trim().isEmpty()) {
-      return formatRoutingStatus()
-    }
-    String normalised = mode.trim().toLowerCase(Locale.UK)
-    if (ON_VALUES.contains(normalised)) {
-      routingState.setEnabledOverride(true)
-      return formatRoutingStatus()
-    }
-    if (OFF_VALUES.contains(normalised)) {
-      routingState.setEnabledOverride(false)
-      return formatRoutingStatus()
-    }
-    if (DEFAULT_VALUES.contains(normalised)) {
-      routingState.clearEnabledOverride()
-      return formatRoutingStatus()
-    }
-    throw new IllegalArgumentException("Unknown mode '${mode}'. Use on, off, or default.")
   }
 
   @ShellMethod(key = ["/intent-debug"], value = "Toggle intent routing debug output for this session.")
@@ -89,14 +62,6 @@ class IntentRoutingCommands {
       return formatDebugStatus()
     }
     throw new IllegalArgumentException("Unknown mode '${mode}'. Use on or off.")
-  }
-
-  private String formatRoutingStatus() {
-    Boolean override = routingState.getEnabledOverride()
-    boolean enabled = routingState.isEnabled(routingSettings)
-    String source = override == null ? "configuration" : "session override"
-    String state = enabled ? "enabled" : "disabled"
-    "Intent routing is ${state} (${source})."
   }
 
   private String formatDebugStatus() {

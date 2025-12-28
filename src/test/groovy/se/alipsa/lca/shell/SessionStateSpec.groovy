@@ -5,6 +5,8 @@ import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.LocalOnlyState
 import spock.lang.Specification
 
+import java.time.Instant
+
 class SessionStateSpec extends Specification {
 
   AgentsMdProvider agentsMdProvider = Stub() {
@@ -17,6 +19,9 @@ class SessionStateSpec extends Specification {
     0,
     "",
     true,
+    "htmlunit",
+    "jsoup",
+    600L,
     "fallback",
     agentsMdProvider,
     new LocalOnlyState(false)
@@ -65,6 +70,9 @@ class SessionStateSpec extends Specification {
       0,
       "base",
       false,
+      "htmlunit",
+      "jsoup",
+      600L,
       "fallback",
       agentsMdProvider,
       new LocalOnlyState(false)
@@ -86,6 +94,9 @@ class SessionStateSpec extends Specification {
       0,
       "",
       false,
+      "htmlunit",
+      "jsoup",
+      600L,
       "fallback",
       agentsMdProvider,
       new LocalOnlyState(false)
@@ -108,6 +119,9 @@ class SessionStateSpec extends Specification {
       0,
       "",
       true,
+      "htmlunit",
+      "jsoup",
+      600L,
       "fallback",
       agentsMdProvider,
       new LocalOnlyState(true)
@@ -127,6 +141,9 @@ class SessionStateSpec extends Specification {
       0,
       "",
       true,
+      "htmlunit",
+      "jsoup",
+      600L,
       "fallback",
       agentsMdProvider,
       new LocalOnlyState(true)
@@ -140,6 +157,18 @@ class SessionStateSpec extends Specification {
     localOnly.isWebSearchEnabled("s1")
   }
 
+  def "web search fetcher overrides apply per session"() {
+    when:
+    state.setWebSearchFetcherOverride("s1", "jsoup")
+    state.setWebSearchFallbackFetcherOverride("s1", "none")
+
+    then:
+    state.getWebSearchFetcher("s1") == "jsoup"
+    state.getWebSearchFallbackFetcher("s1") == "none"
+    state.getWebSearchFetcher("other") == "htmlunit"
+    state.getWebSearchFallbackFetcher("other") == "jsoup"
+  }
+
   def "conversation is stored per session"() {
     when:
     def first = state.getOrCreateConversation("s1")
@@ -150,5 +179,37 @@ class SessionStateSpec extends Specification {
     first.is(second)
     !first.is(other)
     first.id == "s1"
+  }
+
+  def "recent tool summary honours ttl"() {
+    given:
+    def ttlState = new SessionState(
+      "default-model",
+      0.7d,
+      0.35d,
+      0,
+      "",
+      true,
+      "htmlunit",
+      "jsoup",
+      2L,
+      "fallback",
+      agentsMdProvider,
+      new LocalOnlyState(false)
+    )
+    def expired = new SessionState.ToolSummary("web-search", "Old", Instant.now().minusSeconds(5))
+    def fresh = new SessionState.ToolSummary("web-search", "Fresh", Instant.now())
+
+    when:
+    ttlState.storeToolSummary("s1", expired)
+
+    then:
+    ttlState.getRecentToolSummary("s1") == null
+
+    when:
+    ttlState.storeToolSummary("s1", fresh)
+
+    then:
+    ttlState.getRecentToolSummary("s1").summary == "Fresh"
   }
 }

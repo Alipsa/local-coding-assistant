@@ -78,10 +78,10 @@ assistant.intent.confidence-threshold=0.8
 
 - `/chat`: Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.
+- `/config`: Update session settings (auto-paste, local-only, web-search, intent routing).
 - `/plan`: Generate a numbered plan of CLI commands. Options: `--persona`, `--session`, `--model`,
   `--temperature`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
 - `/route`: Preview intent routing output without executing commands.
-- `/intent`: Enable or disable routing for the current session.
 - `/intent-debug`: Print routing JSON and planned commands without executing.
 - `/review`: Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
   `--min-severity`, `--no-color`, `--log-review`, `--security`, `--sast`, plus model/temperature overrides.
@@ -100,6 +100,7 @@ assistant.intent.confidence-threshold=0.8
 - `/stage`: Stage files or hunks. Options: `--paths`, `--file`, `--hunks`, `--confirm`.
 - `/commit-suggest`: Draft a commit message. Options: `--session`, `--model`, `--temperature`,
   `--max-tokens`, `--hint`, `--secret-scan`, `--allow-secrets`.
+- `/help`: Show available slash commands and `/config` options.
 - `/git-push`: Push with confirmation. Options: `--force`.
 - `/model`: List or set models. Options: `--list`, `--set`, `--session`.
 - `/health`: Check Ollama connectivity.

@@ -7,6 +7,7 @@ import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.LocalOnlyState
+import se.alipsa.lca.shell.SessionState
 import spock.lang.Specification
 
 class CodingAssistantAgentSpec extends Specification {
@@ -14,6 +15,10 @@ class CodingAssistantAgentSpec extends Specification {
   FileEditingTool fileEditingTool = Mock(FileEditingTool)
   CodeSearchTool codeSearchTool = Mock(CodeSearchTool)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
+  SessionState sessionState = Stub(SessionState) {
+    getWebSearchFetcher(_) >> "htmlunit"
+    getWebSearchFallbackFetcher(_) >> "jsoup"
+  }
   CodingAssistantAgent agent = new CodingAssistantAgent(
     220,
     180,
@@ -24,7 +29,8 @@ class CodingAssistantAgentSpec extends Specification {
     fileEditingTool,
     webSearchTool,
     codeSearchTool,
-    new LocalOnlyState(false)
+    new LocalOnlyState(false),
+    sessionState
   )
 
   def "craftCode builds a repository-aware plan and output format"() {
@@ -265,7 +271,8 @@ class CodingAssistantAgentSpec extends Specification {
       fileEditingTool,
       searchTool,
       codeSearchTool,
-      new LocalOnlyState(true)
+      new LocalOnlyState(true),
+      sessionState
     )
 
     when:

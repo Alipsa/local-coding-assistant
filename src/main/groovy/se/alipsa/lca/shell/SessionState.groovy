@@ -10,7 +10,9 @@ import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.LocalOnlyState
 
+import java.time.Instant
 import java.util.ArrayList
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.Objects
@@ -22,12 +24,16 @@ class SessionState {
   private final Map<String, SessionSettings> sessions = new ConcurrentHashMap<>()
   private final Map<String, List<String>> history = new ConcurrentHashMap<>()
   private final Map<String, Conversation> conversations = new ConcurrentHashMap<>()
+  private final Map<String, ToolSummary> toolSummaries = new ConcurrentHashMap<>()
   private final String defaultModel
   private final double defaultCraftTemperature
   private final double defaultReviewTemperature
   private final Integer defaultMaxTokens
   private final String defaultSystemPrompt
   private final boolean defaultWebSearchEnabled
+  private final String defaultWebSearchFetcher
+  private final String defaultWebSearchFallbackFetcher
+  private final long toolSummaryTtlSeconds
   private final String fallbackModel
   private final AgentsMdProvider agentsMdProvider
   private final LocalOnlyState localOnlyState
@@ -39,6 +45,9 @@ class SessionState {
     @Value('${assistant.llm.max-tokens:0}') Integer defaultMaxTokens,
     @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
     @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled,
+    @Value('${assistant.web-search.fetcher:htmlunit}') String defaultWebSearchFetcher,
+    @Value('${assistant.web-search.fallback-fetcher:jsoup}') String defaultWebSearchFallbackFetcher,
+    @Value('${assistant.tool-summary.ttl-seconds:600}') long toolSummaryTtlSeconds,
     @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel,
     AgentsMdProvider agentsMdProvider,
     LocalOnlyState localOnlyState
@@ -49,6 +58,9 @@ class SessionState {
     this.defaultMaxTokens = defaultMaxTokens
     this.defaultSystemPrompt = defaultSystemPrompt
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
+    this.defaultWebSearchFetcher = normaliseFetcherName(defaultWebSearchFetcher, "htmlunit")
+    this.defaultWebSearchFallbackFetcher = normaliseFetcherName(defaultWebSearchFallbackFetcher, "jsoup")
+    this.toolSummaryTtlSeconds = toolSummaryTtlSeconds > 0 ? toolSummaryTtlSeconds : 600L
     this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
     this.agentsMdProvider = Objects.requireNonNull(agentsMdProvider, "agentsMdProvider must not be null")
     this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
@@ -65,7 +77,7 @@ class SessionState {
   ) {
     String key = sessionId ?: "default"
     sessions.compute(key) { _, existing ->
-      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null, null)
+      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null, null, null, null)
       new SessionSettings(
         key,
         model != null ? model : current.model,
@@ -73,7 +85,9 @@ class SessionState {
         reviewTemperature != null ? reviewTemperature : current.reviewTemperature,
         maxTokens != null ? maxTokens : current.maxTokens,
         systemPrompt != null ? systemPrompt : current.systemPrompt,
-        webSearchEnabled != null ? webSearchEnabled : current.webSearchEnabled
+        webSearchEnabled != null ? webSearchEnabled : current.webSearchEnabled,
+        current.webSearchFetcher,
+        current.webSearchFallbackFetcher
       )
     }
   }
@@ -81,7 +95,7 @@ class SessionState {
   SessionSettings getOrCreate(String sessionId) {
     String key = sessionId ?: "default"
     sessions.computeIfAbsent(key) {
-      new SessionSettings(it, null, null, null, null, null, null)
+      new SessionSettings(it, null, null, null, null, null, null, null, null)
     }
   }
 
@@ -125,6 +139,29 @@ class SessionState {
     }
   }
 
+  void storeToolSummary(String sessionId, ToolSummary summary) {
+    if (summary == null || summary.summary == null || summary.summary.trim().isEmpty()) {
+      return
+    }
+    toolSummaries.put(normaliseSession(sessionId), summary)
+  }
+
+  ToolSummary getLastToolSummary(String sessionId) {
+    toolSummaries.get(normaliseSession(sessionId))
+  }
+
+  ToolSummary getRecentToolSummary(String sessionId) {
+    ToolSummary summary = getLastToolSummary(sessionId)
+    if (summary == null) {
+      return null
+    }
+    if (summary.timestamp == null || toolSummaryTtlSeconds <= 0) {
+      return summary
+    }
+    Instant cutoff = Instant.now().minusSeconds(toolSummaryTtlSeconds)
+    summary.timestamp.isBefore(cutoff) ? null : summary
+  }
+
   boolean isWebSearchEnabled(String sessionId) {
     SessionSettings settings = getOrCreate(sessionId)
     Boolean desired = settings.webSearchEnabled != null ? settings.webSearchEnabled : defaultWebSearchEnabled
@@ -145,6 +182,72 @@ class SessionState {
 
   boolean isLocalOnly(String sessionId) {
     localOnlyState.isLocalOnly(sessionId)
+  }
+
+  String getWebSearchFetcher(String sessionId) {
+    SessionSettings settings = getOrCreate(sessionId)
+    settings.webSearchFetcher ?: defaultWebSearchFetcher
+  }
+
+  String getWebSearchFallbackFetcher(String sessionId) {
+    SessionSettings settings = getOrCreate(sessionId)
+    settings.webSearchFallbackFetcher ?: defaultWebSearchFallbackFetcher
+  }
+
+  void setWebSearchFetcherOverride(String sessionId, String fetcherName) {
+    String key = sessionId ?: "default"
+    String resolved = normaliseFetcherOverride(fetcherName)
+    sessions.compute(key) { _, existing ->
+      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null, null, null, null)
+      new SessionSettings(
+        key,
+        current.model,
+        current.craftTemperature,
+        current.reviewTemperature,
+        current.maxTokens,
+        current.systemPrompt,
+        current.webSearchEnabled,
+        resolved,
+        current.webSearchFallbackFetcher
+      )
+    }
+  }
+
+  void setWebSearchEnabledOverride(String sessionId, Boolean enabled) {
+    String key = sessionId ?: "default"
+    sessions.compute(key) { _, existing ->
+      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null, null, null, null)
+      new SessionSettings(
+        key,
+        current.model,
+        current.craftTemperature,
+        current.reviewTemperature,
+        current.maxTokens,
+        current.systemPrompt,
+        enabled,
+        current.webSearchFetcher,
+        current.webSearchFallbackFetcher
+      )
+    }
+  }
+
+  void setWebSearchFallbackFetcherOverride(String sessionId, String fetcherName) {
+    String key = sessionId ?: "default"
+    String resolved = normaliseFetcherOverride(fetcherName)
+    sessions.compute(key) { _, existing ->
+      SessionSettings current = existing ?: new SessionSettings(key, null, null, null, null, null, null, null, null)
+      new SessionSettings(
+        key,
+        current.model,
+        current.craftTemperature,
+        current.reviewTemperature,
+        current.maxTokens,
+        current.systemPrompt,
+        current.webSearchEnabled,
+        current.webSearchFetcher,
+        resolved
+      )
+    }
   }
 
   Boolean getLocalOnlyOverride(String sessionId) {
@@ -174,6 +277,41 @@ class SessionState {
     options
   }
 
+  private static String normaliseFetcherName(String value, String fallback) {
+    if (value == null) {
+      return fallback
+    }
+    String trimmed = value.trim()
+    if (!trimmed) {
+      return fallback
+    }
+    trimmed.toLowerCase(Locale.ROOT)
+  }
+
+  private static String normaliseFetcherOverride(String value) {
+    if (value == null) {
+      return null
+    }
+    String trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+    String normalised = trimmed.toLowerCase(Locale.ROOT)
+    normalised == "default" ? null : normalised
+  }
+
+  private static String normaliseSession(String sessionId) {
+    sessionId != null && sessionId.trim() ? sessionId.trim() : "default"
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ToolSummary {
+    String source
+    String summary
+    Instant timestamp
+  }
+
   @Canonical
   @CompileStatic
   static class SessionSettings {
@@ -184,5 +322,7 @@ class SessionState {
     Integer maxTokens
     String systemPrompt
     Boolean webSearchEnabled
+    String webSearchFetcher
+    String webSearchFallbackFetcher
   }
 }

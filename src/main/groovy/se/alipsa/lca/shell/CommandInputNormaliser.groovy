@@ -12,12 +12,16 @@ class CommandInputNormaliser {
   private static final String CONFIG_COMMAND = "/config"
   private final ShellSettings shellSettings
   private static final Set<String> BUILTIN_COMMANDS = Set.of(
-    "help",
     "clear",
     "history",
     "stacktrace",
-    "script",
-    "completion"
+    "script"
+  )
+  private static final Set<String> CONFIG_SHORTHAND_KEYS = Set.of(
+    "auto-paste",
+    "local-only",
+    "web-search",
+    "intent"
   )
 
   CommandInputNormaliser(ShellSettings shellSettings) {
@@ -91,7 +95,7 @@ class CommandInputNormaliser {
       return null
     }
     String key = parts[1]
-    if (key != "auto-paste" && key != "local-only") {
+    if (!CONFIG_SHORTHAND_KEYS.contains(key)) {
       return null
     }
     String value = parts[2]

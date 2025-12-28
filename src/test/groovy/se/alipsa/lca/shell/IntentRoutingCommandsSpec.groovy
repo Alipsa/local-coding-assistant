@@ -7,34 +7,6 @@ import spock.lang.Specification
 
 class IntentRoutingCommandsSpec extends Specification {
 
-  def "intent toggles routing state"() {
-    given:
-    IntentRoutingState state = new IntentRoutingState()
-    IntentRoutingSettings settings = new IntentRoutingSettings(true, "/edit")
-    IntentRoutingCommands commands = new IntentRoutingCommands(Stub(IntentCommandRouter), state, settings)
-
-    when:
-    String off = commands.intent("off")
-
-    then:
-    off.contains("disabled")
-    state.enabledOverride == Boolean.FALSE
-
-    when:
-    String on = commands.intent("on")
-
-    then:
-    on.contains("enabled")
-    state.enabledOverride == Boolean.TRUE
-
-    when:
-    String reset = commands.intent("default")
-
-    then:
-    reset.contains("enabled")
-    state.enabledOverride == null
-  }
-
   def "intent debug toggles state"() {
     given:
     IntentRoutingState state = new IntentRoutingState()

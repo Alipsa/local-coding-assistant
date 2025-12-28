@@ -60,7 +60,8 @@ Notes:
 - Routed commands run in interactive mode only; batch mode is unchanged.
 - Destructive commands still require confirmation.
 - Use `/route` to preview routing without executing commands.
-- Use `/intent off` to disable routing for the current session.
+- Use `/config intent disabled` to disable routing for the current session.
+- Use `/config intent enabled` to re-enable routing for the current session.
 - Use `/intent-debug on` to show routing JSON without execution.
 - Routing can be toggled with `assistant.intent.enabled` and tuned via `assistant.intent.*` settings.
 
@@ -73,6 +74,8 @@ Notes:
 Notes:
 - Search output includes counts and result numbering.
 - Web search can be disabled at the session or request level.
+- Use `/config web-search disabled` to disable web search for the current session.
+- Use `/config web-search htmlunit` or `/config web-search jsoup` to set the primary fetcher.
 
 ## Git workflow
 1. Check repository state with `/status`.

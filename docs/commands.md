@@ -38,15 +38,28 @@ Options:
 View or update shell settings.
 
 Usage:
-`/config [--auto-paste <true|false>] [--local-only <true|false>]`
+`/config [--auto-paste <true|false>] [--local-only <true|false>] [--web-search <mode>] [--intent <mode>]`
 
 Examples:
 `/config`
 `/config --local-only false`
+`/config --web-search htmlunit`
+`/config --web-search disabled`
+`/config --intent disabled`
 `/config local-only false`
+`/config intent enabled`
 
 Notes:
 - `local-only` applies to the current session and can be toggled without editing config files.
+- `web-search` accepts `htmlunit`, `jsoup`, `disabled`, or `default`.
+- `intent` accepts `enabled`, `disabled`, or `default`.
+- Output shows `web-search: <primary> (fallback <secondary>)` or `web-search: disabled`.
+
+## help (/help)
+Show available slash commands and config options.
+
+Usage:
+`/help`
 
 ## plan (/plan)
 Create a numbered plan using CLI commands.
@@ -80,15 +93,6 @@ Notes:
 - This command does not execute any commands.
 - Useful for debugging or verifying routing behaviour.
 
-## intent (/intent)
-Enable or disable natural language routing for this session.
-
-Usage:
-`/intent [on|off|default]`
-
-Notes:
-- `default` clears the session override and returns to configuration settings.
-
 ## intent-debug (/intent-debug)
 Toggle routing debug output without executing commands.
 
@@ -98,6 +102,7 @@ Usage:
 Notes:
 - When enabled, routed input prints the router JSON and suggested commands.
 - No commands are executed while debug mode is enabled.
+- Use `/config --intent disabled` to disable routing for the current session.
 
 ## review (/review)
 Request a structured review with findings and tests.

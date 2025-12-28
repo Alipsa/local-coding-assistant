@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.WebSearchTool
+
+import java.time.Instant
 
 @RestController
 @RequestMapping("/api/search")
@@ -21,16 +24,21 @@ import se.alipsa.lca.tools.WebSearchTool
 @CompileStatic
 class WebSearchController {
 
+  private static final int WEB_SEARCH_SUMMARY_LIMIT = 3
+  private static final int WEB_SEARCH_SUMMARY_MAX_CHARS = 1200
   private final WebSearchTool webSearchAgent
+  private final SessionState sessionState
   private final boolean webSearchEnabledDefault
   private final boolean localOnly
 
   WebSearchController(
     WebSearchTool webSearchAgent,
+    SessionState sessionState,
     @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,
     @Value('${assistant.local-only:true}') boolean localOnly
   ) {
     this.webSearchAgent = webSearchAgent
+    this.sessionState = sessionState
     this.webSearchEnabledDefault = webSearchEnabledDefault
     this.localOnly = localOnly
   }
@@ -40,6 +48,7 @@ class WebSearchController {
     if (localOnly) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Request not permitted.")
     }
+    String sessionId = request.session != null && request.session.trim() ? request.session.trim() : "default"
     boolean defaultEnabled = webSearchEnabledDefault
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
@@ -47,11 +56,20 @@ class WebSearchController {
         limit: request.limit,
         headless: request.headless,
         timeoutMillis: request.timeoutMillis,
+        sessionId: sessionId,
         webSearchEnabled: request.enabled
       ),
       defaultEnabled
     )
-    webSearchAgent.search(request.query, options)
+    List<WebSearchTool.SearchResult> results = webSearchAgent.search(request.query, options)
+    String summary = WebSearchTool.summariseResults(
+      request.query,
+      results,
+      WEB_SEARCH_SUMMARY_LIMIT,
+      WEB_SEARCH_SUMMARY_MAX_CHARS
+    )
+    sessionState.storeToolSummary(sessionId, new SessionState.ToolSummary("web-search", summary, Instant.now()))
+    results
   }
 
   @Canonical
@@ -71,5 +89,6 @@ class WebSearchController {
 
     boolean headless = true
     Boolean enabled
+    String session
   }
 }

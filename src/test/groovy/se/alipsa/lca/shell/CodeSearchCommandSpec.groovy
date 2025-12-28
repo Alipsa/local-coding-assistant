@@ -30,6 +30,9 @@ class CodeSearchCommandSpec extends Specification {
     0,
     "",
     true,
+    "htmlunit",
+    "jsoup",
+    600L,
     "fallback",
     agentsMdProvider,
     new LocalOnlyState(false)
@@ -69,10 +72,13 @@ class CodeSearchCommandSpec extends Specification {
       commandPolicy,
       modelRegistry,
       Stub(AgentPlatform),
+      Stub(com.embabel.agent.spi.ContextRepository),
       tempDir.resolve("reviews.log").toString(),
       null,
       null,
-      shellSettings
+      shellSettings,
+      null,
+      null
     )
   }
 
