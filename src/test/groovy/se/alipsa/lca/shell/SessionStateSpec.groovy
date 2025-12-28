@@ -86,4 +86,16 @@ class SessionStateSpec extends Specification {
     !localOnly.isWebSearchEnabled("default")
     localOnly.isLocalOnly()
   }
+
+  def "conversation is stored per session"() {
+    when:
+    def first = state.getOrCreateConversation("s1")
+    def second = state.getOrCreateConversation("s1")
+    def other = state.getOrCreateConversation("s2")
+
+    then:
+    first.is(second)
+    !first.is(other)
+    first.id == "s1"
+  }
 }

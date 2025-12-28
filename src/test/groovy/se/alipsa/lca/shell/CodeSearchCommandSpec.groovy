@@ -1,8 +1,7 @@
 package se.alipsa.lca.shell
 
+import com.embabel.agent.core.AgentPlatform
 import se.alipsa.lca.agent.CodingAssistantAgent
-import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
-import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
@@ -49,6 +48,7 @@ class CodeSearchCommandSpec extends Specification {
     listModels() >> List.of()
     checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
+  ShellSettings shellSettings = new ShellSettings(true)
   @TempDir
   Path tempDir
   ShellCommands commands
@@ -67,9 +67,11 @@ class CodeSearchCommandSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      Stub(AgentPlatform),
       tempDir.resolve("reviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
   }
 

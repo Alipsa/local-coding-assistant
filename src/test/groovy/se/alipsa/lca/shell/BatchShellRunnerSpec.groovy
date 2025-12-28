@@ -16,15 +16,15 @@ class BatchShellRunnerSpec extends Specification {
     BatchShellRunner runner = new BatchShellRunner(executor, shellCommands, shellContext, exitHandler)
 
     when:
-    boolean handled = runner.run(["-c", "status; unknown"] as String[])
+    boolean handled = runner.run(["-c", "/status; /unknown"] as String[])
 
     then:
     handled
     1 * shellContext.setInteractionMode(InteractionMode.NONINTERACTIVE)
     1 * shellCommands.configureBatchMode(true, false)
-    1 * executor.execute("status") >> new BatchCommandOutcome("ok", null, false, null)
-    1 * executor.execute("unknown") >> new BatchCommandOutcome(
-      new CommandNotFound(["unknown"]),
+    1 * executor.execute("/status") >> new BatchCommandOutcome("ok", null, false, null)
+    1 * executor.execute("/unknown") >> new BatchCommandOutcome(
+      new CommandNotFound(["/unknown"]),
       null,
       false,
       null

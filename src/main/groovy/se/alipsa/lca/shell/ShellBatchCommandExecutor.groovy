@@ -24,12 +24,18 @@ class ShellBatchCommandExecutor implements BatchCommandExecutor {
   private final Shell shell
   private final ResultHandlerService resultHandlerService
   private final Parser parser
+  private final CommandInputNormaliser normaliser
   private final java.lang.reflect.Method evaluateMethod
 
-  ShellBatchCommandExecutor(Shell shell, ResultHandlerService resultHandlerService) {
+  ShellBatchCommandExecutor(
+    Shell shell,
+    ResultHandlerService resultHandlerService,
+    CommandInputNormaliser normaliser
+  ) {
     this.shell = shell
     this.resultHandlerService = resultHandlerService
     this.parser = new DefaultParser()
+    this.normaliser = normaliser != null ? normaliser : new CommandInputNormaliser(new ShellSettings(true))
     try {
       // Spring Shell does not expose evaluate(Input) publicly; keep in sync with Spring Shell upgrades.
       this.evaluateMethod = Shell.class.getDeclaredMethod("evaluate", Input)
@@ -49,25 +55,10 @@ class ShellBatchCommandExecutor implements BatchCommandExecutor {
     }
     try {
       try {
-        ParsedLine parsed
-        try {
-          parsed = parser.parse(command, command.length() + 1)
-        } catch (Exception e) {
-          String safe = LogSanitizer.sanitize(command)
-          log.warn("Failed to parse batch command: {}", safe, e)
-          outcome.error = e
-          handleResult(outcome)
+        Input input = buildInput(command, outcome)
+        if (input == null) {
           return outcome
         }
-        if (parsed == null) {
-          String safe = LogSanitizer.sanitize(command)
-          IllegalArgumentException error = new IllegalArgumentException("Failed to parse batch command.")
-          log.warn("Parsed line was null for batch command: {}", safe)
-          outcome.error = error
-          handleResult(outcome)
-          return outcome
-        }
-        Input input = new BatchInput(command, parsed.words())
         Object result = evaluateMethod.invoke(shell, input)
         if (result == Shell.NO_INPUT) {
           outcome.result = null
@@ -96,6 +87,33 @@ class ShellBatchCommandExecutor implements BatchCommandExecutor {
     }
     handleResult(outcome)
     outcome
+  }
+
+  private Input buildInput(String command, BatchCommandOutcome outcome) {
+    List<String> wordsOverride = normaliser.normaliseWords(command)
+    if (wordsOverride != null) {
+      return new BatchInput("/paste --send", wordsOverride)
+    }
+    String normalisedCommand = normaliser.normalise(command) ?: command
+    ParsedLine parsed
+    try {
+      parsed = parser.parse(normalisedCommand, normalisedCommand.length() + 1)
+    } catch (Exception e) {
+      String safe = LogSanitizer.sanitize(command)
+      log.warn("Failed to parse batch command: {}", safe, e)
+      outcome.error = e
+      handleResult(outcome)
+      return null
+    }
+    if (parsed == null) {
+      String safe = LogSanitizer.sanitize(command)
+      IllegalArgumentException error = new IllegalArgumentException("Failed to parse batch command.")
+      log.warn("Parsed line was null for batch command: {}", safe)
+      outcome.error = error
+      handleResult(outcome)
+      return null
+    }
+    new BatchInput(normalisedCommand, parsed.words())
   }
 
   private void handleResult(BatchCommandOutcome outcome) {

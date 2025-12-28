@@ -1,0 +1,236 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+REPO="Alipsa/local-coding-assistant"
+LIB_DIR="${HOME}/.local/lib"
+JAR_PREFIX="local-coding-assistant"
+JAR_PATTERN="${JAR_PREFIX}-*-exec.jar"
+API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+MODELS=(
+  "qwen3-coder:30b"
+  "gpt-oss:20b"
+)
+
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lca                Run the local coding assistant (download if missing)
+  lca upgrade        Download the latest release if newer than the local jar
+  lca --help         Show this message
+EOF
+}
+
+require_command() {
+  local command_name="$1"
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    die "Required command '$command_name' is not available."
+  fi
+}
+
+detect_os() {
+  case "$(uname -s)" in
+    Darwin)
+      printf '%s\n' "mac"
+      ;;
+    Linux)
+      printf '%s\n' "linux"
+      ;;
+    CYGWIN*|MINGW*|MSYS*)
+      printf '%s\n' "windows"
+      ;;
+    *)
+      die "Unsupported operating system."
+      ;;
+  esac
+}
+
+install_ollama() {
+  local os="$1"
+  case "$os" in
+    mac)
+      echo "Installing ollama using Homebrew..."
+      require_command brew
+      brew install ollama
+      ;;
+    linux)
+      echo "Installing ollama using curl..."
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://ollama.ai/install.sh | sh
+        return
+      fi
+      if command -v wget >/dev/null 2>&1; then
+        wget -qO - https://ollama.ai/install.sh | sh
+        return
+      fi
+      die "curl or wget is required to install ollama."
+      ;;
+    windows)
+      die "Please install ollama manually by downloading it from https://ollama.ai"
+      ;;
+  esac
+}
+
+check_and_install_model() {
+  local model="$1"
+  echo "Checking for ${model} model..."
+  local list_output
+  list_output="$(ollama list 2>/dev/null || true)"
+  if printf '%s\n' "$list_output" | awk '{print $1}' | grep -Fxq "$model"; then
+    echo "${model} model is already installed."
+  else
+    echo "${model} model not found. Installing..."
+    ollama pull "$model"
+  fi
+}
+
+ensure_prerequisites() {
+  local os
+  os="$(detect_os)"
+  echo "Detected OS: ${os}"
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "ollama could not be found"
+    install_ollama "$os"
+  fi
+  local model
+  for model in "${MODELS[@]}"; do
+    check_and_install_model "$model"
+  done
+}
+
+fetch_release_json() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$API_URL"
+    return
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget -qO - "$API_URL"
+    return
+  fi
+  die "Either curl or wget must be installed to check GitHub releases."
+}
+
+download_file() {
+  local url="$1"
+  local output_path="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$output_path"
+    return
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget -qO "$output_path" "$url"
+    return
+  fi
+  die "Either curl or wget must be installed to download releases."
+}
+
+fetch_release_info() {
+  local json
+  json="$(fetch_release_json)"
+  LATEST_VERSION="$(printf '%s\n' "$json" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": "v?([^"]+)".*/\1/')"
+  LATEST_URL="$(printf '%s\n' "$json" | grep -E '"browser_download_url":' | grep 'local-coding-assistant-.*-exec\.jar' \
+    | head -n1 | sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')"
+  if [ -z "${LATEST_VERSION:-}" ] || [ -z "${LATEST_URL:-}" ]; then
+    die "Unable to determine the latest release details from GitHub."
+  fi
+}
+
+find_latest_local_jar() {
+  if [ ! -d "$LIB_DIR" ]; then
+    return 1
+  fi
+  local jars
+  jars="$(find "$LIB_DIR" -maxdepth 1 -type f -name "${JAR_PATTERN}" 2>/dev/null | sort -V)"
+  if [ -z "$jars" ]; then
+    return 1
+  fi
+  printf '%s\n' "$jars" | tail -n1
+}
+
+version_from_jar() {
+  local jar_path="$1"
+  local jar_name
+  jar_name="$(basename "$jar_path")"
+  printf '%s\n' "$jar_name" | sed -E 's/^local-coding-assistant-(.*)-exec\.jar$/\1/'
+}
+
+is_newer_version() {
+  local current_version="$1"
+  local candidate_version="$2"
+  if [ "$current_version" = "$candidate_version" ]; then
+    return 1
+  fi
+  local newest
+  newest="$(printf '%s\n%s\n' "$current_version" "$candidate_version" | sort -V | tail -n1)"
+  [ "$newest" = "$candidate_version" ]
+}
+
+download_latest_release() {
+  mkdir -p "$LIB_DIR"
+  local file_name="${LATEST_URL##*/}"
+  local target_path="${LIB_DIR}/${file_name}"
+  download_file "$LATEST_URL" "$target_path"
+  printf '%s\n' "$target_path"
+}
+
+remove_old_jars() {
+  local keep_version="$1"
+  if [ ! -d "$LIB_DIR" ]; then
+    return
+  fi
+  local jar
+  while IFS= read -r jar; do
+    if [[ "$jar" != *"-${keep_version}-exec.jar" ]]; then
+      rm -f "$jar"
+    fi
+  done < <(find "$LIB_DIR" -maxdepth 1 -type f -name "${JAR_PATTERN}" 2>/dev/null)
+}
+
+run_programme() {
+  ensure_prerequisites
+  echo "Starting local coding assistant..."
+  require_command java
+  local jar_path
+  if jar_path="$(find_latest_local_jar)"; then
+    exec java -jar "$jar_path" "$@"
+  fi
+  fetch_release_info
+  jar_path="$(download_latest_release)"
+  exec java -jar "$jar_path" "$@"
+}
+
+upgrade_release() {
+  local local_jar_path=""
+  local local_version=""
+  if local_jar_path="$(find_latest_local_jar)"; then
+    local_version="$(version_from_jar "$local_jar_path")"
+  fi
+  fetch_release_info
+  if [ -z "$local_version" ]; then
+    download_latest_release >/dev/null
+    return
+  fi
+  if is_newer_version "$local_version" "$LATEST_VERSION"; then
+    download_latest_release >/dev/null
+    remove_old_jars "$LATEST_VERSION"
+  else
+    echo "You are already using the latest version of the local coding assistant (${local_version})"
+  fi
+}
+
+case "${1:-}" in
+  upgrade)
+    shift
+    upgrade_release "$@"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    run_programme "$@"
+    ;;
+esac

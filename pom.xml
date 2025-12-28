@@ -11,7 +11,7 @@
   </parent>
   <groupId>se.alipsa.lca</groupId>
   <artifactId>local-coding-assistant</artifactId>
-  <version>1.0.1-SNAPSHOT</version>
+  <version>1.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Local Coding Assistant</name>
   <description>The Local Coding assistant is an AI LLM interface based on Ollama and Embabel</description>
@@ -217,6 +217,14 @@
           <classifier>exec</classifier>
           <attach>false</attach>
         </configuration>
+        <executions>
+          <execution>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>build-info</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.codehaus.gmavenplus</groupId>

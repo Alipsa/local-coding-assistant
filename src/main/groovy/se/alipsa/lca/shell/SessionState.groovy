@@ -1,5 +1,7 @@
 package se.alipsa.lca.shell
 
+import com.embabel.chat.Conversation
+import com.embabel.chat.support.InMemoryConversation
 import com.embabel.common.ai.model.LlmOptions
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
@@ -7,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.AgentsMdProvider
 
+import java.util.ArrayList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.Objects
@@ -17,6 +20,7 @@ class SessionState {
 
   private final Map<String, SessionSettings> sessions = new ConcurrentHashMap<>()
   private final Map<String, List<String>> history = new ConcurrentHashMap<>()
+  private final Map<String, Conversation> conversations = new ConcurrentHashMap<>()
   private final String defaultModel
   private final double defaultCraftTemperature
   private final double defaultReviewTemperature
@@ -111,6 +115,13 @@ class SessionState {
 
   List<String> history(String sessionId) {
     history.getOrDefault(sessionId ?: "default", List.of())
+  }
+
+  Conversation getOrCreateConversation(String sessionId) {
+    String key = sessionId ?: "default"
+    conversations.computeIfAbsent(key) {
+      new InMemoryConversation(new ArrayList<>(), key)
+    }
   }
 
   boolean isWebSearchEnabled(String sessionId) {

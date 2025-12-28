@@ -1,16 +1,21 @@
 package se.alipsa.lca.shell
 
 import com.embabel.agent.api.common.Ai
-import com.embabel.agent.domain.io.UserInput
+import com.embabel.agent.api.common.PromptRunner
+import com.embabel.agent.core.Agent
+import com.embabel.agent.core.AgentPlatform
+import com.embabel.agent.core.AgentProcess
+import com.embabel.agent.core.ProcessOptions
+import com.embabel.chat.AssistantMessage
 import com.embabel.common.ai.model.LlmOptions
+import se.alipsa.lca.agent.ChatRequest
 import se.alipsa.lca.agent.CodingAssistantAgent
-import se.alipsa.lca.agent.CodingAssistantAgent.CodeSnippet
 import se.alipsa.lca.agent.PersonaMode
-import se.alipsa.lca.agent.Personas
+import se.alipsa.lca.agent.ReviewRequest
+import se.alipsa.lca.agent.ReviewResponse
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.GitTool
-import com.embabel.agent.api.common.PromptRunner
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.CommandPolicy
@@ -65,11 +70,20 @@ class ShellCommandsSpec extends Specification {
     isModelAvailable(_) >> true
     checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
+  AgentPlatform agentPlatform = Mock()
+  ShellSettings shellSettings = new ShellSettings(true)
+  Agent chatAgent = new Agent("lca-chat", "local", "1.0.0", "Chat agent", Set.of(), List.of(), Set.of())
+  Agent reviewAgent = new Agent("lca-review", "local", "1.0.0", "Review agent", Set.of(), List.of(), Set.of())
+  AgentProcess chatProcess = Mock()
+  AgentProcess reviewProcess = Mock()
   @TempDir
   Path tempDir
   ShellCommands commands
 
   def setup() {
+    agentPlatform.agents() >> [chatAgent, reviewAgent]
+    chatProcess.run() >> chatProcess
+    reviewProcess.run() >> reviewProcess
     commands = new ShellCommands(
       agent,
       ai,
@@ -83,16 +97,23 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("reviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
   }
 
   def "chat uses persona mode and session overrides"() {
     given:
-    CodeSnippet snippet = new CodeSnippet("result")
-    agent.craftCode(_, ai, PersonaMode.ARCHITECT, _, _) >> snippet
+    ChatRequest captured = null
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("result")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ChatRequest } as ChatRequest
+        chatProcess
+    }
 
     when:
     def response = commands.chat(
@@ -108,27 +129,25 @@ class ShellCommandsSpec extends Specification {
 
     then:
     response == "result"
-    1 * agent.craftCode(
-      { UserInput ui -> ui.getContent() == "prompt text" },
-      ai,
-      PersonaMode.ARCHITECT,
-      { LlmOptions opts ->
-        opts.getModel() == "custom-model" &&
-        opts.getTemperature() == 0.9d &&
-        opts.getMaxTokens() == 2048
-      },
-      "extra system"
-    ) >> snippet
+    captured != null
+    captured.persona == PersonaMode.ARCHITECT
+    captured.options.model == "custom-model"
+    captured.options.temperature == 0.9d
+    captured.options.maxTokens == 2048
+    captured.systemPrompt == "extra system"
   }
 
   def "review uses review options and system prompt override"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it",
-      Personas.REVIEWER
+    ReviewRequest captured = null
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] src/App.groovy:10 - bug\nTests:\n- test it"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ReviewRequest } as ReviewRequest
+        reviewProcess
+    }
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -154,37 +173,26 @@ class ShellCommandsSpec extends Specification {
     response.contains("[High] src/App.groovy:10 - bug")
     !response.contains("\u001B[")
     response.contains("Tests:")
-    1 * agent.reviewCode(
-      { UserInput ui -> ui.getContent() == "check safety" },
-      { CodeSnippet snippet -> snippet.text.contains("println 'hi'") && snippet.text.contains("src/App.groovy") },
-      ai,
-      { LlmOptions opts ->
-        opts.getModel() == "default-model" &&
-        opts.getTemperature() == 0.2d &&
-        opts.getMaxTokens() == 1024
-      },
-      "system",
-      _
-    ) >> reviewed
+    captured != null
+    captured.prompt == "check safety"
+    captured.payload.contains("println 'hi'")
+    captured.payload.contains("src/App.groovy")
+    captured.options.model == "default-model"
+    captured.options.temperature == 0.2d
+    captured.options.maxTokens == 1024
+    captured.systemPrompt == "system"
   }
 
   def "paste can forward content to chat"() {
     given:
-    CodeSnippet snippet = new CodeSnippet("assistant response")
-    agent.craftCode(_, ai, PersonaMode.CODER, _, _) >> snippet
+    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("assistant response")
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
 
     when:
     def result = commands.paste("multi\nline", "/end", true, "default", PersonaMode.CODER)
 
     then:
     result == "assistant response"
-    1 * agent.craftCode(
-      { UserInput ui -> ui.getContent() == "multi\nline" },
-      ai,
-      PersonaMode.CODER,
-      _ as LlmOptions,
-      ""
-    ) >> snippet
   }
 
   def "search formats results"() {
@@ -297,12 +305,10 @@ class ShellCommandsSpec extends Specification {
 
   def "review writes to log path"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [Low] general - note\nTests:\n- test",
-      Personas.REVIEWER
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] general - note\nTests:\n- test"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
 
     when:
@@ -329,9 +335,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("other.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -371,12 +379,10 @@ class ShellCommandsSpec extends Specification {
 
   def "reviewlog filters by severity and path"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test",
-      Personas.REVIEWER
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] src/App.groovy:1 - issue\n- [Low] other - ignore\nTests:\n- test"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
     commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
 
@@ -390,12 +396,10 @@ class ShellCommandsSpec extends Specification {
 
   def "reviewlog respects pagination and since"() {
     given:
-    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
-      new CodeSnippet("code"),
-      "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test",
-      Personas.REVIEWER
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] src/App.groovy:1 - issue\nTests:\n- test"
     )
-    agent.reviewCode(_, _, ai, _, _, _) >> reviewed
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
     def instants = [java.time.Instant.parse("2025-01-01T00:00:00Z"), java.time.Instant.parse("2025-01-01T00:00:10Z")].iterator()
     ShellCommands clocked = new ShellCommands(
@@ -411,9 +415,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("reviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       @Override
       protected java.time.Instant nowInstant() {
@@ -453,9 +459,11 @@ class ShellCommandsSpec extends Specification {
       runTool,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("commit.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -531,9 +539,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("stage.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -565,9 +575,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("stage.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
     staging.configureBatchMode(true, false)
 
@@ -596,9 +608,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("stage.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       ConfirmChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
@@ -634,9 +648,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("status.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
 
     when:
@@ -674,9 +690,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("sast.log").toString(),
       null,
-      sastTool
+      sastTool,
+      shellSettings
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
     method.accessible = true
@@ -709,9 +727,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("diff.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
 
     when:
@@ -741,9 +761,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("apply.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -782,9 +804,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("push.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -825,9 +849,11 @@ class ShellCommandsSpec extends Specification {
       runner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("runReviews.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -864,9 +890,11 @@ class ShellCommandsSpec extends Specification {
       runner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("run2.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
 
     when:
@@ -896,9 +924,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       fallbackRegistry,
+      agentPlatform,
       tempDir.resolve("model.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
 
     when:
@@ -929,13 +959,65 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       downRegistry,
+      agentPlatform,
       tempDir.resolve("health.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
 
     expect:
     cmds.health().contains("unreachable")
+  }
+
+  def "version returns resolved version"() {
+    given:
+    ShellCommands versioned = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      tempDir.resolve("version.log").toString(),
+      null,
+      null,
+      shellSettings
+    )
+
+    expect:
+    versioned.version().contains("lca version: 0.0-test")
+    versioned.version().contains("Embabel version:")
+    versioned.version().contains("Spring-boot version:")
+    versioned.version().contains("Models: default-model (fallback: fallback-model)")
+  }
+
+  def "config reports and updates auto-paste"() {
+    when:
+    def initial = commands.config(null)
+
+    then:
+    initial.contains("=== Configuration ===")
+    initial.contains("Auto-paste: enabled")
+
+    when:
+    def disabled = commands.config(false)
+
+    then:
+    disabled.contains("Auto-paste: disabled")
+
+    when:
+    def enabled = commands.config(true)
+
+    then:
+    enabled.contains("Auto-paste: enabled")
   }
 
   def "tree formats repository output"() {
@@ -963,9 +1045,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("tree.log").toString(),
       treeTool,
-      null
+      null,
+      shellSettings
     )
 
     when:
@@ -990,9 +1074,11 @@ class ShellCommandsSpec extends Specification {
       commandRunner,
       commandPolicy,
       modelRegistry,
+      agentPlatform,
       tempDir.resolve("commit.log").toString(),
       null,
-      null
+      null,
+      shellSettings
     )
   }
 }

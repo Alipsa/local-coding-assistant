@@ -1,13 +1,14 @@
 # Command Reference
 
-All commands are available as `command` or `/command`. Options use Spring Shell naming (kebab-case).
+All commands use a leading slash (`/command`). Options use Spring Shell naming (kebab-case).
+Plain text input is treated as `/chat --prompt "<text>"`.
 Examples use named options for consistency.
 
 ## chat (/chat)
 Send a prompt to the assistant.
 
 Usage:
-`chat --prompt "<text>"`
+`/chat --prompt "<text>"`
 
 Options:
 - `--session`: Session id for persisting options.
@@ -22,7 +23,7 @@ Options:
 Request a structured review with findings and tests.
 
 Usage:
-`review --prompt "<text>" [--code "<code>"]`
+`/review --prompt "<text>" [--code "<code>"]`
 
 Options:
 - `--prompt`: Review request or guidance.
@@ -50,7 +51,7 @@ Options:
 Run web search through the agent tool.
 
 Usage:
-`search --query "<text>"`
+`/search --query "<text>"`
 
 Options:
 - `--limit`: Number of results to show (min 1).
@@ -64,7 +65,7 @@ Options:
 Search repository files with ripgrep and optional context packing.
 
 Usage:
-`codesearch --query "<pattern>"`
+`/codesearch --query "<pattern>"`
 
 Options:
 - `--paths`: Paths or globs to search (repeatable).
@@ -78,7 +79,7 @@ Options:
 Open `$EDITOR` to draft a prompt.
 
 Usage:
-`edit [--seed <text>] [--send]`
+`/edit [--seed <text>] [--send]`
 
 Options:
 - `--seed`: Prefill the editor with content.
@@ -90,7 +91,7 @@ Options:
 Paste multiline input (end with `/end`).
 
 Usage:
-`paste [--content <text>] [--send]`
+`/paste [--content <text>] [--send]`
 
 Options:
 - `--content`: Prefilled content (otherwise read from stdin).
@@ -118,7 +119,7 @@ Options:
 Apply a patch using `git apply` with confirmation.
 
 Usage:
-`gitapply [--patch "<text>"] [--patch-file <path>]`
+`/gitapply [--patch "<text>"] [--patch-file <path>]`
 
 Options:
 - `--patch-file`: Patch file relative to project root.
@@ -165,7 +166,7 @@ Check connectivity to the Ollama base URL.
 Execute a project command with timeout and truncation.
 
 Usage:
-`run --command "<command>"`
+`/run --command "<command>"`
 
 Options:
 - `--timeout-millis`: Timeout in milliseconds (min 1).
@@ -178,7 +179,7 @@ Options:
 Apply a unified diff patch with optional dry run and backups.
 
 Usage:
-`apply [--patch "<text>"] [--patch-file <path>]`
+`/apply [--patch "<text>"] [--patch-file <path>]`
 
 Options:
 - `--patch-file`: Patch file relative to project root.
@@ -189,7 +190,7 @@ Options:
 Apply Search-and-Replace blocks to a file.
 
 Usage:
-`applyBlocks --file-path <path> [--blocks <text>] [--blocks-file <path>]`
+`/applyBlocks --file-path <path> [--blocks <text>] [--blocks-file <path>]`
 
 Options:
 - `--file-path`: Target file path relative to project root.
@@ -202,7 +203,7 @@ Options:
 Restore a file using the most recent patch backup.
 
 Usage:
-`revert --file-path <path>`
+`/revert --file-path <path>`
 
 Options:
 - `--file-path`: File path relative to project root.
@@ -212,7 +213,7 @@ Options:
 Show a snippet for targeted edits by line range or symbol.
 
 Usage:
-`context --file-path <path> [--start <n> --end <n>] [--symbol <name>]`
+`/context --file-path <path> [--start <n> --end <n>] [--symbol <name>]`
 
 Options:
 - `--file-path`: File path relative to project root.
@@ -225,7 +226,7 @@ Options:
 Show repository tree (respects `.gitignore` when available).
 
 Usage:
-`tree [--depth <n>] [--dirs-only] [--max-entries <n>]`
+`/tree [--depth <n>] [--dirs-only] [--max-entries <n>]`
 
 Options:
 - `--depth`: Max depth (`-1` for unlimited, min -1).
@@ -236,7 +237,7 @@ Options:
 Run one or more commands without starting the interactive shell.
 
 Usage:
-`java -jar local-coding-assistant.jar -c "status; review --paths src/main/groovy"`
+`java -jar local-coding-assistant.jar -c "/status; /review --paths src/main/groovy"`
 
 Options:
 - `-c`, `--command`: Command string (supports `;` separators).

@@ -1,6 +1,7 @@
 package se.alipsa.lca.shell
 
 import com.embabel.agent.api.common.Ai
+import com.embabel.agent.core.AgentPlatform
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.CommandPolicy
@@ -83,6 +84,7 @@ class ResolveModelSpec extends Specification {
   private TestCommands commandsWithAvailable(List<String> models) {
     CodingAssistantAgent agent = Stub()
     Ai ai = Stub()
+    AgentPlatform agentPlatform = Stub()
     EditorLauncher editor = Stub()
     FileEditingTool fileEditingTool = Stub()
     se.alipsa.lca.tools.GitTool gitTool = Stub()
@@ -108,7 +110,8 @@ class ResolveModelSpec extends Specification {
       budgetManager,
       runner,
       commandPolicy,
-      registry
+      registry,
+      agentPlatform
     )
   }
 
@@ -125,7 +128,8 @@ class ResolveModelSpec extends Specification {
       ContextBudgetManager budgetManager,
       CommandRunner runner,
       CommandPolicy commandPolicy,
-      ModelRegistry registry
+      ModelRegistry registry,
+      AgentPlatform agentPlatform
     ) {
       super(
         agent,
@@ -139,11 +143,13 @@ class ResolveModelSpec extends Specification {
         budgetManager,
         runner,
         commandPolicy,
-        registry,
-        ".",
-        null,
-        null
-      )
-    }
+      registry,
+      agentPlatform,
+      ".",
+      null,
+      null,
+      new ShellSettings(true)
+    )
   }
+}
 }

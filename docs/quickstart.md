@@ -43,5 +43,5 @@ These examples show end-to-end flows for editing, reviewing, searching, and git 
 ## Batch mode flow
 ```
 java -jar local-coding-assistant.jar \
-  -c "status; review --paths src/main/groovy; commit-suggest"
+  -c "/status; /review --paths src/main/groovy; /commit-suggest"
 ```

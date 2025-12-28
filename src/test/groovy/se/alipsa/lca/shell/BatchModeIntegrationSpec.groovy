@@ -21,14 +21,14 @@ class BatchModeIntegrationSpec extends Specification {
     Files.writeString(tempDir.resolve("notes.txt"), "hello")
 
     when:
-    ProcessResult result = runBatch(tempDir, "-c", "status; tree")
+    ProcessResult result = runBatch(tempDir, "-c", "/status; /tree")
 
     then:
     result.exitCode == 0
-    result.output.contains("> status")
-    result.output.contains("[OK] status")
-    result.output.contains("> tree")
-    result.output.contains("[OK] tree")
+    result.output.contains("> /status")
+    result.output.contains("[OK] /status")
+    result.output.contains("> /tree")
+    result.output.contains("[OK] /tree")
     result.output.contains("notes.txt")
   }
 
@@ -39,8 +39,8 @@ class BatchModeIntegrationSpec extends Specification {
     Path batchFile = tempDir.resolve("batch.txt")
     Files.writeString(
       batchFile,
-      "status\n" +
-        "codesearch --query alpha --paths alpha.txt\n"
+      "/status\n" +
+        "/codesearch --query alpha --paths alpha.txt\n"
     )
 
     when:
@@ -48,10 +48,10 @@ class BatchModeIntegrationSpec extends Specification {
 
     then:
     result.exitCode == 0
-    result.output.contains("> status")
-    result.output.contains("[OK] status")
-    result.output.contains("> codesearch --query alpha --paths alpha.txt")
-    result.output.contains("[OK] codesearch --query alpha --paths alpha.txt")
+    result.output.contains("> /status")
+    result.output.contains("[OK] /status")
+    result.output.contains("> /codesearch --query alpha --paths alpha.txt")
+    result.output.contains("[OK] /codesearch --query alpha --paths alpha.txt")
     result.output.contains("Code Search")
     result.output.contains("alpha.txt")
   }
