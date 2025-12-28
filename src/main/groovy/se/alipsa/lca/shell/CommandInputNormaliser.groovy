@@ -9,6 +9,7 @@ class CommandInputNormaliser {
 
   private static final String CHAT_COMMAND = "/chat"
   private static final String PASTE_COMMAND = "/paste"
+  private static final String CONFIG_COMMAND = "/config"
   private final ShellSettings shellSettings
   private static final Set<String> BUILTIN_COMMANDS = Set.of(
     "help",
@@ -39,6 +40,10 @@ class CommandInputNormaliser {
       return raw
     }
     if (trimmed.startsWith("/")) {
+      String rewritten = rewriteConfigCommand(trimmed)
+      if (rewritten != null) {
+        return rewritten
+      }
       if (isBuiltinCommand(trimmed)) {
         return trimmed.substring(1)
       }
@@ -75,5 +80,21 @@ class CommandInputNormaliser {
     int end = value.indexOf(" ")
     String command = end == -1 ? value.substring(1) : value.substring(1, end)
     BUILTIN_COMMANDS.contains(command)
+  }
+
+  private static String rewriteConfigCommand(String trimmed) {
+    if (!trimmed.startsWith(CONFIG_COMMAND + " ")) {
+      return null
+    }
+    String[] parts = trimmed.split("\\s+", 3)
+    if (parts.length < 3) {
+      return null
+    }
+    String key = parts[1]
+    if (key != "auto-paste" && key != "local-only") {
+      return null
+    }
+    String value = parts[2]
+    "${CONFIG_COMMAND} --${key} ${value}"
   }
 }

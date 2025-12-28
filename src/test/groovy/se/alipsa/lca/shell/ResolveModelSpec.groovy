@@ -10,6 +10,7 @@ import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextBudgetManager
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TokenEstimator
 import spock.lang.Specification
@@ -26,9 +27,9 @@ class ResolveModelSpec extends Specification {
     0,
     "",
     true,
-    false,
     "fallback-model",
-    agentsMdProvider
+    agentsMdProvider,
+    new LocalOnlyState(false)
   )
 
   def "resolveModel prefers available requested model with original casing"() {

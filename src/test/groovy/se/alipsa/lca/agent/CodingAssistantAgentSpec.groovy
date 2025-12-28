@@ -6,6 +6,7 @@ import com.embabel.agent.domain.io.UserInput
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
+import se.alipsa.lca.tools.LocalOnlyState
 import spock.lang.Specification
 
 class CodingAssistantAgentSpec extends Specification {
@@ -20,10 +21,10 @@ class CodingAssistantAgentSpec extends Specification {
     0.65d,
     0.25d,
     true,
-    false,
     fileEditingTool,
     webSearchTool,
-    codeSearchTool
+    codeSearchTool,
+    new LocalOnlyState(false)
   )
 
   def "craftCode builds a repository-aware plan and output format"() {
@@ -261,10 +262,10 @@ class CodingAssistantAgentSpec extends Specification {
       0.65d,
       0.25d,
       true,
-      true,
       fileEditingTool,
       searchTool,
-      codeSearchTool
+      codeSearchTool,
+      new LocalOnlyState(true)
     )
 
     when:

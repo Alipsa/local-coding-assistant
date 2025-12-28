@@ -56,6 +56,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Properties
+import java.util.Locale
 
 @ShellComponent("lcaShellCommands")
 @CompileStatic
@@ -64,6 +65,7 @@ class ShellCommands {
   private static final Logger log = LoggerFactory.getLogger(ShellCommands)
   private static final String CHAT_AGENT_NAME = "lca-chat"
   private static final String REVIEW_AGENT_NAME = "lca-review"
+  private static final String DEFAULT_SESSION = "default"
   private static final List<String> PLAN_COMMANDS = List.of(
     "/chat",
     "/plan",
@@ -126,13 +128,22 @@ Do not execute any commands.
     @ShellOption(
       defaultValue = ShellOption.NULL,
       help = "Enable or disable auto-paste detection (true/false)"
-    ) Boolean autoPaste
+    ) Boolean autoPaste,
+    @ShellOption(
+      defaultValue = ShellOption.NULL,
+      value = "local-only",
+      help = "Enable or disable local-only mode for this session (true/false)"
+    ) Boolean localOnly
   ) {
     if (autoPaste != null) {
       shellSettings.setAutoPasteEnabled(autoPaste)
     }
-    String state = shellSettings.isAutoPasteEnabled() ? "enabled" : "disabled"
-    formatSection("Configuration", "Auto-paste: ${state}")
+    if (localOnly != null) {
+      sessionState.setLocalOnlyOverride(DEFAULT_SESSION, localOnly)
+    }
+    String autoPasteState = shellSettings.isAutoPasteEnabled() ? "enabled" : "disabled"
+    String localOnlyState = sessionState.isLocalOnly(DEFAULT_SESSION) ? "enabled" : "disabled"
+    formatSection("Configuration", "Auto-paste: ${autoPasteState}\nLocal-only: ${localOnlyState}")
   }
 
   ShellCommands(
@@ -387,17 +398,20 @@ Do not execute any commands.
     requireNonBlank(query, "query")
     requireMin(limit, 1, "limit")
     requireMin(timeoutMillis, 1, "timeoutMillis")
-    boolean defaultEnabled = sessionState.isWebSearchEnabled(session)
+    String sessionId = session != null && session.trim() ? session.trim() : DEFAULT_SESSION
     Boolean overrideEnabled = enableWebSearch
-    boolean allowed = overrideEnabled != null ? overrideEnabled : defaultEnabled
-    if (!allowed) {
-      if (sessionState.isLocalOnly()) {
-        return "Web search is disabled in local-only mode. Set assistant.local-only=false to enable."
-      }
+    boolean desired = overrideEnabled != null ? overrideEnabled : sessionState.isWebSearchDesired(sessionId)
+    if (!desired) {
       return "Web search is disabled for this session. " +
         "Enable globally in application.properties with assistant.web-search.enabled=true, " +
         "or enable for this request by passing --enable-web-search true."
     }
+    if (sessionState.isLocalOnly(sessionId)) {
+      if (!promptDisableLocalOnly(sessionId)) {
+        return "Web search is disabled in local-only mode. Set assistant.local-only=false to enable."
+      }
+    }
+    boolean defaultEnabled = sessionState.isWebSearchEnabled(sessionId)
     printProgressStart("Web search")
     WebSearchTool.SearchOptions options = WebSearchTool.withDefaults(
       new WebSearchTool.SearchOptions(
@@ -1616,6 +1630,22 @@ ${rendered}
       return ConfirmChoice.YES
     }
     ConfirmChoice.NO
+  }
+
+  private boolean promptDisableLocalOnly(String sessionId) {
+    if (batchMode) {
+      return false
+    }
+    print("Web search is disabled in local-only mode. Would you like to temporarily disable local-only mode for this session? (y/n): ")
+    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
+    String response = reader.readLine()
+    String normalised = response != null ? response.trim().toLowerCase(Locale.UK) : ""
+    if (normalised == "y" || normalised == "yes") {
+      sessionState.setLocalOnlyOverride(sessionId, false)
+      println("Local-only mode disabled for this session, searching the web...")
+      return true
+    }
+    false
   }
 
   @PackageScope

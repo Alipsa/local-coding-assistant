@@ -2,6 +2,7 @@ package se.alipsa.lca.shell
 
 import com.embabel.common.ai.model.LlmOptions
 import se.alipsa.lca.tools.AgentsMdProvider
+import se.alipsa.lca.tools.LocalOnlyState
 import spock.lang.Specification
 
 class SessionStateSpec extends Specification {
@@ -9,7 +10,17 @@ class SessionStateSpec extends Specification {
   AgentsMdProvider agentsMdProvider = Stub() {
     appendToSystemPrompt(_) >> { String base -> base }
   }
-  SessionState state = new SessionState("default-model", 0.7d, 0.35d, 0, "", true, false, "fallback", agentsMdProvider)
+  SessionState state = new SessionState(
+    "default-model",
+    0.7d,
+    0.35d,
+    0,
+    "",
+    true,
+    "fallback",
+    agentsMdProvider,
+    new LocalOnlyState(false)
+  )
 
   def "uses default model and temperatures when unset"() {
     when:
@@ -54,9 +65,9 @@ class SessionStateSpec extends Specification {
       0,
       "base",
       false,
-      false,
       "fallback",
-      agentsMdProvider
+      agentsMdProvider,
+      new LocalOnlyState(false)
     )
 
     when:
@@ -68,7 +79,17 @@ class SessionStateSpec extends Specification {
 
   def "tracks web search enablement with defaults"() {
     when:
-    def disabled = new SessionState("m", 0.5d, 0.4d, 0, "", false, false, "fallback", agentsMdProvider)
+    def disabled = new SessionState(
+      "m",
+      0.5d,
+      0.4d,
+      0,
+      "",
+      false,
+      "fallback",
+      agentsMdProvider,
+      new LocalOnlyState(false)
+    )
     def settings = disabled.update("s4", null, null, null, null, null, true)
 
     then:
@@ -80,11 +101,43 @@ class SessionStateSpec extends Specification {
 
   def "local-only mode disables web search"() {
     when:
-    def localOnly = new SessionState("m", 0.5d, 0.4d, 0, "", true, true, "fallback", agentsMdProvider)
+    def localOnly = new SessionState(
+      "m",
+      0.5d,
+      0.4d,
+      0,
+      "",
+      true,
+      "fallback",
+      agentsMdProvider,
+      new LocalOnlyState(true)
+    )
 
     then:
     !localOnly.isWebSearchEnabled("default")
     localOnly.isLocalOnly()
+  }
+
+  def "local-only override allows web search for a session"() {
+    given:
+    def localOnly = new SessionState(
+      "m",
+      0.5d,
+      0.4d,
+      0,
+      "",
+      true,
+      "fallback",
+      agentsMdProvider,
+      new LocalOnlyState(true)
+    )
+
+    when:
+    localOnly.setLocalOnlyOverride("s1", false)
+
+    then:
+    !localOnly.isLocalOnly("s1")
+    localOnly.isWebSearchEnabled("s1")
   }
 
   def "conversation is stored per session"() {

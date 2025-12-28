@@ -34,6 +34,20 @@ Options:
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
 
+## config (/config)
+View or update shell settings.
+
+Usage:
+`/config [--auto-paste <true|false>] [--local-only <true|false>]`
+
+Examples:
+`/config`
+`/config --local-only false`
+`/config local-only false`
+
+Notes:
+- `local-only` applies to the current session and can be toggled without editing config files.
+
 ## plan (/plan)
 Create a numbered plan using CLI commands.
 

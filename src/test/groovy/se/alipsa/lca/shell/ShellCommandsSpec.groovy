@@ -23,6 +23,7 @@ import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.ContextBudgetManager
+import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
@@ -30,6 +31,8 @@ import se.alipsa.lca.tools.SastTool
 import spock.lang.Specification
 import spock.lang.TempDir
 
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -45,9 +48,9 @@ class ShellCommandsSpec extends Specification {
     0,
     "",
     true,
-    false,
     "fallback-model",
-    agentsMdProvider
+    agentsMdProvider,
+    new LocalOnlyState(false)
   )
   CodingAssistantAgent agent = Mock()
   Ai ai = Mock()
@@ -254,6 +257,58 @@ class ShellCommandsSpec extends Specification {
 
     then:
     thrown(IllegalArgumentException)
+  }
+
+  def "search can prompt to disable local-only mode"() {
+    given:
+    SessionState localState = new SessionState(
+      "default-model",
+      0.7d,
+      0.35d,
+      0,
+      "",
+      true,
+      "fallback-model",
+      agentsMdProvider,
+      new LocalOnlyState(true)
+    )
+    ShellCommands localCommands = new ShellCommands(
+      agent,
+      ai,
+      localState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      tempDir.resolve("reviews-local.log").toString(),
+      null,
+      null,
+      shellSettings
+    )
+    def results = [new WebSearchTool.SearchResult("T1", "http://example.com", "S1")]
+    InputStream originalIn = System.in
+    System.in = new ByteArrayInputStream("y\n".bytes)
+
+    when:
+    def out = localCommands.search("query", 1, "default", "duckduckgo", 15000L, true, null)
+
+    then:
+    1 * agent.search("query", { WebSearchTool.SearchOptions opts ->
+      opts.limit == 1 &&
+      opts.provider == WebSearchTool.SearchProvider.DUCKDUCKGO &&
+      opts.webSearchEnabled
+    }) >> results
+    out.contains("=== Web Search ===")
+    !localState.isLocalOnly("default")
+
+    cleanup:
+    System.in = originalIn
   }
 
   def "edit returns edited text when send is false"() {
@@ -1032,23 +1087,38 @@ class ShellCommandsSpec extends Specification {
 
   def "config reports and updates auto-paste"() {
     when:
-    def initial = commands.config(null)
+    def initial = commands.config(null, null)
 
     then:
     initial.contains("=== Configuration ===")
     initial.contains("Auto-paste: enabled")
+    initial.contains("Local-only: disabled")
 
     when:
-    def disabled = commands.config(false)
+    def disabled = commands.config(false, null)
 
     then:
     disabled.contains("Auto-paste: disabled")
 
     when:
-    def enabled = commands.config(true)
+    def enabled = commands.config(true, null)
 
     then:
     enabled.contains("Auto-paste: enabled")
+  }
+
+  def "config updates local-only for the session"() {
+    when:
+    def enabled = commands.config(null, true)
+
+    then:
+    enabled.contains("Local-only: enabled")
+
+    when:
+    def disabled = commands.config(null, false)
+
+    then:
+    disabled.contains("Local-only: disabled")
   }
 
   def "tree formats repository output"() {

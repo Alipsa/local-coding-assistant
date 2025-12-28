@@ -9,6 +9,7 @@ import se.alipsa.lca.tools.ContextPacker
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.CommandPolicy
 import se.alipsa.lca.tools.GitTool
+import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.TokenEstimator
@@ -29,9 +30,9 @@ class CodeSearchCommandSpec extends Specification {
     0,
     "",
     true,
-    false,
     "fallback",
-    agentsMdProvider
+    agentsMdProvider,
+    new LocalOnlyState(false)
   )
   CodingAssistantAgent agent = Mock()
   FileEditingTool fileEditingTool = Stub()

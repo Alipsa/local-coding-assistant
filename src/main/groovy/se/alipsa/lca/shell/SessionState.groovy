@@ -8,6 +8,7 @@ import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.AgentsMdProvider
+import se.alipsa.lca.tools.LocalOnlyState
 
 import java.util.ArrayList
 import java.util.concurrent.ConcurrentHashMap
@@ -27,9 +28,9 @@ class SessionState {
   private final Integer defaultMaxTokens
   private final String defaultSystemPrompt
   private final boolean defaultWebSearchEnabled
-  private final boolean localOnly
   private final String fallbackModel
   private final AgentsMdProvider agentsMdProvider
+  private final LocalOnlyState localOnlyState
 
   SessionState(
     @Value('${assistant.llm.model:qwen3-coder:30b}') String defaultModel,
@@ -38,9 +39,9 @@ class SessionState {
     @Value('${assistant.llm.max-tokens:0}') Integer defaultMaxTokens,
     @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
     @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled,
-    @Value('${assistant.local-only:true}') boolean localOnly,
     @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel,
-    AgentsMdProvider agentsMdProvider
+    AgentsMdProvider agentsMdProvider,
+    LocalOnlyState localOnlyState
   ) {
     this.defaultModel = defaultModel
     this.defaultCraftTemperature = defaultCraftTemperature
@@ -48,9 +49,9 @@ class SessionState {
     this.defaultMaxTokens = defaultMaxTokens
     this.defaultSystemPrompt = defaultSystemPrompt
     this.defaultWebSearchEnabled = defaultWebSearchEnabled
-    this.localOnly = localOnly
     this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
     this.agentsMdProvider = Objects.requireNonNull(agentsMdProvider, "agentsMdProvider must not be null")
+    this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
   }
 
   SessionSettings update(
@@ -127,14 +128,31 @@ class SessionState {
   boolean isWebSearchEnabled(String sessionId) {
     SessionSettings settings = getOrCreate(sessionId)
     Boolean desired = settings.webSearchEnabled != null ? settings.webSearchEnabled : defaultWebSearchEnabled
-    if (localOnly && Boolean.TRUE.equals(desired)) {
+    if (localOnlyState.isLocalOnly(sessionId) && Boolean.TRUE.equals(desired)) {
       return false
     }
     desired
   }
 
+  boolean isWebSearchDesired(String sessionId) {
+    SessionSettings settings = getOrCreate(sessionId)
+    settings.webSearchEnabled != null ? settings.webSearchEnabled : defaultWebSearchEnabled
+  }
+
   boolean isLocalOnly() {
-    localOnly
+    localOnlyState.isLocalOnly("default")
+  }
+
+  boolean isLocalOnly(String sessionId) {
+    localOnlyState.isLocalOnly(sessionId)
+  }
+
+  Boolean getLocalOnlyOverride(String sessionId) {
+    localOnlyState.getLocalOnlyOverride(sessionId)
+  }
+
+  void setLocalOnlyOverride(String sessionId, Boolean enabled) {
+    localOnlyState.setLocalOnlyOverride(sessionId, enabled)
   }
 
   private LlmOptions buildOptions(

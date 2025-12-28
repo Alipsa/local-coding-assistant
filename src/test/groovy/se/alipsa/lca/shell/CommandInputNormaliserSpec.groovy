@@ -86,4 +86,13 @@ class CommandInputNormaliserSpec extends Specification {
     expect:
     normaliser.normalise("   ") == "   "
   }
+
+  def "normalise rewrites config shorthand"() {
+    given:
+    def normaliser = new CommandInputNormaliser(new ShellSettings(true))
+
+    expect:
+    normaliser.normalise("/config local-only false") == "/config --local-only false"
+    normaliser.normalise("/config auto-paste true") == "/config --auto-paste true"
+  }
 }
