@@ -61,12 +61,28 @@ Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode exa
 ## Commands overview
 Detailed command documentation lives in `docs/commands.md`, with workflows in `docs/workflows.md`.
 REST usage is documented in `docs/rest.md`.
-Plain text input is treated as `/chat --prompt "<text>"`.
+Plain text input is routed into commands when intent routing is enabled; otherwise it maps to
+`/chat --prompt "<text>"`.
+
+Intent routing configuration lives in `src/main/resources/application.properties`:
+```
+assistant.intent.enabled=true
+assistant.intent.model=tinyllama
+assistant.intent.fallback-model=gpt-oss:20b
+assistant.intent.temperature=0.0
+assistant.intent.max-tokens=256
+assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
+assistant.intent.destructive-commands=/edit,/apply,/run,/gitapply,/git-push
+assistant.intent.confidence-threshold=0.8
+```
 
 - `/chat`: Send prompts. Options: `--persona`, `--session`, `--model`, `--temperature`,
   `--review-temperature`, `--max-tokens`, `--system-prompt`.
 - `/plan`: Generate a numbered plan of CLI commands. Options: `--persona`, `--session`, `--model`,
   `--temperature`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
+- `/route`: Preview intent routing output without executing commands.
+- `/intent`: Enable or disable routing for the current session.
+- `/intent-debug`: Print routing JSON and planned commands without executing.
 - `/review`: Review code with structured Findings/Tests output. Options: `--paths`, `--staged`,
   `--min-severity`, `--no-color`, `--log-review`, `--security`, `--sast`, plus model/temperature overrides.
 - `/reviewlog`: Show recent review entries. Options: `--min-severity`, `--path-filter`, `--limit`,

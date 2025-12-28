@@ -1,8 +1,23 @@
 # Command Reference
 
 All commands use a leading slash (`/command`). Options use Spring Shell naming (kebab-case).
-Plain text input is treated as `/chat --prompt "<text>"`.
+Plain text input is routed into commands when intent routing is enabled; otherwise it maps to
+`/chat --prompt "<text>"`.
 Examples use named options for consistency.
+
+## Intent routing configuration
+These settings control how natural language input is routed into commands.
+
+```properties
+assistant.intent.enabled=true
+assistant.intent.model=tinyllama
+assistant.intent.fallback-model=gpt-oss:20b
+assistant.intent.temperature=0.0
+assistant.intent.max-tokens=256
+assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
+assistant.intent.destructive-commands=/edit,/apply,/run,/gitapply,/git-push
+assistant.intent.confidence-threshold=0.8
+```
 
 ## chat (/chat)
 Send a prompt to the assistant.
@@ -40,6 +55,35 @@ Options:
 - `--review-temperature`: Override review temperature.
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
+
+## route (/route)
+Preview how the intent router would map text to commands.
+
+Usage:
+`/route --prompt "<text>"`
+
+Notes:
+- This command does not execute any commands.
+- Useful for debugging or verifying routing behaviour.
+
+## intent (/intent)
+Enable or disable natural language routing for this session.
+
+Usage:
+`/intent [on|off|default]`
+
+Notes:
+- `default` clears the session override and returns to configuration settings.
+
+## intent-debug (/intent-debug)
+Toggle routing debug output without executing commands.
+
+Usage:
+`/intent-debug [on|off]`
+
+Notes:
+- When enabled, routed input prints the router JSON and suggested commands.
+- No commands are executed while debug mode is enabled.
 
 ## review (/review)
 Request a structured review with findings and tests.

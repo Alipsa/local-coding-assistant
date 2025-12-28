@@ -12,6 +12,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import se.alipsa.lca.intent.IntentCommandRouter
 import se.alipsa.lca.shell.ShellCommands
 import spock.lang.Specification
 import spock.lang.TempDir
@@ -29,7 +30,8 @@ class RestSecurityFilterSpec extends Specification {
   ShellCommands commands = Stub() {
     health() >> "ok"
   }
-  ShellCommandController controller = new ShellCommandController(commands)
+  IntentCommandRouter router = Stub(IntentCommandRouter)
+  ShellCommandController controller = new ShellCommandController(commands, router)
   @TempDir
   Path tempDir
 

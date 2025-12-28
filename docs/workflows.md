@@ -39,6 +39,31 @@ Notes:
 - Plans are guidance only; no commands are executed.
 - Each step begins with a command and a short explanation.
 
+## Natural language routing
+When intent routing is enabled, plain text input is mapped into CLI commands before execution.
+
+Example input:
+`Please review src/main/groovy and suggest improvements`
+
+Example routing preview:
+1. `/review --prompt "Please review src/main/groovy and suggest improvements" --paths "src/main/groovy"`
+2. `/plan --prompt "Please review src/main/groovy and suggest improvements"`
+
+Example confirmation for a destructive command:
+```
+Interpreted as:
+ 1) /edit --file-path src/App.groovy
+Confirm routed command? [y/N]:
+```
+
+Notes:
+- Routed commands run in interactive mode only; batch mode is unchanged.
+- Destructive commands still require confirmation.
+- Use `/route` to preview routing without executing commands.
+- Use `/intent off` to disable routing for the current session.
+- Use `/intent-debug on` to show routing JSON without execution.
+- Routing can be toggled with `assistant.intent.enabled` and tuned via `assistant.intent.*` settings.
+
 ## Search and context workflow
 1. Use `/tree` to understand the project layout quickly.
 2. Use `/codesearch` for local ripgrep-powered search.

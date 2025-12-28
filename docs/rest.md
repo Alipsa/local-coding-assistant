@@ -37,6 +37,12 @@ POST /api/cli/plan
 {"prompt":"Review src/main/groovy and suggest improvements","persona":"ARCHITECT"}
 ```
 
+Route:
+```
+POST /api/cli/route
+{"prompt":"Please review src/main/groovy and suggest improvements"}
+```
+
 Review:
 ```
 POST /api/cli/review
