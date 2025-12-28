@@ -247,6 +247,19 @@ Options:
 ## health (/health)
 Check connectivity to the Ollama base URL.
 
+## shell (/! or /sh)
+Execute a shell command directly with streaming output.
+
+Usage:
+`/! <command>`
+`/sh <command>`
+
+Notes:
+- Runs immediately without confirmation.
+- Output streams as the command runs and a summarised result is added to the session context.
+- Respects command allowlist/denylist settings.
+- Uses `bash -lc` under the project root.
+
 ## run (/run)
 Execute a project command with timeout and truncation.
 

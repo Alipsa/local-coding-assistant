@@ -104,6 +104,8 @@ assistant.intent.confidence-threshold=0.8
 - `/git-push`: Push with confirmation. Options: `--force`.
 - `/model`: List or set models. Options: `--list`, `--set`, `--session`.
 - `/health`: Check Ollama connectivity.
+- `/!`: Execute a shell command directly (alias: `/sh`). Output streams live and a summary is added to
+  the session context.
 - `/run`: Execute a command with timeout and truncation. Options: `--timeout-millis`, `--max-output-chars`,
   `--confirm`, `--agent-requested`.
 - `/apply`: Apply unified diff patches. Options: `--patch-file`, `--dry-run`, `--confirm`.

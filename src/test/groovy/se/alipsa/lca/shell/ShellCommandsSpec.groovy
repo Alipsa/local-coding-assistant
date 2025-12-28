@@ -1132,6 +1132,47 @@ class ShellCommandsSpec extends Specification {
     output.contains("Output truncated")
   }
 
+  def "shellCommand streams output and updates conversation history"() {
+    given:
+    CommandRunner runner = Mock() {
+      1 * runStreaming("echo hi", 60000L, 8000, _ as CommandRunner.OutputListener) >> {
+        new CommandRunner.CommandResult(true, false, 0, "[OUT] hi", false, tempDir.resolve("run.log"))
+      }
+    }
+    ShellCommands shellCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      runner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("shell.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+    )
+
+    when:
+    String output = shellCommands.shellCommand("echo hi", "shell-session")
+
+    then:
+    output.contains("Exit: 0")
+    sessionState.history("shell-session").any { it.contains("Shell command: echo hi") }
+    sessionState.getOrCreateConversation("shell-session").messages.any {
+      it.textContent?.contains("Shell command executed")
+    }
+  }
+
   def "model command falls back when requested model missing"() {
     given:
     ModelRegistry fallbackRegistry = Stub() {

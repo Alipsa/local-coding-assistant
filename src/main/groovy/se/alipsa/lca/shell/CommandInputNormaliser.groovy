@@ -44,6 +44,10 @@ class CommandInputNormaliser {
       return raw
     }
     if (trimmed.startsWith("/")) {
+      String bangRewrite = rewriteBangCommand(trimmed)
+      if (bangRewrite != null) {
+        return bangRewrite
+      }
       String rewritten = rewriteConfigCommand(trimmed)
       if (rewritten != null) {
         return rewritten
@@ -100,5 +104,24 @@ class CommandInputNormaliser {
     }
     String value = parts[2]
     "${CONFIG_COMMAND} --${key} ${value}"
+  }
+
+  private static String rewriteBangCommand(String trimmed) {
+    int end = trimmed.indexOf(" ")
+    String command = end == -1 ? trimmed : trimmed.substring(0, end)
+    if (command != "/!" && command != "/sh") {
+      return null
+    }
+    if (end == -1) {
+      return null
+    }
+    String remainder = trimmed.substring(end + 1).trim()
+    if (!remainder) {
+      return null
+    }
+    if (remainder.startsWith("--")) {
+      return trimmed
+    }
+    "${command} --command ${quote(remainder)}"
   }
 }

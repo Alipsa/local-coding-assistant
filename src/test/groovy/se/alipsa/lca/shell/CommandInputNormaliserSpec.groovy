@@ -108,4 +108,14 @@ class CommandInputNormaliserSpec extends Specification {
     normaliser.normalise("/config intent enabled") == "/config --intent enabled"
     normaliser.normalise("/config web-search disabled") == "/config --web-search disabled"
   }
+
+  def "normalise rewrites direct shell commands"() {
+    given:
+    def normaliser = new CommandInputNormaliser(new ShellSettings(true))
+
+    expect:
+    normaliser.normalise("/! ls -la") == "/! --command \"ls -la\""
+    normaliser.normalise("/sh git status") == "/sh --command \"git status\""
+    normaliser.normalise("/! --command \"ls -la\"") == "/! --command \"ls -la\""
+  }
 }

@@ -7,6 +7,8 @@ import java.io.ByteArrayInputStream
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.ArrayList
+import java.util.Collections
 import java.util.concurrent.TimeUnit
 
 class CommandRunnerSpec extends Specification {
@@ -27,6 +29,22 @@ class CommandRunnerSpec extends Specification {
     result.output.contains("hi")
     result.logPath != null
     Files.exists(result.logPath)
+  }
+
+  def "runStreaming emits output lines to listener"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir)
+    List<String> lines = Collections.synchronizedList(new ArrayList<>())
+    CommandRunner.OutputListener listener = { String stream, String line ->
+      lines.add("${stream}:${line}")
+    } as CommandRunner.OutputListener
+
+    when:
+    CommandRunner.CommandResult result = runner.runStreaming("echo hi", 2000L, 200, listener)
+
+    then:
+    result.success
+    lines.any { it.contains("OUT:hi") }
   }
 
   def "run executes argument list without a shell"() {
