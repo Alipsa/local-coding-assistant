@@ -904,10 +904,7 @@ Do not execute any commands.
     @ShellOption(defaultValue = "true", help = "Ask for confirmation before running") boolean confirm,
     @ShellOption(defaultValue = "false", help = "Set when the request originates from the agent") boolean agentRequested
   ) {
-    String trimmed = command != null ? command.trim() : ""
-    if (!trimmed) {
-      throw new IllegalArgumentException("Command must not be empty.")
-    }
+    String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
     if (!decision.allowed) {
       return decision.message ?: "Command blocked by policy."

@@ -292,6 +292,14 @@ class CommandRunner {
   @FunctionalInterface
   @CompileStatic
   static interface OutputListener {
+    /**
+     * Receives a single output line from the command execution.
+     *
+     * Notes:
+     * - Invoked synchronously on the stream reader thread (avoid slow or blocking work).
+     * - Exceptions are caught and logged; they do not stop stream processing.
+     * - stream is "OUT" or "ERR".
+     */
     void onLine(String stream, String line)
   }
 

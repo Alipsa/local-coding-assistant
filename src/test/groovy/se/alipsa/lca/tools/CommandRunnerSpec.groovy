@@ -7,8 +7,6 @@ import java.io.ByteArrayInputStream
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.ArrayList
-import java.util.Collections
 import java.util.concurrent.TimeUnit
 
 class CommandRunnerSpec extends Specification {
