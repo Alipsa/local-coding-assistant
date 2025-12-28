@@ -120,4 +120,16 @@ class CommandInputNormaliserSpec extends Specification {
     normaliser.normalise("/!") == "/!"
     normaliser.normalise("/sh") == "/sh"
   }
+
+  def "normalise escapes special characters in direct shell commands"() {
+    given:
+    def normaliser = new CommandInputNormaliser(new ShellSettings(true))
+
+    expect:
+    normaliser.normalise('''/! echo "test's value"''') == '''/! --command "echo \\"test's value\\""'''
+    normaliser.normalise('''/! echo "test\\value"''') == '''/! --command "echo \\"test\\\\value\\""'''
+    normaliser.normalise('''/! echo "line1
+line2"''') == '''/! --command "echo \\"line1
+line2\\""'''
+  }
 }

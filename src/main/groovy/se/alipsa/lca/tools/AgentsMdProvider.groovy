@@ -50,6 +50,11 @@ class AgentsMdProvider {
       clearCache()
       return null
     }
+    if (!Files.isRegularFile(agentsPath)) {
+      clearCache()
+      log.warn("AGENTS.md exists but is not a regular file: {}", agentsPath)
+      return null
+    }
     long modified
     try {
       modified = Files.getLastModifiedTime(agentsPath).toMillis()
@@ -65,11 +70,6 @@ class AgentsMdProvider {
       cached = cache.get()
       if (cached != null && cached.modified == modified) {
         return cached.content
-      }
-      if (!Files.isRegularFile(agentsPath)) {
-        log.warn("AGENTS.md exists but is not a regular file: {}", agentsPath)
-        cache.set(new CacheEntry(modified, null))
-        return null
       }
       if (!Files.isReadable(agentsPath)) {
         log.warn("AGENTS.md exists but is not readable: {}", agentsPath)

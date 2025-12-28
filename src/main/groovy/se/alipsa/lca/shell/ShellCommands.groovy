@@ -862,6 +862,7 @@ Do not execute any commands.
     @ShellOption(help = "Command to execute (runs via bash -lc)") String command,
     @ShellOption(defaultValue = DEFAULT_SESSION, help = "Session id for history logging") String session
   ) {
+    // Intentionally no confirmation prompt to mirror a direct shell mode; rely on CommandPolicy for guardrails.
     requireNonBlank(command, "command")
     String trimmed = command.trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
@@ -1658,6 +1659,7 @@ ${rendered}
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
     }
+    builder.append("\nOutput: streamed to console.")
     if (result.logPath != null) {
       builder.append("\nLog: ").append(result.logPath)
     }

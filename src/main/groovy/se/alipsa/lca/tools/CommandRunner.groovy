@@ -298,6 +298,7 @@ class CommandRunner {
      * Notes:
      * - Invoked synchronously on the stream reader thread (avoid slow or blocking work).
      * - Exceptions are caught and logged; they do not stop stream processing.
+     * - Listener failures do not affect the command result; output streaming is best-effort.
      * - stream is "OUT" or "ERR".
      */
     void onLine(String stream, String line)
