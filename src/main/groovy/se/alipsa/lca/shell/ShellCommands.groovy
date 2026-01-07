@@ -48,6 +48,7 @@ import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.SecretScanner
 import se.alipsa.lca.tools.SastTool
 import se.alipsa.lca.tools.LogSanitizer
+import se.alipsa.lca.tools.CodeBlockExtractor
 
 import java.io.BufferedReader
 import java.io.InputStream
@@ -309,7 +310,8 @@ Do not execute any commands.
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt,
+    @ShellOption(defaultValue = "false", help = "Auto-save code blocks to files") boolean autoSave
   ) {
     requireNonBlank(prompt, "prompt")
     String health = ensureOllamaHealth()
@@ -344,10 +346,24 @@ Do not execute any commands.
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
-    if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText
+
+    // Auto-save code blocks if enabled
+    String saveNote = null
+    if (autoSave) {
+      List<CodeBlockExtractor.CodeBlock> blocks = CodeBlockExtractor.extractCodeBlocks(replyText)
+      if (!blocks.isEmpty()) {
+        Path projectRoot = fileEditingTool != null ? fileEditingTool.getProjectRoot() : Paths.get(".").toAbsolutePath().normalize()
+        CodeBlockExtractor.SaveResult saveResult = CodeBlockExtractor.saveCodeBlocks(blocks, projectRoot, false)
+        if (saveResult.hasFiles()) {
+          saveNote = "\n\n" + saveResult.format()
+        }
+      }
     }
-    replyText
+
+    if (fallbackNote != null) {
+      return fallbackNote + "\n" + replyText + (saveNote ?: "")
+    }
+    replyText + (saveNote ?: "")
   }
 
   @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands.")
@@ -612,7 +628,7 @@ Do not execute any commands.
     if (!send) {
       return content
     }
-    chat(content, session, persona, null, null, null, null, null)
+    chat(content, session, persona, null, null, null, null, null, false)
   }
 
   @ShellMethod(key = ["/paste"], value = "Enter paste mode; end input with a line containing only /end.")
@@ -633,7 +649,7 @@ Do not execute any commands.
     if (!send) {
       return body
     }
-    chat(body, session, persona, null, null, null, null, null)
+    chat(body, session, persona, null, null, null, null, null, false)
   }
 
   @ShellMethod(key = ["/status"], value = "Show git status for the current repository.")

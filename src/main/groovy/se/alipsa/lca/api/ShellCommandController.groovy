@@ -49,7 +49,8 @@ class ShellCommandController {
       request.temperature,
       request.reviewTemperature,
       request.maxTokens,
-      request.systemPrompt
+      request.systemPrompt,
+      false // autoSave disabled for API calls by default
     )
   }
 
@@ -150,7 +151,7 @@ class ShellCommandController {
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.CODER
     if (send) {
-      return shellCommands.chat(seed, session, persona, null, null, null, null, null)
+      return shellCommands.chat(seed, session, persona, null, null, null, null, null, false)
     }
     seed
   }

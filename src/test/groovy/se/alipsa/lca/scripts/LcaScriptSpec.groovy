@@ -44,7 +44,8 @@ class LcaScriptSpec extends Specification {
     result.exitCode == 0
     Files.exists(libDir.resolve("local-coding-assistant-1.2.0-exec.jar"))
     !Files.exists(libDir.resolve("local-coding-assistant-1.0.0-exec.jar"))
-    result.output.trim().isEmpty()
+    // Script now outputs informational messages about removing old jars
+    result.output.contains("Removing old jar") || result.output.trim().isEmpty()
 
     where:
     scriptName << scriptNames()

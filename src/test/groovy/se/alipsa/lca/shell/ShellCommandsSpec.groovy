@@ -140,7 +140,8 @@ class ShellCommandsSpec extends Specification {
       0.9d,
       0.4d,
       2048,
-      "extra system"
+      "extra system",
+      false
     )
 
     then:
@@ -301,7 +302,7 @@ class ShellCommandsSpec extends Specification {
     platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
 
     when:
-    def response = withRepo.chat("Hello", "context-session", PersonaMode.CODER, null, null, null, null, null)
+    def response = withRepo.chat("Hello", "context-session", PersonaMode.CODER, null, null, null, null, null, false)
 
     then:
     response == "context response"
