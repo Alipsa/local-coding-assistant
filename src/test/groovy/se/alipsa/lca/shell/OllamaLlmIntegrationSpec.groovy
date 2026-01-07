@@ -49,8 +49,8 @@ class OllamaLlmIntegrationSpec extends Specification {
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                 Ollama LLM Integration Tests                               ║
 ║                                                                            ║
-║ These tests make REAL LLM calls to Ollama and may take several minutes.   ║
-║ Each test will print progress messages as it runs.                        ║
+║ These tests make REAL LLM calls to Ollama and may take several minutes.    ║
+║ Each test will print progress messages as it runs.                         ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 """
   }
