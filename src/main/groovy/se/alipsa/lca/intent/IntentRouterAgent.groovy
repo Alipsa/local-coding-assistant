@@ -67,7 +67,7 @@ class IntentRouterAgent {
       result = parseResponse(retryPrompt, 0.0d)
     }
     if (result == null) {
-      return fallbackResult("Router response was invalid.")
+      return fallbackResult("I couldn't understand that request. Try rephrasing or use /help to see available commands.")
     }
     validateResult(result)
   }
@@ -107,13 +107,13 @@ class IntentRouterAgent {
       }
     }
     if (invalid) {
-      return fallbackResult("Unknown command encountered.")
+      return fallbackResult("I don't recognize that command. Use /help to see what's available, or just describe what you need.")
     }
     if (commands.isEmpty()) {
-      return fallbackResult("No commands parsed.")
+      return fallbackResult("I couldn't figure out what to do with that. Try being more specific, like 'review my code' or 'show me the project structure'.")
     }
     if (confidence < confidenceThreshold) {
-      return fallbackResult("Confidence below threshold.")
+      return fallbackResult("I'm not quite sure what you want. Could you rephrase that or use a slash command like /chat, /plan, or /review?")
     }
     new IntentRouterResult(commands, confidence, result?.explanation)
   }

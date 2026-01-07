@@ -227,8 +227,13 @@ class SlashCommandShellRunner implements ShellRunner {
     }
 
     private boolean confirmRouting(List<String> commands) {
-      String label = commands.size() > 1 ? "commands" : "command"
-      print("Confirm routed ${label}? [y/N]: ")
+      println()
+      println("⚠ This will execute the following:")
+      commands.eachWithIndex { String command, int index ->
+        println("  ${index + 1}. ${command}")
+      }
+      println()
+      print("Proceed? (y = yes, N = cancel): ")
       BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
       String response = reader.readLine()
       String normalised = response != null ? response.trim().toLowerCase() : ""
