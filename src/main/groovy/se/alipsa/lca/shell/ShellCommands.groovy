@@ -439,6 +439,10 @@ Do not execute any commands.
     @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast
   ) {
     requireNonBlank(prompt, "prompt")
+    // Track file paths for context resolution
+    if (paths != null && !paths.isEmpty()) {
+      sessionState.trackFilePaths(session, paths)
+    }
     ReviewSeverity severityThreshold = minSeverity ?: ReviewSeverity.LOW
     String health = ensureOllamaHealth()
     if (health != null) {
@@ -667,6 +671,10 @@ Do not execute any commands.
     @ShellOption(defaultValue = "false", help = "Show stats instead of full patch") boolean stat
   ) {
     requireMin(context, 0, "context")
+    // Track file paths for context resolution
+    if (paths != null && !paths.isEmpty()) {
+      sessionState.trackFilePaths("default", paths)
+    }
     GitTool.GitResult result = gitTool.diff(staged, paths, context, stat)
     formatGitResult("Diff", result)
   }
@@ -721,6 +729,13 @@ Do not execute any commands.
     @ShellOption(defaultValue = ShellOption.NULL, help = "Comma-separated hunk numbers to stage") String hunks,
     @ShellOption(defaultValue = "true", help = "Ask for confirmation before staging") boolean confirm
   ) {
+    // Track file paths for context resolution
+    if (paths != null && !paths.isEmpty()) {
+      sessionState.trackFilePaths("default", paths)
+    }
+    if (file != null && !file.trim().isEmpty()) {
+      sessionState.trackFilePath("default", file)
+    }
     boolean hunkMode = hunks != null && hunks.trim()
     if (!hunkMode && (paths == null || paths.isEmpty())) {
       throw new IllegalArgumentException("Provide file paths or hunk numbers to stage.")
@@ -1054,6 +1069,8 @@ Do not execute any commands.
 
   String revert(String filePath, boolean dryRun, boolean confirm) {
     requireNonBlank(filePath, "filePath")
+    // Track file path for context resolution
+    sessionState.trackFilePath("default", filePath)
     if (!dryRun && !confirm) {
       return "Revert canceled: confirmation required."
     }

@@ -137,7 +137,7 @@ class SlashCommandShellRunner implements ShellRunner {
       if (!isRoutingCandidate(raw)) {
         return null
       }
-      IntentRoutingOutcome outcome = intentCommandRouter.routeDetails(raw)
+      IntentRoutingOutcome outcome = intentCommandRouter.routeDetails(raw, "default")
       IntentRoutingPlan plan = outcome?.plan
       if (isDebugEnabled()) {
         printRoutingDebug(outcome)

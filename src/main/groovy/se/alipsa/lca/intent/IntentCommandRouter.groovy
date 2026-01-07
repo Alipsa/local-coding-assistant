@@ -18,12 +18,20 @@ class IntentCommandRouter {
   }
 
   IntentRoutingPlan route(String input) {
-    routeDetails(input).plan
+    route(input, null)
+  }
+
+  IntentRoutingPlan route(String input, String sessionId) {
+    routeDetails(input, sessionId).plan
   }
 
   IntentRoutingOutcome routeDetails(String input) {
+    routeDetails(input, null)
+  }
+
+  IntentRoutingOutcome routeDetails(String input, String sessionId) {
     IntentRouterResult result = routerAgent.route(input)
-    List<String> commands = mapper.map(input, result)
+    List<String> commands = mapper.map(input, result, sessionId)
     IntentRoutingPlan plan = new IntentRoutingPlan(commands, result?.confidence ?: 0.0d, result?.explanation)
     new IntentRoutingOutcome(plan, result)
   }

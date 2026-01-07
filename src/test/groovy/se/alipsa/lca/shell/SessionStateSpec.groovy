@@ -212,4 +212,58 @@ class SessionStateSpec extends Specification {
     then:
     ttlState.getRecentToolSummary("s1").summary == "Fresh"
   }
+
+  def "trackFilePath adds file to recent paths"() {
+    when:
+    state.trackFilePath("s1", "src/Main.groovy")
+    state.trackFilePath("s1", "src/Utils.groovy")
+
+    then:
+    state.getRecentFilePaths("s1") == ["src/Utils.groovy", "src/Main.groovy"]
+  }
+
+  def "trackFilePath moves existing file to front"() {
+    when:
+    state.trackFilePath("s1", "src/A.groovy")
+    state.trackFilePath("s1", "src/B.groovy")
+    state.trackFilePath("s1", "src/C.groovy")
+    state.trackFilePath("s1", "src/A.groovy")
+
+    then:
+    state.getRecentFilePaths("s1") == ["src/A.groovy", "src/C.groovy", "src/B.groovy"]
+  }
+
+  def "trackFilePath limits to 10 most recent files"() {
+    when:
+    (1..15).each { state.trackFilePath("s1", "file${it}.groovy") }
+
+    then:
+    state.getRecentFilePaths("s1").size() == 10
+    state.getRecentFilePaths("s1").first() == "file15.groovy"
+    state.getRecentFilePaths("s1").last() == "file6.groovy"
+  }
+
+  def "trackFilePaths adds multiple files"() {
+    when:
+    state.trackFilePaths("s1", ["src/A.groovy", "src/B.groovy", "src/C.groovy"])
+
+    then:
+    state.getRecentFilePaths("s1") == ["src/C.groovy", "src/B.groovy", "src/A.groovy"]
+  }
+
+  def "getRecentFilePaths respects limit parameter"() {
+    when:
+    state.trackFilePaths("s1", ["a.groovy", "b.groovy", "c.groovy", "d.groovy"])
+
+    then:
+    state.getRecentFilePaths("s1", 2) == ["d.groovy", "c.groovy"]
+  }
+
+  def "getRecentFilePaths returns empty for unknown session"() {
+    when:
+    def paths = state.getRecentFilePaths("unknown-session")
+
+    then:
+    paths.isEmpty()
+  }
 }

@@ -7,17 +7,31 @@ import org.springframework.stereotype.Component
 @CompileStatic
 class IntentCommandMapper {
 
+  private final ContextResolver contextResolver
+
+  IntentCommandMapper(ContextResolver contextResolver) {
+    this.contextResolver = contextResolver
+  }
+
   List<String> map(String input, IntentRouterResult result) {
+    map(input, result, null)
+  }
+
+  List<String> map(String input, IntentRouterResult result, String sessionId) {
     String prompt = input != null ? input.trim() : ""
     if (!prompt) {
       prompt = ""
     }
+
+    // Resolve any contextual file references (e.g., "that file", "it")
+    List<String> contextPaths = resolveContextPaths(prompt, sessionId)
+
     if (result == null || result.commands == null || result.commands.isEmpty()) {
       return List.of(buildChatCommand(prompt, Map.of()))
     }
     List<String> commands = new ArrayList<>()
     result.commands.each { IntentCommand command ->
-      String mapped = mapCommand(prompt, command)
+      String mapped = mapCommand(prompt, command, contextPaths)
       if (mapped != null && mapped.trim()) {
         commands.add(mapped)
       }
@@ -28,7 +42,15 @@ class IntentCommandMapper {
     commands
   }
 
-  private String mapCommand(String input, IntentCommand command) {
+  private List<String> resolveContextPaths(String input, String sessionId) {
+    if (contextResolver == null || sessionId == null) {
+      return List.of()
+    }
+    ContextResolver.ResolutionResult resolution = contextResolver.resolve(input, sessionId)
+    resolution?.resolvedPaths ?: List.of()
+  }
+
+  private String mapCommand(String input, IntentCommand command, List<String> contextPaths) {
     if (command == null || command.name == null || command.name.trim().isEmpty()) {
       return null
     }
@@ -40,7 +62,9 @@ class IntentCommandMapper {
       case "/plan":
         return buildPlanCommand(input, args)
       case "/review":
-        return buildReviewCommand(input, args)
+        return buildReviewCommand(input, args, contextPaths)
+      case "/edit":
+        return buildEditCommand(input, args, contextPaths)
       case "/search":
         return buildSearchCommand(input, args)
       case "/run":
@@ -49,8 +73,6 @@ class IntentCommandMapper {
         return buildApplyCommand(args)
       case "/gitapply":
         return buildGitApplyCommand(args)
-      case "/edit":
-        return buildEditCommand(input, args)
       default:
         return buildGenericCommand(name, args)
     }
@@ -72,13 +94,17 @@ class IntentCommandMapper {
     builder.toString()
   }
 
-  private String buildReviewCommand(String input, Map<String, Object> args) {
+  private String buildReviewCommand(String input, Map<String, Object> args, List<String> contextPaths) {
     String prompt = stringValue(args.get("prompt")) ?: input
     StringBuilder builder = new StringBuilder("/review --prompt ")
     builder.append(quote(prompt))
     List<String> paths = stringList(args.get("paths"))
     if (paths.isEmpty()) {
       paths = stringList(args.get("path"))
+    }
+    // If no paths specified but context paths available, use context
+    if (paths.isEmpty() && contextPaths != null && !contextPaths.isEmpty()) {
+      paths = contextPaths
     }
     paths.each { String path ->
       builder.append(" --paths ").append(quote(path))
@@ -146,16 +172,24 @@ class IntentCommandMapper {
     builder.toString()
   }
 
-  private String buildEditCommand(String input, Map<String, Object> args) {
+  private String buildEditCommand(String input, Map<String, Object> args, List<String> contextPaths) {
     String seed = stringValue(args.get("seed"))
     if (!seed && input) {
       seed = input
+    }
+    String filePath = stringValue(args.get("file-path"))
+    // If no file-path specified but context paths available, use the first one
+    if (!filePath && contextPaths != null && !contextPaths.isEmpty()) {
+      filePath = contextPaths.get(0)
     }
     StringBuilder builder = new StringBuilder("/edit")
     if (seed) {
       builder.append(" --seed ").append(quote(seed))
     }
-    appendRemainingOptions(builder, args, Set.of("seed"))
+    if (filePath) {
+      builder.append(" --file-path ").append(quote(filePath))
+    }
+    appendRemainingOptions(builder, args, Set.of("seed", "file-path"))
     builder.toString()
   }
 

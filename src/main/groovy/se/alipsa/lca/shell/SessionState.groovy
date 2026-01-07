@@ -11,7 +11,9 @@ import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.LocalOnlyState
 
 import java.time.Instant
+import java.util.ArrayDeque
 import java.util.ArrayList
+import java.util.Deque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -25,6 +27,7 @@ class SessionState {
   private final Map<String, List<String>> history = new ConcurrentHashMap<>()
   private final Map<String, Conversation> conversations = new ConcurrentHashMap<>()
   private final Map<String, ToolSummary> toolSummaries = new ConcurrentHashMap<>()
+  private final Map<String, Deque<String>> recentFilePaths = new ConcurrentHashMap<>()
   private final String defaultModel
   private final double defaultCraftTemperature
   private final double defaultReviewTemperature
@@ -130,6 +133,49 @@ class SessionState {
 
   List<String> history(String sessionId) {
     history.getOrDefault(sessionId ?: "default", List.of())
+  }
+
+  void trackFilePath(String sessionId, String filePath) {
+    if (filePath == null || filePath.trim().isEmpty()) {
+      return
+    }
+    String key = sessionId ?: "default"
+    String normalized = filePath.trim()
+    Deque<String> paths = recentFilePaths.computeIfAbsent(key) { new ArrayDeque<>() }
+    // Remove if already present to update position
+    paths.remove(normalized)
+    paths.addFirst(normalized)
+    // Keep only last 10 files
+    while (paths.size() > 10) {
+      paths.removeLast()
+    }
+  }
+
+  void trackFilePaths(String sessionId, List<String> filePaths) {
+    if (filePaths == null || filePaths.isEmpty()) {
+      return
+    }
+    filePaths.each { trackFilePath(sessionId, it) }
+  }
+
+  List<String> getRecentFilePaths(String sessionId, int limit) {
+    String key = sessionId ?: "default"
+    Deque<String> paths = recentFilePaths.get(key)
+    if (paths == null || paths.isEmpty()) {
+      return List.of()
+    }
+    List<String> result = new ArrayList<>()
+    Iterator<String> iterator = paths.iterator()
+    int count = 0
+    while (iterator.hasNext() && count < limit) {
+      result.add(iterator.next())
+      count++
+    }
+    result
+  }
+
+  List<String> getRecentFilePaths(String sessionId) {
+    getRecentFilePaths(sessionId, 10)
   }
 
   Conversation getOrCreateConversation(String sessionId) {

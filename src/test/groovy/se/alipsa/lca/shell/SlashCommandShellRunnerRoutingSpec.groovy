@@ -38,7 +38,7 @@ class SlashCommandShellRunnerRoutingSpec extends Specification {
       new IntentRoutingPlan(List.of("/edit --file-path src/App.groovy"), 0.9d, null),
       null
     )
-    router.routeDetails("Please edit src/App.groovy") >> outcome
+    router.routeDetails("Please edit src/App.groovy", "default") >> outcome
     Object provider = buildProvider(delegate, router, new IntentRoutingState(), new IntentRoutingSettings(true, "/edit"))
     InputStream originalIn = System.in
     System.in = new ByteArrayInputStream("n\n".bytes)
@@ -61,7 +61,7 @@ class SlashCommandShellRunnerRoutingSpec extends Specification {
       new IntentRoutingPlan(List.of("/edit --file-path src/App.groovy"), 0.9d, null),
       null
     )
-    router.routeDetails("Please edit src/App.groovy") >> outcome
+    router.routeDetails("Please edit src/App.groovy", "default") >> outcome
     Object provider = buildProvider(delegate, router, new IntentRoutingState(), new IntentRoutingSettings(true, "/edit"))
     InputStream originalIn = System.in
     System.in = new ByteArrayInputStream("y\n".bytes)
