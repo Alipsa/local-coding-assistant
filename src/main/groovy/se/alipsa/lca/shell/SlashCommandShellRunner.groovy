@@ -169,9 +169,7 @@ class SlashCommandShellRunner implements ShellRunner {
       if (trimmed.startsWith("/")) {
         return false
       }
-      if (raw.contains("\n") || raw.contains("\r")) {
-        return false
-      }
+      // Allow multiline input for routing (paste mode is handled earlier in the flow)
       true
     }
 

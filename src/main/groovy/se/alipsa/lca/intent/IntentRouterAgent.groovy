@@ -144,9 +144,10 @@ class IntentRouterAgent {
       builder.append("You returned invalid JSON. Output strictly valid JSON now.\n")
     }
     builder.append("You are an intent router for a local developer CLI.\n")
-    builder.append("You will be given a user input.\n")
-    builder.append("You must decide which commands to execute from this allow-list:\n")
+    builder.append("You will be given a user input (may be single or multi-line).\n")
+    builder.append("Extract the user's intent and map it to commands from this allow-list:\n")
     builder.append(String.join(", ", allowedCommands)).append("\n")
+    builder.append("For multi-line input, focus on the main request/question, not code examples or context.\n")
     builder.append("Return ONLY JSON. No prose, no markdown, no extra text.\n")
     builder.append("Your JSON must follow this schema:\n")
     builder.append("{\"commands\":[{\"name\":\"/review\",\"args\":{}}],")

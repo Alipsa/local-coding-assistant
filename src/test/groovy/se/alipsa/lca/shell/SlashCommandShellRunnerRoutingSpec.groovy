@@ -30,6 +30,49 @@ class SlashCommandShellRunnerRoutingSpec extends Specification {
     0 * router._
   }
 
+  def "routing invoked for multiline input when auto-paste disabled"() {
+    given:
+    String multilineInput = """Please review the authentication code and check for:
+- SQL injection vulnerabilities
+- Proper password hashing
+- Session token expiration"""
+    InputProvider delegate = new SingleInputProvider(new TestInput(multilineInput))
+    IntentCommandRouter router = Mock()
+    IntentRoutingOutcome outcome = new IntentRoutingOutcome(
+      new IntentRoutingPlan(List.of(), 0.0d, "fallback"),
+      null
+    )
+    router.routeDetails(multilineInput, "default") >> outcome
+    Object provider = buildProvider(delegate, router, new IntentRoutingState(), new IntentRoutingSettings(true, ""), false)
+
+    when:
+    provider.readInput()
+
+    then:
+    // Verify routing was attempted for multiline input
+    1 * router.routeDetails(multilineInput, "default")
+  }
+
+  def "routing invoked for simple multiline input"() {
+    given:
+    String multilineInput = "Review this:\nclass Foo {}"
+    InputProvider delegate = new SingleInputProvider(new TestInput(multilineInput))
+    IntentCommandRouter router = Mock()
+    IntentRoutingOutcome outcome = new IntentRoutingOutcome(
+      new IntentRoutingPlan(List.of(), 0.0d, "fallback"),
+      null
+    )
+    router.routeDetails(multilineInput, "default") >> outcome
+    Object provider = buildProvider(delegate, router, new IntentRoutingState(), new IntentRoutingSettings(true, ""), false)
+
+    when:
+    provider.readInput()
+
+    then:
+    // Verify routing was attempted for multiline input
+    1 * router.routeDetails(multilineInput, "default")
+  }
+
   def "routing cancels destructive command when not confirmed"() {
     given:
     InputProvider delegate = new SingleInputProvider(new TestInput("Please edit src/App.groovy"))
@@ -80,10 +123,11 @@ class SlashCommandShellRunnerRoutingSpec extends Specification {
     InputProvider delegate,
     IntentCommandRouter router,
     IntentRoutingState state,
-    IntentRoutingSettings settings
+    IntentRoutingSettings settings,
+    boolean autoPaste = true
   ) {
     Parser parser = new DefaultParser()
-    CommandInputNormaliser normaliser = new CommandInputNormaliser(new ShellSettings(true))
+    CommandInputNormaliser normaliser = new CommandInputNormaliser(new ShellSettings(autoPaste))
     Class<?> providerClass = SlashCommandShellRunner.declaredClasses.find { it.simpleName == "NormalisingInputProvider" }
     def ctor = providerClass.getDeclaredConstructor(
       InputProvider,
