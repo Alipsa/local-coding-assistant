@@ -2,8 +2,11 @@ package se.alipsa.lca.shell
 
 import com.embabel.common.ai.model.Llm
 import groovy.transform.CompileStatic
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -19,7 +22,10 @@ class BatchTestModelConfiguration {
     new ChatModel() {
       @Override
       ChatResponse call(Prompt prompt) {
-        new ChatResponse(List.of())
+        // Create a proper mock response with a Generation and AssistantMessage
+        def message = new AssistantMessage("Mock LLM response for testing")
+        def generation = new Generation(message, ChatGenerationMetadata.NULL)
+        new ChatResponse([generation])
       }
     }
   }
