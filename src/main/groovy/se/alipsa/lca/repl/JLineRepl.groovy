@@ -7,7 +7,6 @@ import org.jline.reader.LineReaderBuilder
 import org.jline.reader.UserInterruptException
 import org.jline.reader.impl.DefaultParser
 import org.jline.terminal.Terminal
-import org.jline.terminal.TerminalBuilder
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -37,17 +36,14 @@ class JLineRepl {
   JLineRepl(
     IntentCommandRouter intentRouter,
     CommandExecutor commandExecutor,
+    Terminal terminal,
     @Value('${lca.repl.prompt:lca> }') String prompt,
     @Value('${lca.repl.history-file:#{null}}') String historyFile
   ) {
     this.intentRouter = intentRouter
     this.commandExecutor = commandExecutor
+    this.terminal = terminal
     this.prompt = prompt
-
-    // Create terminal
-    this.terminal = TerminalBuilder.builder()
-      .system(true)
-      .build()
 
     // Create line reader with history and editing
     def parser = new DefaultParser()
@@ -58,12 +54,27 @@ class JLineRepl {
       .terminal(terminal)
       .parser(parser)
       .appName("lca")
+      .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
+      .variable(LineReader.HISTORY_SIZE, 500)
+      .variable(LineReader.BELL_STYLE, "none")
 
     if (historyFile != null && !historyFile.trim().isEmpty()) {
-      builder.variable(LineReader.HISTORY_FILE, Paths.get(historyFile.trim()))
+      def historyPath = Paths.get(historyFile.trim())
+      // Create parent directory if it doesn't exist
+      if (historyPath.parent != null) {
+        historyPath.parent.toFile().mkdirs()
+      }
+      builder.variable(LineReader.HISTORY_FILE, historyPath)
     }
 
     this.lineReader = builder.build()
+
+    // Verify terminal capabilities
+    if (!terminal.type.equals("dumb")) {
+      log.debug("Terminal type: {}, size: {}x{}", terminal.type, terminal.width, terminal.height)
+    } else {
+      log.warn("Running on a dumb terminal - line editing may be limited")
+    }
 
     log.info("JLine REPL initialized with prompt: {}", prompt)
   }

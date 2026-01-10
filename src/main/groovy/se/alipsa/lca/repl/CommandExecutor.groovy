@@ -78,6 +78,8 @@ class CommandExecutor {
         return executeDiff(args)
       case "tree":
         return executeTree(args)
+      case "codesearch":
+        return executeCodeSearch(args)
       case "help":
         return shellCommands.help()
       case "health":
@@ -255,6 +257,32 @@ class CommandExecutor {
       parseInt(parsed.depth) ?: 3,
       parseBoolean(parsed.files) ?: false,
       parseInt(parsed.limit) ?: 100
+    )
+  }
+
+  private String executeCodeSearch(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String query = parsed.query as String ?: extractPromptValue(parsed)
+    List<String> paths = null
+    if (parsed.paths) {
+      paths = (parsed.paths as String).split(',').toList()
+    } else if (parsed.words && !(parsed.words as List).isEmpty() && !parsed.query) {
+      // If no --query flag, treat first word as query and rest as paths
+      List<String> words = parsed.words as List<String>
+      query = words[0]
+      if (words.size() > 1) {
+        paths = words.subList(1, words.size())
+      }
+    }
+
+    shellCommands.codeSearch(
+      query,
+      paths,
+      parseInt(parsed.context) ?: 2,
+      parseInt(parsed.limit) ?: 20,
+      parseBoolean(parsed.pack) ?: false,
+      parseInt(parsed.maxChars) ?: 8000,
+      parseInt(parsed.maxTokens) ?: 0
     )
   }
 

@@ -197,13 +197,19 @@ run_programme() {
   ensure_prerequisites
   echo "Starting local coding assistant..."
   require_command java
+
+  # Ensure TERM is set for proper JLine terminal handling
+  if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
+    export TERM=xterm-256color
+  fi
+
   local jar_path
   if jar_path="$(find_latest_local_jar)"; then
-    exec java -jar "$jar_path" "$@"
+    exec java -Dorg.jline.terminal.dumb=false -Djline.terminal=unix -jar "$jar_path" "$@"
   fi
   fetch_release_info
   jar_path="$(download_latest_release)"
-  exec java -jar "$jar_path" "$@"
+  exec java -Dorg.jline.terminal.dumb=false -Djline.terminal=unix -jar "$jar_path" "$@"
 }
 
 find_newest_jar_in_dir() {
