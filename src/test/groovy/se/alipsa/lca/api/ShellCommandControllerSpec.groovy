@@ -38,7 +38,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.chat("hello", "default", PersonaMode.CODER, null, null, null, null, null, false) >> "ok"
+    1 * commands.chat(["hello"] as String[], "default", PersonaMode.CODER, null, null, null, null, null, false) >> "ok"
   }
 
   def "plan endpoint delegates with defaults"() {
@@ -49,7 +49,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.plan("plan it", "default", PersonaMode.ARCHITECT, null, null, null, null, null) >> "ok"
+    1 * commands.plan(["plan it"] as String[], "default", PersonaMode.ARCHITECT, null, null, null, null, null) >> "ok"
   }
 
   def "route endpoint delegates to intent router"() {
@@ -130,7 +130,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.chat("draft", "s1", PersonaMode.ARCHITECT, null, null, null, null, null, false) >> "sent"
+    1 * commands.chat(["draft"] as String[], "s1", PersonaMode.ARCHITECT, null, null, null, null, null, false) >> "sent"
   }
 
   def "run endpoint requires confirmation"() {

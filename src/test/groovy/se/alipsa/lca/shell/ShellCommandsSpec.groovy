@@ -133,7 +133,7 @@ class ShellCommandsSpec extends Specification {
 
     when:
     def response = commands.chat(
-      "prompt text",
+      ["prompt text"] as String[],
       "s1",
       PersonaMode.ARCHITECT,
       "custom-model",
@@ -166,7 +166,7 @@ class ShellCommandsSpec extends Specification {
 
     when:
     def response = commands.plan(
-      "Create a plan",
+      ["Create a plan"] as String[],
       "s2",
       PersonaMode.ARCHITECT,
       null,
@@ -205,7 +205,7 @@ class ShellCommandsSpec extends Specification {
     when:
     commands.search("out of memory", 2, "s2", "duckduckgo", 15000L, true, null)
     def response = commands.plan(
-      "Based on your investigation, suggest a plan.",
+      ["Based on your investigation, suggest a plan."] as String[],
       "s2",
       PersonaMode.ARCHITECT,
       null,
@@ -305,7 +305,7 @@ class ShellCommandsSpec extends Specification {
     platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
 
     when:
-    def response = withRepo.chat("Hello", "context-session", PersonaMode.CODER, null, null, null, null, null, false)
+    def response = withRepo.chat(["Hello"] as String[], "context-session", PersonaMode.CODER, null, null, null, null, null, false)
 
     then:
     response == "context response"

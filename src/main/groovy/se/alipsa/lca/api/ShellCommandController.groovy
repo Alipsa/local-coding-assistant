@@ -42,7 +42,7 @@ class ShellCommandController {
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.CODER
     shellCommands.chat(
-      prompt,
+      [prompt] as String[],
       session,
       persona,
       request.model,
@@ -60,7 +60,7 @@ class ShellCommandController {
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.ARCHITECT
     shellCommands.plan(
-      prompt,
+      [prompt] as String[],
       session,
       persona,
       request.model,
@@ -151,7 +151,7 @@ class ShellCommandController {
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.CODER
     if (send) {
-      return shellCommands.chat(seed, session, persona, null, null, null, null, null, false)
+      return shellCommands.chat([seed] as String[], session, persona, null, null, null, null, null, false)
     }
     seed
   }

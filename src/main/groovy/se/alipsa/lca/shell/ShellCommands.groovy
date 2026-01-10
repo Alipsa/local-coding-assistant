@@ -303,18 +303,22 @@ Do not execute any commands.
     this.reviewLogPath = Paths.get(reviewPath).toAbsolutePath()
   }
 
-  @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant.")
+  @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
   String chat(
-    String prompt,
-    @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
+    @ShellOption(value = "--prompt", arity = -1, help = "The chat prompt") String[] words,
+    @ShellOption(defaultValue = "default", help = "Session id") String session,
     @ShellOption(defaultValue = "CODER", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt,
-    @ShellOption(defaultValue = "false", help = "Auto-save code blocks to files") boolean autoSave
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt,
+    @ShellOption(defaultValue = "false", help = "Auto-save code blocks") boolean autoSave
   ) {
+    if (words == null || words.length == 0) {
+      return "Error: prompt is required.\nUsage: /chat \"your question\" or /chat --prompt your question without quotes"
+    }
+    String prompt = String.join(" ", words)
     requireNonBlank(prompt, "prompt")
     String health = ensureOllamaHealth()
     if (health != null) {
@@ -365,22 +369,29 @@ Do not execute any commands.
       }
     }
 
+    // Add follow-up prompt for plan-related responses
+    String followUp = shouldAddFollowUpPrompt(replyText, persona) ? buildPlanFollowUpPrompt() : null
+
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText + (saveNote ?: "")
+      return fallbackNote + "\n" + replyText + (saveNote ?: "") + (followUp ?: "")
     }
-    replyText + (saveNote ?: "")
+    replyText + (saveNote ?: "") + (followUp ?: "")
   }
 
-  @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files.")
+  @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement \"your task\" or /implement --prompt your task here")
   String implement(
-    String prompt,
-    @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
+    @ShellOption(value = "--prompt", arity = -1, help = "The implementation task") String[] words,
+    @ShellOption(defaultValue = "default", help = "Session id") String session,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = "false", help = "Auto-save code blocks to files") boolean autoSave
+    @ShellOption(defaultValue = "false", help = "Auto-save code blocks") boolean autoSave
   ) {
+    if (words == null || words.length == 0) {
+      return "Error: prompt is required.\nUsage: /implement \"your task\" or /implement --prompt your task without quotes"
+    }
+    String prompt = String.join(" ", words)
     requireNonBlank(prompt, "prompt")
     String health = ensureOllamaHealth()
     if (health != null) {
@@ -448,17 +459,21 @@ After using tools, confirm what files were created/modified in your response.
     replyText + (saveNote ?: "")
   }
 
-  @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands.")
+  @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands. Usage: /plan \"your question\" or /plan --prompt your question here")
   String plan(
-    String prompt,
-    @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
+    @ShellOption(value = "--prompt", arity = -1, help = "The planning prompt") String[] words,
+    @ShellOption(defaultValue = "default", help = "Session id") String session,
     @ShellOption(defaultValue = "ARCHITECT", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt
   ) {
+    if (words == null || words.length == 0) {
+      return "Error: prompt is required.\nUsage: /plan \"your question\" or /plan --prompt your question without quotes"
+    }
+    String prompt = String.join(" ", words)
     requireNonBlank(prompt, "prompt")
     String health = ensureOllamaHealth()
     if (health != null) {
@@ -746,7 +761,7 @@ Type a command or your next question to proceed.
     if (!send) {
       return content
     }
-    chat(content, session, persona, null, null, null, null, null, false)
+    chat([content] as String[], session, persona, null, null, null, null, null, false)
   }
 
   @ShellMethod(key = ["/paste"], value = "Enter paste mode; end input with a line containing only /end.")
@@ -767,7 +782,7 @@ Type a command or your next question to proceed.
     if (!send) {
       return body
     }
-    chat(body, session, persona, null, null, null, null, null, false)
+    chat([body] as String[], session, persona, null, null, null, null, null, false)
   }
 
   @ShellMethod(key = ["/status"], value = "Show git status for the current repository.")
@@ -1699,6 +1714,13 @@ ${rendered}
 
   private String buildPlanPrompt(String sessionId, String prompt) {
     String base = prompt != null ? prompt.trim() : ""
+
+    // Add conversational context for menu responses
+    String contextHint = buildConversationalContext(sessionId, base)
+    if (contextHint != null) {
+      base = contextHint + "\n\n" + base
+    }
+
     SessionState.ToolSummary summary = sessionState.getRecentToolSummary(sessionId)
     if (summary == null || summary.summary == null || summary.summary.trim().isEmpty()) {
       return base
@@ -1715,6 +1737,69 @@ ${rendered}
     builder.toString().stripTrailing()
   }
 
+  private String buildConversationalContext(String sessionId, String userInput) {
+    // Check if user input looks like a menu response (single digit, option letter, etc.)
+    if (userInput == null || userInput.trim().isEmpty()) {
+      return null
+    }
+    String trimmed = userInput.trim()
+    boolean looksLikeMenuResponse = trimmed.matches(/^[1-9]$/) ||
+                                    trimmed.matches(/^[Oo]ption\s*[A-Z]$/) ||
+                                    trimmed.equalsIgnoreCase("A") ||
+                                    trimmed.equalsIgnoreCase("B") ||
+                                    trimmed.length() < 10
+
+    if (!looksLikeMenuResponse) {
+      return null
+    }
+
+    // Get recent conversation history to check if previous response had questions/menu
+    List<String> historyList = sessionState.history(sessionId)
+    if (historyList == null || historyList.isEmpty()) {
+      return null
+    }
+
+    // Get the last few entries (most recent)
+    String recentHistory = historyList.size() > 5 ?
+      String.join("\n", historyList.subList(historyList.size() - 5, historyList.size())) :
+      String.join("\n", historyList)
+
+    // Check if recent history contains architectural questions or menu
+    boolean hasQuestions = recentHistory.contains("Option A:") ||
+                          recentHistory.contains("Option B:") ||
+                          recentHistory.contains("What would you like to do next?") ||
+                          recentHistory.contains("architectural decision")
+
+    if (hasQuestions) {
+      return "[Context: User is responding to the previous questions/menu]"
+    }
+
+    return null
+  }
+
+  private boolean shouldAddFollowUpPrompt(String responseText, PersonaMode persona) {
+    if (responseText == null || responseText.trim().isEmpty()) {
+      return false
+    }
+
+    // Add follow-up for ARCHITECT persona responses
+    if (persona == PersonaMode.ARCHITECT) {
+      // Don't add if response already contains the follow-up prompt
+      if (responseText.contains("What would you like to do next?")) {
+        return false
+      }
+      // Add if response contains plan-like content
+      return responseText.contains("plan") ||
+             responseText.contains("implement") ||
+             responseText.contains("architectural") ||
+             responseText.contains("design") ||
+             responseText.contains("approach") ||
+             responseText.length() > 200
+    }
+
+    return false
+  }
+
   private String buildPlanSystemPrompt(String baseSystemPrompt) {
     StringBuilder builder = new StringBuilder()
     if (baseSystemPrompt != null && baseSystemPrompt.trim()) {
@@ -1722,12 +1807,18 @@ ${rendered}
     }
     builder.append("You are an ARCHITECT planning assistant for the local coding CLI.\n")
     builder.append("Your role is to provide architectural suggestions, design proposals, and implementation approaches.\n\n")
-    builder.append("IMPORTANT - Before providing a detailed plan:\n")
+    builder.append("CRITICAL - Decision Collection Process:\n")
     builder.append("1. Identify key architectural DECISIONS that need user input (e.g., 'Extend existing class vs create new class?')\n")
-    builder.append("2. If 2+ significant design choices exist, ASK the user for their preference BEFORE proposing a detailed plan\n")
-    builder.append("3. Frame questions as: 'I need your input on: [decision]. Option A: [pros/cons], Option B: [pros/cons]. Which approach?'\n")
-    builder.append("4. Only provide a full detailed plan after architectural decisions are confirmed\n\n")
-    builder.append("If NO major decisions need clarification, proceed directly with the plan.\n\n")
+    builder.append("2. If 2+ significant design choices exist, you MUST:\n")
+    builder.append("   a. List ONLY the questions with clear options (Option A, Option B, etc.)\n")
+    builder.append("   b. STOP immediately after the questions - do NOT provide any plan, implementation details, or code\n")
+    builder.append("   c. End with: 'Please let me know your preferences for these decisions.'\n")
+    builder.append("3. When the user provides answers to your questions, use those answers to create the detailed plan\n")
+    builder.append("4. If NO major decisions need clarification, proceed directly with a detailed plan\n\n")
+    builder.append("Format questions clearly:\n")
+    builder.append("'Key architectural decision: [decision name]\n")
+    builder.append("- Option A: [description] (pros: ..., cons: ...)\n")
+    builder.append("- Option B: [description] (pros: ..., cons: ...)'\n\n")
     builder.append("Available commands: ").append(PLAN_COMMANDS.join(", ")).append(".\n")
     builder.append("Do not execute any commands.")
     builder.toString()
