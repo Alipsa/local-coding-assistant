@@ -147,9 +147,20 @@ class SlashCommandShellRunner implements ShellRunner {
       if (commands == null || commands.isEmpty()) {
         return null
       }
-      if (commands.size() > 1) {
+
+      // Show routing decision if confidence is borderline or multiple commands
+      double confidence = outcome?.result?.confidence ?: 0.0d
+      boolean borderlineConfidence = confidence > 0.0d && confidence < 0.85d
+      boolean multipleCommands = commands.size() > 1
+
+      if (borderlineConfidence || multipleCommands) {
         printRoutingPreview(commands, plan)
+        if (borderlineConfidence && commands.size() == 1) {
+          String confidencePercent = String.format("%.0f%%", confidence * 100)
+          println("Confidence: ${confidencePercent}. If this isn't what you meant, use /chat, /plan, /review, or /implement directly.")
+        }
       }
+
       if (requiresAdditionalConfirmation(commands) && !confirmRouting(commands)) {
         return new SimpleInput("", List.of())
       }

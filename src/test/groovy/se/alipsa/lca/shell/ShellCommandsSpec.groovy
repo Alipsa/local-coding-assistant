@@ -177,7 +177,9 @@ class ShellCommandsSpec extends Specification {
     )
 
     then:
-    response == "plan output"
+    response.contains("plan output")
+    response.contains("What would you like to do next?")
+    response.contains("/implement")
     captured != null
     captured.persona == PersonaMode.ARCHITECT
     captured.responseFormat != null
@@ -219,7 +221,8 @@ class ShellCommandsSpec extends Specification {
       opts.fetcherName == "htmlunit" &&
       opts.fallbackFetcherName == "jsoup"
     }) >> results
-    response == "plan output"
+    response.contains("plan output")
+    response.contains("What would you like to do next?")
     captured != null
     capturedUserMessage != null
     capturedUserMessage.textContent.contains("Recent investigation context:")

@@ -19,10 +19,23 @@ import java.util.concurrent.TimeUnit
  * Requirements:
  * - Ollama must be running at http://localhost:11434
  * - Model qwen3-coder:30b must be pulled (or fallback gpt-oss:20b)
+ * - System property runSlowIntegrationTests must be set to true
  *
- * Tests will be skipped if Ollama is not available.
+ * Tests will be skipped if:
+ * - The system property runSlowIntegrationTests is not set to "true"
+ * - Ollama is not available
+ *
+ * To run these tests during integration test phase:
+ * mvn verify -DrunSlowIntegrationTests=true
  */
 @IgnoreIf({
+  // First check if the flag is enabled
+  if (System.getProperty("runSlowIntegrationTests") != "true") {
+    println "INFO: Skipping OllamaLlmIntegrationSpec - requires -DrunSlowIntegrationTests=true"
+    return true
+  }
+
+  // Then check if Ollama is available
   try {
     new URL("http://localhost:11434/api/version").openConnection().with {
       connectTimeout = 2000

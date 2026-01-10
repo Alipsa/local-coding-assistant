@@ -62,6 +62,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Properties
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 @ShellComponent("lcaShellCommands")
 @CompileStatic
@@ -224,6 +225,7 @@ Do not execute any commands.
     commands.put("/git-push", "Push the current branch with confirmation.")
     commands.put("/health", "Check connectivity to Ollama.")
     commands.put("/help", "Show available slash commands.")
+    commands.put("/implement", "Implement changes by actually creating and modifying files.")
     commands.put("/intent-debug", "Toggle intent routing debug output.")
     commands.put("/model", "List or set the active session model.")
     commands.put("/paste", "Enter paste mode; optionally send to /chat.")
@@ -303,7 +305,7 @@ Do not execute any commands.
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant.")
   String chat(
-    @ShellOption(help = "Prompt text; multiline supported by quoting or paste mode") String prompt,
+    String prompt,
     @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
     @ShellOption(defaultValue = "CODER", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
@@ -318,6 +320,7 @@ Do not execute any commands.
     if (health != null) {
       return health
     }
+    println("Preparing request...")
     ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(
       session,
@@ -340,6 +343,7 @@ Do not execute any commands.
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
     ChatRequest request = new ChatRequest(persona, options, system, null)
+    println("Processing with ${settings.model} (${persona.name().toLowerCase()} mode)...")
     AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
@@ -350,6 +354,84 @@ Do not execute any commands.
     // Auto-save code blocks if enabled
     String saveNote = null
     if (autoSave) {
+      println("Saving code blocks...")
+      List<CodeBlockExtractor.CodeBlock> blocks = CodeBlockExtractor.extractCodeBlocks(replyText)
+      if (!blocks.isEmpty()) {
+        Path projectRoot = fileEditingTool != null ? fileEditingTool.getProjectRoot() : Paths.get(".").toAbsolutePath().normalize()
+        CodeBlockExtractor.SaveResult saveResult = CodeBlockExtractor.saveCodeBlocks(blocks, projectRoot, false)
+        if (saveResult.hasFiles()) {
+          saveNote = "\n\n" + saveResult.format()
+        }
+      }
+    }
+
+    if (fallbackNote != null) {
+      return fallbackNote + "\n" + replyText + (saveNote ?: "")
+    }
+    replyText + (saveNote ?: "")
+  }
+
+  @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files.")
+  String implement(
+    String prompt,
+    @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
+    @ShellOption(defaultValue = "false", help = "Auto-save code blocks to files") boolean autoSave
+  ) {
+    requireNonBlank(prompt, "prompt")
+    String health = ensureOllamaHealth()
+    if (health != null) {
+      return health
+    }
+    println("Preparing implementation request...")
+    ModelResolution resolution = resolveModel(model)
+    String implementSystemPrompt = """
+You MUST use the available file editing tools to actually create and modify files.
+Available tools:
+- writeFile(filePath, content) - create new files or overwrite existing ones
+- replace(filePath, oldString, newString) - make targeted changes in existing files
+- replaceRange(filePath, startLine, endLine, newContent, false) - replace specific line ranges
+- applySearchReplaceBlocks(filePath, blocksText, false) - multiple changes in one file
+
+DO NOT just show code snippets. Actually call these tools to implement the changes.
+After using tools, confirm what files were created/modified in your response.
+""".trim()
+    SessionSettings settings = sessionState.update(
+      session,
+      resolution.chosen,
+      temperature,
+      reviewTemperature,
+      maxTokens,
+      implementSystemPrompt,
+      null
+    )
+    LlmOptions options = sessionState.craftOptions(settings)
+    String fallbackNote = resolution.fallbackUsed ? "Note: using fallback model ${resolution.chosen}." : null
+    String system = sessionState.systemPrompt(settings)
+    Agent agent = resolveAgent(CHAT_AGENT_NAME)
+    if (agent == null) {
+      return "Chat agent unavailable; ensure Embabel agents are enabled."
+    }
+    def conversation = sessionState.getOrCreateConversation(session)
+    String planPrompt = buildPlanPrompt(session, prompt)
+    UserMessage userMessage = new UserMessage(planPrompt)
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, null)
+    println("Implementing with ${settings.model} (implementation mode)...")
+    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    String replyText = reply?.textContent
+    if (replyText == null || replyText.trim().isEmpty()) {
+      return "No response generated."
+    }
+    sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
+
+    // Auto-save code blocks if enabled
+    String saveNote = null
+    if (autoSave) {
+      println("Saving code blocks...")
       List<CodeBlockExtractor.CodeBlock> blocks = CodeBlockExtractor.extractCodeBlocks(replyText)
       if (!blocks.isEmpty()) {
         Path projectRoot = fileEditingTool != null ? fileEditingTool.getProjectRoot() : Paths.get(".").toAbsolutePath().normalize()
@@ -368,7 +450,7 @@ Do not execute any commands.
 
   @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands.")
   String plan(
-    @ShellOption(help = "Planning request; multiline supported by quoting or paste mode") String prompt,
+    String prompt,
     @ShellOption(defaultValue = "default", help = "Session id for persisting options") String session,
     @ShellOption(defaultValue = "ARCHITECT", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override model for this session") String model,
@@ -382,6 +464,7 @@ Do not execute any commands.
     if (health != null) {
       return health
     }
+    println("Preparing plan request...")
     ModelResolution resolution = resolveModel(model)
     SessionSettings settings = sessionState.update(
       session,
@@ -405,16 +488,35 @@ Do not execute any commands.
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
     ChatRequest request = new ChatRequest(persona, options, planSystem, PLAN_RESPONSE_FORMAT)
+    println("Creating plan with ${settings.model}...")
     AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant (plan): ${replyText}")
+
+    // Add follow-up action prompt
+    String followUp = buildPlanFollowUpPrompt()
+    String fullResponse = replyText + "\n\n" + followUp
+
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText
+      return fallbackNote + "\n" + fullResponse
     }
-    replyText
+    fullResponse
+  }
+
+  private String buildPlanFollowUpPrompt() {
+    """
+---
+What would you like to do next?
+1. Implement this plan - use: /implement "<describe what to implement>"
+2. Refine the plan - ask follow-up questions or request changes
+3. Save to file - use: /edit to save the plan
+4. Continue discussion - ask more questions with /chat
+
+Type a command or your next question to proceed.
+""".trim()
   }
 
   @ShellMethod(key = ["/review"], value = "Ask the assistant to review code.")
@@ -459,6 +561,7 @@ Do not execute any commands.
       printProgressDone("Review")
       return "Review agent unavailable; ensure Embabel agents are enabled."
     }
+    println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}...")
     ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security)
     ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
@@ -472,7 +575,18 @@ Do not execute any commands.
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
-    String output = formatSection("Review", rendered + sastBlock)
+
+    // Add verification reminder for general codebase reviews
+    boolean isGeneralReview = (code == null || code.trim().isEmpty()) && !staged
+    String verificationNote = ""
+    if (isGeneralReview && summary != null && !summary.findings.isEmpty()) {
+      boolean hasHighSeverity = summary.findings.any { it.severity == ReviewSeverity.HIGH }
+      if (hasHighSeverity) {
+        verificationNote = "\n\nNote: This review analyzed the codebase conceptually. Please verify High severity findings by checking the actual code files."
+      }
+    }
+
+    String output = formatSection("Review", rendered + sastBlock + verificationNote)
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (logReview) {
       writeReviewLog(prompt, summary, paths, staged, severityThreshold)
@@ -1606,9 +1720,15 @@ ${rendered}
     if (baseSystemPrompt != null && baseSystemPrompt.trim()) {
       builder.append(baseSystemPrompt.trim()).append("\n\n")
     }
-    builder.append("You are a planning assistant for the local coding CLI.\n")
+    builder.append("You are an ARCHITECT planning assistant for the local coding CLI.\n")
+    builder.append("Your role is to provide architectural suggestions, design proposals, and implementation approaches.\n\n")
+    builder.append("IMPORTANT - Before providing a detailed plan:\n")
+    builder.append("1. Identify key architectural DECISIONS that need user input (e.g., 'Extend existing class vs create new class?')\n")
+    builder.append("2. If 2+ significant design choices exist, ASK the user for their preference BEFORE proposing a detailed plan\n")
+    builder.append("3. Frame questions as: 'I need your input on: [decision]. Option A: [pros/cons], Option B: [pros/cons]. Which approach?'\n")
+    builder.append("4. Only provide a full detailed plan after architectural decisions are confirmed\n\n")
+    builder.append("If NO major decisions need clarification, proceed directly with the plan.\n\n")
     builder.append("Available commands: ").append(PLAN_COMMANDS.join(", ")).append(".\n")
-    builder.append("Propose a sequence of steps that matches the user's request.\n")
     builder.append("Do not execute any commands.")
     builder.toString()
   }
@@ -1762,8 +1882,51 @@ ${rendered}
       options = options.withContextId(sessionId)
     }
     AgentProcess process = agentPlatform.createAgentProcessFrom(agent, options, inputs)
-    process.run()
-    process.resultOfType(resultType)
+
+    // Start a progress indicator thread
+    AtomicBoolean running = new AtomicBoolean(true)
+    AtomicBoolean interrupted = new AtomicBoolean(false)
+    Thread progressThread = new Thread({
+      int dots = 0
+      while (running.get()) {
+        try {
+          Thread.sleep(2000) // Print every 2 seconds
+          if (running.get()) {
+            dots = (dots + 1) % 4
+            String indicator = "." * Math.max(1, dots)
+            print("\rThinking${indicator}   (Ctrl+C to cancel)")
+            System.out.flush()
+          }
+        } catch (InterruptedException e) {
+          break
+        }
+      }
+      // Clear the progress line
+      if (!interrupted.get()) {
+        print("\r" + " " * 50 + "\r")
+        System.out.flush()
+      }
+    } as Runnable)
+    progressThread.setDaemon(true)
+    progressThread.start()
+
+    try {
+      process.run()
+      return process.resultOfType(resultType)
+    } catch (InterruptedException e) {
+      interrupted.set(true)
+      println("\r" + " " * 50 + "\r\nOperation cancelled by user.")
+      Thread.currentThread().interrupt() // Restore interrupt status
+      return null
+    } finally {
+      running.set(false)
+      progressThread.interrupt()
+      try {
+        progressThread.join(500)
+      } catch (InterruptedException ignored) {
+        Thread.currentThread().interrupt()
+      }
+    }
   }
 
   private void ensureContextExists(String sessionId) {

@@ -36,8 +36,8 @@ class Personas {
         + "project structure and tests"
     )
     .andBackstory(
-      "Builds local-only development tooling, maps changes to concrete files, and keeps outputs structured "
-        + "for downstream tools."
+      "Builds local-only development tooling, uses file editing tools to implement changes in concrete files, "
+        + "and keeps outputs structured for downstream tools."
     )
 
   static final RoleGoalBackstory REVIEWER = RoleGoalBackstory
@@ -328,6 +328,8 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   ) {
     def template = personaTemplate(personaMode)
     String extraSystem = systemPromptOverride?.trim()
+    String userRequest = userInput.getContent()
+    boolean isImplementationRequest = userRequest =~ /(?i)\b(implement|create|add|build|write|modify|update|refactor|fix)\b/
     """
 You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
 Follow these rules:
@@ -340,19 +342,31 @@ ${template.instructions}
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
 
+${isImplementationRequest ? """IMPORTANT - IMPLEMENTATION MODE:
+The user has requested implementation changes. You MUST use the available file editing tools to actually create and modify files:
+- Use writeFile(filePath, content) to create new files or overwrite existing ones
+- Use replace(filePath, oldString, newString) to make targeted changes in existing files
+- Use replaceRange(filePath, startLine, endLine, newContent, false) to replace specific line ranges
+- Use applySearchReplaceBlocks(filePath, blocksText, false) for multiple changes in one file
+- DO NOT just show code snippets - actually call these tools to implement the changes
+- After using tools, confirm what files were created/modified in your response
+""" : ""}
 User request:
-${userInput.getContent()}
+${userRequest}
 
 Respond with:
 Plan:
 - short bullet list of steps rooted in the repository
 Implementation:
-```groovy
+${isImplementationRequest ? """1. Call the appropriate file editing tools (writeFile, replace, etc.) to implement each change
+2. Show the tool calls you made and their results
+3. Provide code snippets only as context or explanation, not as the primary output
+""" : """```groovy
 // target-file-or-class
 // implementation
-```
+```"""}
 Notes:
-- risks, required configuration, and follow-up tasks
+- ${isImplementationRequest ? "files created/modified, " : ""}risks, required configuration, and follow-up tasks
 """.stripIndent().trim()
   }
 
@@ -364,6 +378,8 @@ Notes:
   ) {
     String extraSystem = systemPromptOverride?.trim()
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
+    String codeText = codeSnippet?.text ?: ""
+    boolean hasSpecificCode = codeText.trim().length() > 50
     """
 You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
@@ -375,8 +391,23 @@ Format findings as bullet lines using: [Severity] file:line - comment (severity:
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Limit narrative to ${reviewWordCount} words.
 
+${!hasSpecificCode ? """CRITICAL - VERIFICATION REQUIREMENTS:
+You have access to searchFiles(query, paths, contextLines, limit) tool to search the codebase.
+Before making ANY claim about code structure, presence/absence of annotations, or implementation details:
+1. USE searchFiles() to verify the claim by actually searching the codebase
+2. If you cannot verify a claim with searchFiles(), mark it as [Low] and prefix with "Suggestion: " instead of asserting it as fact
+3. NEVER claim a file "lacks" something (like @CompileStatic) without searching for it first
+4. If searchFiles() shows the opposite of what you expect, trust the search result, not your assumptions
+
+Examples of what requires verification:
+- "Class X lacks @CompileStatic" → MUST search for "class X" first to verify
+- "File Y doesn't have error handling" → MUST read/search file Y first
+- "Method Z is missing validation" → MUST search for method Z first
+
+Only make definitive statements about code you have actually searched/verified.
+""" : ""}
 Code snippet to review:
-${codeSnippet.text}
+${codeText}
 
 User request:
 ${userInput.getContent()}
@@ -451,7 +482,9 @@ Notes:
       default:
         return new PersonaTemplate(
           Personas.CODER,
-          "Coder Mode: Keep narration minimal; prefer code blocks and concise repository-scoped steps."
+          "Coder Mode: Keep narration minimal; when asked to implement changes, USE the file editing tools "
+            + "(writeFile, replace, replaceRange, etc.) to actually create and modify files. "
+            + "Prefer concise repository-scoped steps and tool actions over lengthy code snippets."
         )
     }
   }

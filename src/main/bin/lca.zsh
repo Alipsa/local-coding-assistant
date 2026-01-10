@@ -19,9 +19,11 @@ die() {
 usage() {
   cat <<'EOF'
 Usage:
-  lca                Run the local coding assistant (download if missing)
-  lca upgrade        Download the latest release if newer than the local jar
-  lca --help         Show this message
+  lca                         Run the local coding assistant (download if missing)
+  lca upgrade                 Download the latest release if newer than the local jar
+  lca upgrade --include <dir> Check for newer jars in <dir> before downloading
+  lca install <jar>           Install a local jar file to ~/.local/lib
+  lca --help                  Show this message
 EOF
 }
 
@@ -204,12 +206,107 @@ run_programme() {
   exec java -jar "$jar_path" "$@"
 }
 
+find_newest_jar_in_dir() {
+  local search_dir="$1"
+  if [ ! -d "$search_dir" ]; then
+    return 1
+  fi
+  local jars
+  jars="$(find "$search_dir" -maxdepth 1 -type f -name "${JAR_PREFIX}-*-exec.jar" 2>/dev/null | sort -V)"
+  if [ -z "$jars" ]; then
+    return 1
+  fi
+  printf '%s\n' "$jars" | tail -n1
+}
+
+get_file_mtime() {
+  local file_path="$1"
+  if [ ! -f "$file_path" ]; then
+    echo "0"
+    return
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      stat -f %m "$file_path" 2>/dev/null || echo "0"
+      ;;
+    Linux)
+      stat -c %Y "$file_path" 2>/dev/null || echo "0"
+      ;;
+    *)
+      echo "0"
+      ;;
+  esac
+}
+
+is_newer_jar() {
+  local current_jar="$1"
+  local candidate_jar="$2"
+  local current_version
+  local candidate_version
+  current_version="$(version_from_jar "$current_jar")"
+  candidate_version="$(version_from_jar "$candidate_jar")"
+
+  # If versions are different, use version comparison
+  if [ "$current_version" != "$candidate_version" ]; then
+    is_newer_version "$current_version" "$candidate_version"
+    return $?
+  fi
+
+  # Same version - for SNAPSHOT, compare modification times
+  if [[ "$candidate_version" =~ SNAPSHOT ]]; then
+    local current_mtime
+    local candidate_mtime
+    current_mtime="$(get_file_mtime "$current_jar")"
+    candidate_mtime="$(get_file_mtime "$candidate_jar")"
+    [ "$candidate_mtime" -gt "$current_mtime" ]
+    return $?
+  fi
+
+  # Same non-SNAPSHOT version, candidate is not newer
+  return 1
+}
+
 upgrade_release() {
+  local include_dir=""
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --include)
+        shift
+        include_dir="$1"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
   local local_jar_path=""
   local local_version=""
   if local_jar_path="$(find_latest_local_jar)"; then
     local_version="$(version_from_jar "$local_jar_path")"
   fi
+
+  # Check for newer local jar in include directory
+  local local_candidate=""
+  if [ -n "$include_dir" ]; then
+    if local_candidate="$(find_newest_jar_in_dir "$include_dir")"; then
+      if [ -n "$local_jar_path" ]; then
+        if is_newer_jar "$local_jar_path" "$local_candidate"; then
+          echo "Found newer local jar: $(basename "$local_candidate")"
+          install_local_jar "$local_candidate"
+          return
+        fi
+      else
+        echo "Found local jar: $(basename "$local_candidate")"
+        install_local_jar "$local_candidate"
+        return
+      fi
+    fi
+  fi
+
   fetch_release_info
   if [ -z "$local_version" ]; then
     download_latest_release
@@ -223,10 +320,37 @@ upgrade_release() {
   fi
 }
 
+install_local_jar() {
+  local source_jar="$1"
+  if [ -z "$source_jar" ]; then
+    die "Usage: lca install <path-to-jar>"
+  fi
+  if [ ! -f "$source_jar" ]; then
+    die "File not found: $source_jar"
+  fi
+  local jar_name
+  jar_name="$(basename "$source_jar")"
+  if [[ ! "$jar_name" =~ ^${JAR_PREFIX}-.*-exec\.jar$ ]]; then
+    die "Invalid jar name. Expected pattern: ${JAR_PREFIX}-VERSION-exec.jar"
+  fi
+  local new_version
+  new_version="$(printf '%s\n' "$jar_name" | sed -E 's/^local-coding-assistant-(.*)-exec\.jar$/\1/')"
+  mkdir -p "$LIB_DIR"
+  local target_path="${LIB_DIR}/${jar_name}"
+  echo "Installing ${jar_name} to ${LIB_DIR}..."
+  cp "$source_jar" "$target_path"
+  remove_old_jars "$new_version"
+  echo "Successfully installed ${jar_name}"
+}
+
 case "${1:-}" in
   upgrade)
     shift
     upgrade_release "$@"
+    ;;
+  install)
+    shift
+    install_local_jar "$@"
     ;;
   -h|--help|help)
     usage

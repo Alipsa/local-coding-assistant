@@ -20,7 +20,7 @@ if [[ $(git status --porcelain) ]]; then
   echo "Git changes detected, commit all changes first before releasing"
   exit
 fi
-mvn -Prelease -B clean package site deploy
+mvn -DrunSlowIntegrationTests=true -Prelease -B clean package site deploy
 echo "Release to maven successful!"
 
 . "$SCRIPT_DIR/ghrelease.sh"

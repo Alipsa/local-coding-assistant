@@ -291,7 +291,37 @@
             <include>**/*Spec.java</include>
             <include>**/*Test.java</include>
           </includes>
+          <excludes>
+            <!-- Exclude slow integration tests from normal test phase -->
+            <exclude>**/OllamaLlmIntegrationSpec.java</exclude>
+          </excludes>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <argLine>
+            -javaagent:${org.mockito:mockito-core:jar}
+            -Xshare:off
+          </argLine>
+          <includes>
+            <!-- Only run integration tests ending with IntegrationSpec -->
+            <include>**/*IntegrationSpec.java</include>
+          </includes>
+          <systemPropertyVariables>
+            <!-- Pass the flag to tests if it's set -->
+            <runSlowIntegrationTests>${runSlowIntegrationTests}</runSlowIntegrationTests>
+          </systemPropertyVariables>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
