@@ -93,6 +93,8 @@ class ShellBatchCommandExecutorSpec extends Specification {
   }
 
   def "execute captures exceptions from CommandExecutor"() {
+    // NOTE: This is a negative test case - the stack trace output is expected behaviour
+    // The test verifies that exceptions from CommandExecutor are properly captured
     given:
     CommandExecutor commandExecutor = Mock()
     ShellBatchCommandExecutor executor = new ShellBatchCommandExecutor(

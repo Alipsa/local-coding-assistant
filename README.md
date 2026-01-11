@@ -22,7 +22,7 @@ It requires at least 16 GB of free RAM to run comfortably.
 - Spring Boot entry point with Embabel agents enabled
   (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
 - Ollama-first configuration using `qwen3-coder:30b` (see `src/main/resources/application.properties`).
-- Helper scripts for launching the shell (`lca / lca.zsh`) and installing the models locally.
+- Helper script for launching the shell (`lca`) and installing the models locally.
 - Documentation stub for Ollama setup (`docs/llm-docs.md`).
 
 ## Launcher script (lca)
@@ -30,17 +30,11 @@ If you want to run the latest release, download the launcher script from GitHub
 Releases. The script stores the executable jar in `~/.local/lib`, starts it, and installs Ollama plus the default
 models when required.
 
-Install the bash launcher (or any POSIX shell) and ensure `~/.local/bin` is on your `PATH`:
-```
+Install the launcher (works with any POSIX shell: bash, zsh, sh, dash, etc.) to any directory in your `PATH` (e.g., `~/.local/bin`, `/usr/local/bin`, or `~/bin`):
+```bash
+# Example using ~/.local/bin (ensure it's in your PATH)
 curl -fsSL -o ~/.local/bin/lca \
   https://github.com/Alipsa/local-coding-assistant/releases/latest/download/lca
-chmod +x ~/.local/bin/lca
-```
-
-If you prefer zsh, download the zsh launcher instead:
-```
-curl -fsSL -o ~/.local/bin/lca \
-  https://github.com/Alipsa/local-coding-assistant/releases/latest/download/lca.zsh
 chmod +x ~/.local/bin/lca
 ```
 

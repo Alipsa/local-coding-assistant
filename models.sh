@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 os=""
 case "$(uname -s)" in
@@ -19,12 +19,12 @@ esac
 
 echo "Detected OS: $os"
 
-if ! command -v ollama &> /dev/null; then
+if ! command -v ollama >/dev/null 2>&1; then
   echo "ollama could not be found"
   case "$os" in
     mac)
       echo "Installing ollama using Homebrew..."
-      if ! command -v brew &> /dev/null; then
+      if ! command -v brew >/dev/null 2>&1; then
         echo "Homebrew not found. Please install Homebrew first: https://brew.sh/"
         exit 1
       fi
@@ -41,13 +41,13 @@ if ! command -v ollama &> /dev/null; then
   esac
 fi
 
-function checkAndInstall() {
-    model=$1
+checkAndInstall() {
+    model="$1"
     echo "Checking for $model model..."
-    installed_models=$(ollama list | grep $model | awk '{print $1}')
+    installed_models="$(ollama list 2>/dev/null | grep "$model" | awk '{print $1}')"
     if [ -z "$installed_models" ]; then
       echo "$model model not found. Installing..."
-      ollama pull $model
+      ollama pull "$model"
     else
       echo "$model model is already installed."
     fi

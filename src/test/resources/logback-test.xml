@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- Console appender for test output -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -- %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Suppress error logging in ShellBatchCommandExecutor during tests -->
+  <!-- This prevents scary stack traces from negative test cases -->
+  <logger name="se.alipsa.lca.shell.ShellBatchCommandExecutor" level="OFF"/>
+
+  <!-- Suppress validation exception warnings from Spring MVC during negative test cases -->
+  <logger name="org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver" level="OFF"/>
+
+  <!-- Set root logger to WARN to reduce test noise -->
+  <root level="WARN">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

@@ -49,12 +49,8 @@ class CodingAssistantAgentSpec extends Specification {
     1 * runner.withPromptContributor(Personas.CODER) >> runner
     1 * runner.createObject({
       it.contains("repository-aware") &&
-      it.contains("Plan:") &&
-      it.contains("Implementation:") &&
-      it.contains("Notes:") &&
-      it.contains("Indent with 2 spaces") &&
-      it.contains("Search and Replace Blocks") &&
-      it.contains("Spock") &&
+      it.contains("coding standards and conventions") &&
+      it.contains("check AGENTS.md") &&
       it.contains("Coder Mode")
     }, CodingAssistantAgent.CodeSnippet) >> snippet
     result == snippet
@@ -80,10 +76,10 @@ class CodingAssistantAgentSpec extends Specification {
     1 * runner.generateText({
       it.contains("repository code reviewer") &&
       it.contains("testing strategy") &&
-      it.contains("2-space indentation") &&
-      it.contains("Spock coverage") &&
-      it.contains("User request:") &&
-      it.contains("security")
+      it.contains("project conventions") &&
+      it.contains("check AGENTS.md") &&
+      it.contains("test coverage") &&
+      it.contains("User request:")
     }) >> "High risk of errors in patch handling. Missing tests."
     review.review.contains("Findings:")
     review.review.contains("Tests:")

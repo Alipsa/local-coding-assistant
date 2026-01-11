@@ -129,17 +129,11 @@ class LcaScriptSpec extends Specification {
   }
 
   private static List<String> scriptNames() {
-    ["lca", "lca.zsh"]
+    ["lca"]
   }
 
   private static void assumeScriptAvailable(String scriptName) {
-    if (scriptName.endsWith(".zsh")) {
-      assumeTrue(zshAvailable(), "zsh is not available on PATH")
-    }
-  }
-
-  private static boolean zshAvailable() {
-    hasExecutable("zsh")
+    // POSIX sh script works with any shell
   }
 
   private static boolean hasExecutable(String name) {

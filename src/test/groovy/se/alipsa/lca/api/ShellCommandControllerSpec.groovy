@@ -133,6 +133,9 @@ class ShellCommandControllerSpec extends Specification {
     1 * commands.chat(["draft"] as String[], "s1", PersonaMode.ARCHITECT, null, null, null, null, null, false) >> "sent"
   }
 
+  // NOTE: The following tests are negative validation test cases
+  // WARN logs about validation failures are expected but suppressed via logback-test.xml
+
   def "run endpoint requires confirmation"() {
     when:
     def response = mvc.perform(post("/api/cli/run")

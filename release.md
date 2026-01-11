@@ -31,7 +31,7 @@
 - Updated REST docs and examples.
 
 **Packaging & Tooling**
-- New CLI launch scripts (src/main/bin/lca, src/main/bin/lca.zsh).
+- New CLI launch script (src/main/bin/lca) - POSIX-compatible for bash, zsh, sh, dash, etc.
 - Additional documentation for commands, workflows, and intent routing.
 
 **Dependencies / Platform**

@@ -8,7 +8,7 @@ A fully local, privacy-first coding assistant
 
 ## The Meta-AI Story 🤯
 
-We used **AI coding assistants** to build...
+I used **AI coding assistants** to build...
 
 ...an **AI coding assistant** that uses...
 
@@ -50,6 +50,35 @@ A **local-first coding assistant** that provides:
 - 🔐 Complete privacy (Ollama-only)
 - ⚡ CLI and REST API interfaces
 - 🎯 Git-aware workflows
+
+---
+
+## 🎯 Use Cases
+
+🏢 **Enterprise:** Privacy-compliant AI assistance
+
+🔒 **Security-Sensitive:** No code leaves your network
+
+✈️ **Offline Development:** Works without internet
+
+💰 **Cost-Conscious:** No per-token charges
+
+🎓 **Learning:** Understand how AI coding tools work
+
+🔧 **Customization:** Full control over models and behavior
+
+---
+
+## 📊 By The Numbers
+
+| Metric | Value |
+|--------|-------|
+| Lines of Code | **~19,000** |
+| Slash Commands | **50+** |
+| Specialized Tools | **10** |
+| Specialized Agents | **4** |
+| AI Models Used | **3** |
+| Cloud Dependencies | **0** |
 
 ---
 
@@ -326,7 +355,12 @@ java -jar local-coding-assistant.jar \
 
 ---
 
-## 📚 Lessons Learned from "Vibe Coding"
+## 📚 Lessons Learned from "Vibe Coding" the lca
+
+Different from the parquet-jdbc driver where i was thorough in creating vision, architecture, design and tests before starting to implement.
+It worked extremely well but was a lot of work...
+
+Instead, I decided to just provide the vision and then evolve architecture etc. along with prototyping.
 
 ✅ **AI excels at:** Boilerplate, configuration, integration code, tests
 
@@ -336,7 +370,7 @@ java -jar local-coding-assistant.jar \
 
 ⚠️ **AI challenges:** Cross-file refactoring, performance optimization
 
-⚠️ **Human oversight:** Still needed for design decisions
+⚠️ **Human oversight:** Still needed for design decisions (AI does not realize the architecture is wrong, it tries to work with what is)
 
 🎯 **The sweet spot:** Human does architecture, AI does implementation
 
@@ -351,33 +385,6 @@ We used **ChatGPT** and **Claude Code**...
 ...but runs **100% locally**!
 
 *"We've essentially cloned the tools that built themselves"*
-
----
-
-## 📊 By The Numbers
-
-| Metric | Value |
-|--------|-------|
-| Slash Commands | **50+** |
-| Specialized Agents | **4** |
-| AI Models Used | **3** |
-| Cloud Dependencies | **0** |
-
----
-
-## 🎯 Use Cases
-
-🏢 **Enterprise:** Privacy-compliant AI assistance
-
-🔒 **Security-Sensitive:** No code leaves your network
-
-✈️ **Offline Development:** Works without internet
-
-💰 **Cost-Conscious:** No per-token charges
-
-🎓 **Learning:** Understand how AI coding tools work
-
-🔧 **Customization:** Full control over models and behavior
 
 ---
 
@@ -443,7 +450,7 @@ lca
 
 🔄 **Refactoring:** Large-scale code transformations
 
-🌍 **Multi-Language:** Support for more languages
+🌍 **Performance tuning:** Agent(s) that can measure and analyze performance
 
 🤝 **Team Features:** Shared coding standards, review workflows
 

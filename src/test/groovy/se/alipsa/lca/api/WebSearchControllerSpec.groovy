@@ -26,6 +26,8 @@ class WebSearchControllerSpec extends Specification {
   }
 
   def "rejects invalid requests before executing search"() {
+    // NOTE: This is a negative test case - the WARN log about validation failure is expected
+    // The test verifies that invalid input (blank query, limit=0) is properly rejected
     when:
     def response = mvc.perform(get("/api/search")
       .param("query", " ")
