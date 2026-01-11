@@ -52,4 +52,4 @@ Start the interactive shell (after installing a model):
 ```bash
 ./scripts/shell.sh
 ```
-This launches Spring Shell with Embabel agents using your Ollama model.
+This launches the JLine REPL with Embabel agents using your Ollama model.

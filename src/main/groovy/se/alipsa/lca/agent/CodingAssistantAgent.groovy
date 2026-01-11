@@ -32,12 +32,11 @@ class Personas {
   static final RoleGoalBackstory CODER = RoleGoalBackstory
     .withRole("Repository-Aware Software Engineer")
     .andGoal(
-      "Deliver production-ready Groovy/Spring Boot code that aligns with the local coding assistant "
-        + "project structure and tests"
+      "Deliver production-ready code that aligns with the project structure, conventions, and tests"
     )
     .andBackstory(
-      "Builds local-only development tooling, uses file editing tools to implement changes in concrete files, "
-        + "and keeps outputs structured for downstream tools."
+      "Builds software following project-specific coding standards, uses file editing tools to implement changes "
+        + "in concrete files, and keeps outputs structured for downstream tools."
     )
 
   static final RoleGoalBackstory REVIEWER = RoleGoalBackstory
@@ -47,8 +46,7 @@ class Personas {
         + "the codebase"
     )
     .andBackstory(
-      "Critically inspects local assistant features, expects 2-space indentation, @CompileStatic, and test "
-        + "coverage notes."
+      "Critically inspects code changes, enforces project coding standards, and ensures test coverage."
     )
 
   static final RoleGoalBackstory SECURITY_REVIEWER = RoleGoalBackstory
@@ -62,10 +60,10 @@ class Personas {
 
   static final RoleGoalBackstory ARCHITECT = RoleGoalBackstory
     .withRole("Software Architect")
-    .andGoal("Explain design trade-offs and guide structural changes for the local coding assistant")
+    .andGoal("Explain design trade-offs and guide structural changes")
     .andBackstory(
-      "Balances clarity with pragmatism, highlights risks, and keeps designs aligned with Groovy 5 and "
-        + "Spring Boot 3.5 conventions."
+      "Balances clarity with pragmatism, highlights risks, and keeps designs aligned with project conventions "
+        + "and architectural patterns."
     )
 }
 
@@ -331,13 +329,13 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     String userRequest = userInput.getContent()
     boolean isImplementationRequest = userRequest =~ /(?i)\b(implement|create|add|build|write|modify|update|refactor|fix)\b/
     """
-You are a repository-aware Groovy/Spring Boot coding assistant for a local-only CLI project.
+You are a repository-aware coding assistant.
 Follow these rules:
-- Indent with 2 spaces and keep lines under 120 characters.
-- Use Groovy 5.0.3 with @CompileStatic when possible; avoid deprecated APIs.
+- Follow the project's coding standards and conventions (check AGENTS.md if present).
 - Map changes to existing files when possible and mention target file paths.
 - Prefer Search and Replace Blocks for multi-file updates; avoid TODO placeholders.
-- Include imports, validation, and error handling; favor testable designs and mention Spock coverage ideas.
+- Include necessary imports, validation, and error handling; favor testable designs.
+- Match the language, style, and patterns used in the existing codebase.
 ${template.instructions}
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
@@ -381,10 +379,10 @@ Notes:
     String codeText = codeSnippet?.text ?: ""
     boolean hasSpecificCode = codeText.trim().length() > 50
     """
-You are a repository code reviewer for a Groovy 5 / Spring Boot 3.5 local coding assistant.
+You are a repository code reviewer.
 Assess the proposal for correctness, repository fit, error handling, and testing strategy.
-Ensure 2-space indentation, @CompileStatic suitability, and avoidance of deprecated APIs.
-Reference likely target files or layers and call out missing Spock coverage.
+Ensure code follows project conventions (check AGENTS.md if present) and avoid deprecated APIs.
+Reference likely target files or layers and call out missing test coverage.
 Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
 ${securityFocus ? "Focus on secrets, injection risks, auth bypasses, insecure defaults, and data exposure." : ""}
 Format findings as bullet lines using: [Severity] file:line - comment (severity: High/Medium/Low; file may be 'general').

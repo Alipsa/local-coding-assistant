@@ -12,9 +12,9 @@ Format:
 Example `AGENTS.md`:
 ```
 # Project Rules
-- Use Groovy 5.0.3 and @CompileStatic where possible.
+- Use your project's language and version and type safety features where possible.
 - Keep lines under 120 characters and indent with 2 spaces.
-- Add Spock 2.4 tests for new behavior.
+- Add your test framework tests for new behavior.
 
 # Environment
 - JVM 21

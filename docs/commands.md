@@ -1,6 +1,6 @@
 # Command Reference
 
-All commands use a leading slash (`/command`). Options use Spring Shell naming (kebab-case).
+All commands use a leading slash (`/command`). Options use kebab-case naming.
 Plain text input is routed into commands when intent routing is enabled; otherwise it maps to
 `/chat --prompt "<text>"`.
 Examples use named options for consistency.
@@ -246,6 +246,15 @@ Options:
 
 ## health (/health)
 Check connectivity to the Ollama base URL.
+
+## version (/version)
+Show the running application version.
+
+Usage:
+`/version`
+
+Notes:
+- Displays version information for lca, Embabel, Spring Boot, and the active model.
 
 ## shell (/! or /sh)
 Execute a shell command directly with streaming output.

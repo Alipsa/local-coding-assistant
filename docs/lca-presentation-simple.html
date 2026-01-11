@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Coding Assistant - Presentation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #f8f8f2;
+            line-height: 1.6;
+        }
+
+        .presentation {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2em;
+        }
+
+        .slide {
+            min-height: 100vh;
+            padding: 4em 2em;
+            border-bottom: 3px solid #44475a;
+            page-break-after: always;
+        }
+
+        h1 {
+            color: #bd93f9;
+            font-size: 3em;
+            margin-bottom: 0.5em;
+            text-align: center;
+        }
+
+        h2 {
+            color: #bd93f9;
+            font-size: 2.5em;
+            margin-bottom: 0.8em;
+            border-bottom: 2px solid #bd93f9;
+            padding-bottom: 0.3em;
+        }
+
+        h3 {
+            color: #ff79c6;
+            font-size: 1.8em;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+
+        p {
+            font-size: 1.2em;
+            margin-bottom: 1em;
+        }
+
+        ul, ol {
+            font-size: 1.2em;
+            margin-left: 2em;
+        }
+
+        li {
+            margin-bottom: 0.5em;
+        }
+
+        code {
+            background: #282a36;
+            color: #ff79c6;
+            padding: 0.2em 0.5em;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        pre {
+            background: #282a36;
+            padding: 1.5em;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 1.5em 0;
+        }
+
+        pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3em;
+            margin: 2em 0;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .highlight {
+            color: #50fa7b;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2em 0;
+            font-size: 1.1em;
+        }
+
+        th, td {
+            padding: 1em;
+            text-align: left;
+            border-bottom: 1px solid #44475a;
+        }
+
+        th {
+            background: #282a36;
+            color: #bd93f9;
+            font-weight: bold;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 2em;
+        }
+
+        .stat-number {
+            font-size: 4em;
+            color: #ff79c6;
+            font-weight: bold;
+        }
+
+        .nav-help {
+            position: fixed;
+            top: 1em;
+            right: 1em;
+            background: #282a36;
+            padding: 1em;
+            border-radius: 5px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        @media print {
+            .slide {
+                page-break-after: always;
+                min-height: auto;
+            }
+            .nav-help {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation">
+
+        <div class="slide">
+            <h1>Local Coding Assistant</h1>
+            <h2 class="center">Building AI-Powered Developer Tools with AI</h2>
+            <p class="center" style="font-size: 1.5em; margin-top: 2em;">
+                A fully local, privacy-first coding assistant
+            </p>
+            <p class="center" style="font-size: 1.3em;">
+                <strong class="highlight">Built entirely through "vibe coding" with ChatGPT, Codex & Claude Code</strong>
+            </p>
+        </div>
+
+        <div class="slide">
+            <h2>The Meta-AI Story 🤯</h2>
+            <p style="font-size: 1.4em; margin-top: 2em;">I used <span class="highlight">AI coding assistants</span> to build...</p>
+            <p style="font-size: 1.4em;">...an <span class="highlight">AI coding assistant</span> that uses...</p>
+            <p style="font-size: 1.4em;">...an <span class="highlight">AI model</span> to parse natural language...</p>
+            <p style="font-size: 1.4em;">...which triggers <span class="highlight">AI-powered agents</span>...</p>
+            <p style="font-size: 1.4em;">...that execute commands using <span class="highlight">AI models</span>!</p>
+            <p class="center" style="font-size: 2em; margin-top: 2em; font-style: italic; color: #ff79c6;">
+                "AI all the way down"
+            </p>
+        </div>
+
+        <div class="slide">
+            <h2>The Problem</h2>
+            <div class="grid">
+                <div>
+                    <h3 style="color: #ff5555;">❌ Cloud-Based Tools</h3>
+                    <ul>
+                        <li>Code sent to external servers</li>
+                        <li>Privacy concerns</li>
+                        <li>Requires internet</li>
+                        <li>API costs</li>
+                        <li>Data retention policies</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 style="color: #50fa7b;">✅ Our Solution</h3>
+                    <ul>
+                        <li>100% local execution</li>
+                        <li>Zero cloud dependency</li>
+                        <li>Complete privacy</li>
+                        <li>Offline capable</li>
+                        <li>No API fees</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide">
+            <h2>What is LCA?</h2>
+            <p>A <strong>local-first coding assistant</strong> that provides:</p>
+            <ul style="margin-top: 1.5em;">
+                <li>🤖 AI-powered code generation and review</li>
+                <li>💬 Natural language command interface</li>
+                <li>🔧 50+ specialized slash commands</li>
+                <li>🔐 Complete privacy (Ollama-only)</li>
+                <li>⚡ CLI and REST API interfaces</li>
+                <li>🎯 Git-aware workflows</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>🎯 Use Cases</h2>
+            <ul style="margin-top: 2em; font-size: 1.3em;">
+                <li>🏢 <strong>Enterprise:</strong> Privacy-compliant AI assistance</li>
+                <li>🔒 <strong>Security-Sensitive:</strong> No code leaves your network</li>
+                <li>✈️ <strong>Offline Development:</strong> Works without internet</li>
+                <li>💰 <strong>Cost-Conscious:</strong> No per-token charges</li>
+                <li>🎓 <strong>Learning:</strong> Understand how AI coding tools work</li>
+                <li>🔧 <strong>Customization:</strong> Full control over models and behavior</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>Technology Stack</h2>
+            <div class="grid">
+                <div>
+                    <h3>Core Framework</h3>
+                    <ul>
+                        <li><strong>Java 21</strong> + <strong>Groovy 5.0.3</strong></li>
+                        <li><strong>Spring Boot 3.5.7</strong></li>
+                        <li><strong>Embabel 0.3.1</strong> (Agent Framework)</li>
+                        <li><strong>JLine 3.x</strong> (Custom REPL)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>AI & Models</h3>
+                    <ul>
+                        <li><strong>Ollama</strong> (Local LLM provider)</li>
+                        <li><strong>qwen3-coder:30b</strong> (Primary)</li>
+                        <li><strong>gpt-oss:20b</strong> (Fallback)</li>
+                        <li><strong>tinyllama</strong> (Intent routing)</li>
+                    </ul>
+                </div>
+            </div>
+            <p style="margin-top: 2em;"><strong>Requirements:</strong> 16+ GB Available RAM, Java 21+, Ollama</p>
+        </div>
+
+        <div class="slide">
+            <h2>System Architecture</h2>
+            <pre><code>┌─────────────────────────────────────────────┐
+│         CLI Layer (JLine REPL)              │
+│  Natural Language + Slash Commands          │
+└─────────────────┬───────────────────────────┘
+                  ↓
+┌─────────────────▼───────────────────────────┐
+│    Intent Router (tinyllama @ temp=0.0)     │
+│  "review my code" → /review --security      │
+└─────────────────┬───────────────────────────┘
+                  ↓
+┌─────────────────▼───────────────────────────┐
+│         Agent Layer (Embabel)               │
+│  ChatAgent, CodingAssistant, ReviewAgent    │
+└─────────────────┬───────────────────────────┘
+                  ↓
+┌─────────────────▼───────────────────────────┐
+│         LLM Layer (Ollama)                  │
+│  qwen3-coder:30b, gpt-oss:20b               │
+└─────────────────────────────────────────────┘</code></pre>
+        </div>
+
+        <div class="slide">
+            <h2>🧠 The Natural Language Layer</h2>
+            <h3>Intent Router Agent</h3>
+            <p><strong>User says:</strong></p>
+            <pre><code>"create a metod in StatsCalculator to calculate fibonacci"</code></pre>
+            <p><strong>Intent Router (tinyllama, temp=0.0) returns:</strong></p>
+            <pre><code>{
+  "command": "/plan",
+  "confidence": 0.92,
+  "parameters": {
+    "prompt": "create a metod in StatsCalculator to calculate fibonacci"
+  }
+}</code></pre>
+            <p><strong>Executes:</strong> <code>/plan --prompt "create a metod in StatsCalculator to calculate fibonacci"</code></p>
+            <p style="font-style: italic; margin-top: 1.5em;">Note: The router preserves the original prompt, including typos!</p>
+        </div>
+
+        <div class="slide">
+            <h2>🤖 Agent-Driven Design</h2>
+            <h3>Powered by Embabel Framework</h3>
+            <ul style="margin-top: 1em;">
+                <li><strong>ChatAgent</strong> - Conversational interactions</li>
+                <li><strong>CodingAssistantAgent</strong> - Code generation & editing</li>
+                <li><strong>ReviewAgent</strong> - Code review & security analysis</li>
+                <li><strong>IntentRouterAgent</strong> - Natural language understanding</li>
+            </ul>
+            <h3 style="margin-top: 2em;">Persona System</h3>
+            <p>CODER, ARCHITECT, REVIEWER, SECURITY_REVIEWER</p>
+            <pre><code>String code = ai
+    .withPromptContributor(Personas.CODER)
+    .withLlm(LlmOptions.withTemperature(0.7))
+    .generateText(prompt)</code></pre>
+        </div>
+
+        <div class="slide">
+            <h2>🌡️ Multi-Temperature Strategy</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Task Type</th>
+                        <th>Temperature</th>
+                        <th>Rationale</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Code Generation</strong></td>
+                        <td style="color: #ff79c6;">0.7</td>
+                        <td>Higher creativity for varied solutions</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Code Review</strong></td>
+                        <td style="color: #50fa7b;">0.35</td>
+                        <td>Deterministic, consistent analysis</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Intent Routing</strong></td>
+                        <td style="color: #8be9fd;">0.0</td>
+                        <td>Perfect determinism for classification</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="margin-top: 2em;"><strong>Different tasks need different creativity/determinism trade-offs!</strong></p>
+        </div>
+
+        <div class="slide">
+            <h2>Core Features</h2>
+            <div class="grid">
+                <div>
+                    <h3>💬 Chat & Planning</h3>
+                    <ul>
+                        <li>Multi-turn conversations</li>
+                        <li>Session management</li>
+                        <li>Context-aware responses</li>
+                    </ul>
+                    <h3>📝 Code Generation</h3>
+                    <ul>
+                        <li>Search-and-replace blocks</li>
+                        <li>File editing with backups</li>
+                        <li>Automatic revert support</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>🔍 Code Review</h3>
+                    <ul>
+                        <li>Security-focused analysis</li>
+                        <li>Severity filtering</li>
+                        <li>Optional SAST integration</li>
+                    </ul>
+                    <h3>🔧 Git Integration</h3>
+                    <ul>
+                        <li>Smart commit messages</li>
+                        <li>Secret scanning</li>
+                        <li>Patch management</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide">
+            <h2>Example Workflow</h2>
+            <p><strong>Natural Language:</strong></p>
+            <pre><code>lca> review my authentication code for security issues</code></pre>
+            <p><strong>Intent Router translates to:</strong></p>
+            <pre><code>/review --paths src/auth --security</code></pre>
+            <p><strong>ReviewAgent returns:</strong></p>
+            <pre><code>## Findings
+🔴 HIGH: Password comparison using == instead of constant-time
+   Location: src/auth/Login.groovy:42
+   Fix: Use MessageDigest.isEqual() for timing-safe comparison
+
+🟡 MEDIUM: Missing rate limiting on login endpoint
+   Location: src/auth/LoginController.groovy:28
+   Fix: Add @RateLimited annotation
+
+## Tests Recommended
+- Test timing attack resistance
+- Verify rate limiting behavior</code></pre>
+        </div>
+
+        <div class="slide">
+            <h2>🔨 Tool Composition Pattern</h2>
+            <p>Agents delegate to specialized tools:</p>
+            <div class="grid" style="margin-top: 2em;">
+                <div>
+                    <h3>Core Tools</h3>
+                    <ul>
+                        <li>FileEditingTool</li>
+                        <li>GitTool</li>
+                        <li>CodeSearchTool (ripgrep)</li>
+                        <li>WebSearchTool</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>Safety Tools</h3>
+                    <ul>
+                        <li>SecretScanner</li>
+                        <li>ExclusionPolicy</li>
+                        <li>CommandPolicy</li>
+                        <li>LogSanitizer</li>
+                    </ul>
+                </div>
+            </div>
+            <p style="margin-top: 2em;"><strong>Benefits:</strong> Reusable, testable, composable</p>
+        </div>
+
+        <div class="slide">
+            <h2>🔐 Security & Safety</h2>
+            <h3>.aiexclude file</h3>
+            <p>Blocks sensitive files from AI access</p>
+            <pre><code>.env
+*.key
+credentials.json
+secrets/**</code></pre>
+            <h3>Other Safety Features</h3>
+            <ul>
+                <li><strong>Secret Scanner</strong> - Detects API keys, passwords before commits</li>
+                <li><strong>Command Policy</strong> - Allowlist/denylist for shell commands</li>
+                <li><strong>Confirmation Prompts</strong> - Required for destructive operations</li>
+                <li><strong>Log Sanitization</strong> - Automatic secret redaction</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>📋 AGENTS.md Specification</h2>
+            <p>Project-specific rules automatically included in agent prompts:</p>
+            <pre><code># Project Rules
+- Use Python 3.11 with type hints where possible
+- Keep lines under 100 characters (PEP 8)
+- Use pytest for all new tests
+- Follow existing code style and patterns
+
+# Environment
+- Python 3.11+
+- No external API calls in tests</code></pre>
+        </div>
+
+        <div class="slide">
+            <h2>🌐 REST API</h2>
+            <p>All CLI commands available via REST:</p>
+            <pre><code># Code review
+POST /api/cli/review
+{
+  "prompt": "Check error handling",
+  "paths": ["src/main/groovy"],
+  "security": true
+}
+
+# Chat
+POST /api/cli/chat
+{
+  "prompt": "Explain this function",
+  "persona": "ARCHITECT"
+}</code></pre>
+            <p style="margin-top: 1.5em;"><strong>Optional:</strong> OIDC authentication, rate limiting, API keys</p>
+        </div>
+
+        <div class="slide">
+            <h2>⚙️ Batch Mode for CI/CD</h2>
+            <pre><code># Run multiple commands non-interactively
+java -jar local-coding-assistant.jar \
+  -c "/status; /review --paths src; /commit-suggest" \
+  --yes --batch-json
+
+# Or from a file
+java -jar local-coding-assistant.jar \
+  --batch-file scripts/ci-review.txt \
+  --yes</code></pre>
+            <p style="margin-top: 1.5em;"><strong>Exit code 0</strong> on success, non-zero on first failure</p>
+            <p><strong>--batch-json</strong> emits JSONL for machine parsing</p>
+        </div>
+
+        <div class="slide">
+            <h2>💡 Key Design Decisions</h2>
+            <table>
+                <tbody>
+                    <tr>
+                        <td><strong>Ollama-Only</strong></td>
+                        <td>Complete privacy, offline capability, zero API costs</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Custom REPL</strong></td>
+                        <td>Better NL parsing, reduced dependencies</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Agent Framework</strong></td>
+                        <td>Modularity, personas, orchestration</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Intent Routing</strong></td>
+                        <td>Natural UX, discoverability</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Multi-Temperature</strong></td>
+                        <td>Right tool for each task</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tool Composition</strong></td>
+                        <td>Reusability, testability, flexibility</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="slide">
+            <h2>📚 Lessons Learned from "Vibe Coding" the lca</h2>
+            <p>Different from the parquet-jdbc driver where i was thorough in creating vision, architecture, design and tests before starting to implement.
+            It worked extremely well but was a lot of work...
+            </p>
+            <p>Instead, I decided to just provide the vision and then evolve architecture etc. along with prototyping.</p>
+
+            <ul style="margin-top: 2em; font-size: 1.3em;">
+                <li>✅ <strong>AI excels at:</strong> Boilerplate, configuration, integration code, tests</li>
+                <li>✅ <strong>Architecture matters:</strong> Clear structure helps AI understand context</li>
+                <li>✅ <strong>Iterative refinement:</strong> Start simple, add complexity incrementally</li>
+                <li>⚠️ <strong>AI challenges:</strong> Cross-file refactoring, performance optimization</li>
+                <li>⚠️ <strong>Human oversight:</strong> Still needed for design decisions (AI does not realize the architecture is wrong, it tries to work with what is)</li>
+                <li>🎯 <strong>The sweet spot:</strong> Human does architecture, AI does implementation</li>
+            </ul>
+        </div>
+
+        <div class="slide center">
+            <h2>♻️ The Recursive Quality</h2>
+            <p style="font-size: 1.6em; margin-top: 3em;">We used <span style="color: #ff79c6;">ChatGPT</span> and <span style="color: #50fa7b;">Claude Code</span>...</p>
+            <p style="font-size: 1.6em; margin-top: 1em;">...to build a tool that works <strong>just like them</strong>...</p>
+            <p style="font-size: 1.6em; margin-top: 1em;">...but runs <strong>100% locally</strong>!</p>
+            <p style="font-size: 2em; margin-top: 3em; font-style: italic;">"We've essentially cloned the tools that built themselves"</p>
+        </div>
+
+        <div class="slide">
+            <h2>📊 By The Numbers</h2>
+            <div class="grid" style="margin-top: 3em;">
+                <div class="stat">
+                    <div class="stat-number">50+</div>
+                    <div>Slash Commands</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">4</div>
+                    <div>Specialized Agents</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">3</div>
+                    <div>AI Models Used</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">0</div>
+                    <div>Cloud Dependencies</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide">
+            <h2>Command Examples</h2>
+            <pre><code># Natural language
+lca> review my authentication code for security issues
+
+# Or explicit commands
+lca> /review --paths src/auth --security --min-severity HIGH
+
+# Planning
+lca> /plan --prompt "add pagination to user list API"
+
+# Code search
+lca> /codesearch --query "password.*hash" --paths src
+
+# Git workflow
+lca> /status
+lca> /diff --staged
+lca> /commit-suggest --hint "security improvements"
+lca> /git-push
+
+# Configuration
+lca> /config --local-only true
+lca> /model --set qwen3-coder:30b</code></pre>
+        </div>
+
+        <div class="slide">
+            <h2>🚀 Getting Started</h2>
+            <p><strong>1. Install Ollama:</strong></p>
+            <pre><code>curl -fsSL https://ollama.ai/install.sh | sh</code></pre>
+            <p><strong>2. Pull models:</strong></p>
+            <pre><code>ollama pull qwen3-coder:30b
+ollama pull gpt-oss:20b
+ollama pull tinyllama</code></pre>
+            <p><strong>3. Install LCA:</strong></p>
+            <pre><code>curl -fsSL -o ~/.local/bin/lca \
+  https://github.com/Alipsa/local-coding-assistant/releases/latest/download/lca
+chmod +x ~/.local/bin/lca
+lca</code></pre>
+        </div>
+
+        <div class="slide">
+            <h2>🔮 Future Possibilities</h2>
+            <ul style="margin-top: 2em; font-size: 1.3em;">
+                <li>🔌 <strong>IDE Integration:</strong> LSP server for VSCode/IntelliJ</li>
+                <li>🧪 <strong>Test Generation:</strong> Automated test creation</li>
+                <li>📊 <strong>Code Metrics:</strong> Complexity analysis and suggestions</li>
+                <li>🔄 <strong>Refactoring:</strong> Large-scale code transformations</li>
+                <li>🌍 <strong>Performance tuning:</strong> Agent(s) that can measure and analyze performance</li>
+                <li>🤝 <strong>Team Features:</strong> Shared coding standards, review workflows</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>🎯 Key Takeaways</h2>
+            <ul style="margin-top: 2em; font-size: 1.3em;">
+                <li>1️⃣ <strong>Local AI is viable</strong> - Privacy without sacrificing capability</li>
+                <li>2️⃣ <strong>"Vibe coding" works</strong> - But needs human architecture</li>
+                <li>3️⃣ <strong>Layered AI design</strong> - Different models for different tasks</li>
+                <li>4️⃣ <strong>Safety is essential</strong> - Secret scanning, exclusions, confirmations</li>
+                <li>5️⃣ <strong>Agent patterns scale</strong> - Composition over monoliths</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>📚 Resources</h2>
+            <ul style="margin-top: 2em; font-size: 1.3em;">
+                <li><strong>🔗 GitHub:</strong> <a href="https://github.com/Alipsa/local-coding-assistant">github.com/Alipsa/local-coding-assistant</a></li>
+                <li><strong>📖 Documentation:</strong> See <code>docs/</code> folder</li>
+                <li><strong>🏗️ Architecture:</strong> <code>docs/architecture.md</code></li>
+                <li><strong>⚡ Quickstart:</strong> <code>docs/quickstart.md</code></li>
+                <li><strong>📋 Commands:</strong> <code>docs/commands.md</code></li>
+                <li><strong>🤖 Embabel Framework:</strong> <a href="https://embabel.org">embabel.org</a></li>
+                <li><strong>🦙 Ollama:</strong> <a href="https://ollama.ai">ollama.ai</a></li>
+            </ul>
+        </div>
+
+        <div class="slide center">
+            <h1>Thank You!</h1>
+            <h2>Questions?</h2>
+            <p style="font-size: 1.5em; margin-top: 3em;">Built with AI, for AI-assisted development</p>
+            <p style="font-size: 3em; margin-top: 1.5em;">🤖 + 👨‍💻 = ♾️</p>
+        </div>
+
+    </div>
+</body>
+</html>
