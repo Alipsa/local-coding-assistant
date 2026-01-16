@@ -62,6 +62,8 @@
 - Removed @Action annotation from ChatAgent.respond() method - now only respondWithThinking() is the agent action.
 - /implement command output format changed from verbose Plan/Implementation/Notes to concise confirmation + results.
 
+
+**Lines of Code:** 18857 total (11703 main, 7154 test)
 ## Version 1.1.0, 2025-12-28
 **Highlights**
 - Added natural‑language intent routing with /route, /intent-debug, and a first‑class /plan command.
