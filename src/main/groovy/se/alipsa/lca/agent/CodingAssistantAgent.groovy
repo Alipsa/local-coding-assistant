@@ -8,6 +8,7 @@ import com.embabel.agent.api.common.Ai
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.domain.library.HasContent
 import com.embabel.agent.prompt.persona.RoleGoalBackstory
+import com.embabel.agent.prompt.persona.RoleGoalBackstorySpec
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.core.types.Timestamped
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
@@ -29,7 +30,7 @@ import java.util.Objects
 
 @CompileStatic
 class Personas {
-  static final RoleGoalBackstory CODER = RoleGoalBackstory
+  static final RoleGoalBackstorySpec CODER = RoleGoalBackstorySpec
     .withRole("Repository-Aware Software Engineer")
     .andGoal(
       "Deliver production-ready code that aligns with the project structure, conventions, and tests"
@@ -39,7 +40,7 @@ class Personas {
         + "in concrete files, and keeps outputs structured for downstream tools."
     )
 
-  static final RoleGoalBackstory REVIEWER = RoleGoalBackstory
+  static final RoleGoalBackstorySpec REVIEWER = RoleGoalBackstorySpec
     .withRole("Repository Code Reviewer")
     .andGoal(
       "Identify correctness, maintainability, and integration risks in proposed changes before they land in "
@@ -49,7 +50,7 @@ class Personas {
       "Critically inspects code changes, enforces project coding standards, and ensures test coverage."
     )
 
-  static final RoleGoalBackstory SECURITY_REVIEWER = RoleGoalBackstory
+  static final RoleGoalBackstorySpec SECURITY_REVIEWER = RoleGoalBackstorySpec
     .withRole("Security Reviewer")
     .andGoal(
       "Identify security vulnerabilities, unsafe defaults, and data handling risks in proposed changes"
@@ -58,7 +59,7 @@ class Personas {
       "Focuses on OWASP-style risks, secrets handling, validation gaps, and unsafe system interactions."
     )
 
-  static final RoleGoalBackstory ARCHITECT = RoleGoalBackstory
+  static final RoleGoalBackstorySpec ARCHITECT = RoleGoalBackstorySpec
     .withRole("Software Architect")
     .andGoal("Explain design trade-offs and guide structural changes")
     .andBackstory(
@@ -90,7 +91,7 @@ class CodingAssistantAgent {
   static class ReviewedCodeSnippet implements HasContent, Timestamped {
     CodeSnippet codeSnippet
     String review
-    RoleGoalBackstory reviewer
+    RoleGoalBackstorySpec reviewer
 
     @Override
     @NonNull
@@ -184,11 +185,11 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     Ai ai,
     LlmOptions llmOverride,
     String systemPromptOverride,
-    RoleGoalBackstory reviewerPersona
+    RoleGoalBackstorySpec reviewerPersona
   ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     LlmOptions options = llmOverride ?: reviewLlmOptions
-    RoleGoalBackstory reviewer = reviewerPersona ?: Personas.REVIEWER
+    RoleGoalBackstorySpec reviewer = reviewerPersona ?: Personas.REVIEWER
     String reviewPrompt = buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
     String review = ai
       .withLlm(options)
@@ -372,7 +373,7 @@ Notes:
     UserInput userInput,
     CodeSnippet codeSnippet,
     String systemPromptOverride,
-    RoleGoalBackstory reviewerPersona
+    RoleGoalBackstorySpec reviewerPersona
   ) {
     String extraSystem = systemPromptOverride?.trim()
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
@@ -490,7 +491,7 @@ Notes:
   @Canonical
   @CompileStatic
   static class PersonaTemplate {
-    RoleGoalBackstory persona
+    RoleGoalBackstorySpec persona
     String instructions
   }
 }

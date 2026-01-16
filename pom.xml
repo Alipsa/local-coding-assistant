@@ -36,7 +36,7 @@
     <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-    <embabel-agent.version>0.3.1</embabel-agent.version>
+    <embabel-agent.version>0.3.2</embabel-agent.version>
     <extra-enforcer-rules.version>1.11.0</extra-enforcer-rules.version>
     <groovy.version>5.0.3</groovy.version>
     <htmlunit.version>4.21.0</htmlunit.version>

@@ -5,6 +5,7 @@ import com.embabel.agent.api.annotation.Action
 import com.embabel.agent.api.annotation.Agent
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.prompt.persona.RoleGoalBackstory
+import com.embabel.agent.prompt.persona.RoleGoalBackstorySpec
 import com.embabel.chat.AssistantMessage
 import com.embabel.chat.Conversation
 import com.embabel.chat.UserMessage
@@ -111,7 +112,7 @@ ${formatBlock}
   @Canonical
   @CompileStatic
   static class PersonaTemplate {
-    RoleGoalBackstory persona
+    RoleGoalBackstorySpec persona
     String instructions
   }
 }
