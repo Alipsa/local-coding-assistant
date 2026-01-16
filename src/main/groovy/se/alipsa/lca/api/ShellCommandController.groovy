@@ -139,9 +139,10 @@ class ShellCommandController {
     @RequestParam(name = "limit", defaultValue = "20") @Min(1) int limit,
     @RequestParam(name = "pack", defaultValue = "false") boolean pack,
     @RequestParam(name = "maxChars", defaultValue = "8000") @Min(0) int maxChars,
-    @RequestParam(name = "maxTokens", defaultValue = "0") @Min(0) int maxTokens
+    @RequestParam(name = "maxTokens", defaultValue = "0") @Min(0) int maxTokens,
+    @RequestParam(name = "caseInsensitive", defaultValue = "false") boolean caseInsensitive
   ) {
-    shellCommands.codeSearch(query, paths, context, limit, pack, maxChars, maxTokens)
+    shellCommands.codeSearch(query, paths, context, limit, pack, maxChars, maxTokens, caseInsensitive)
   }
 
   @PostMapping(path = "/edit", consumes = MediaType.APPLICATION_JSON_VALUE)

@@ -154,6 +154,10 @@ class IntentCommandMapper {
     if (!args.containsKey("pack")) {
       builder.append(" --pack")
     }
+    // Enable case-insensitive by default for natural language queries
+    if (!args.containsKey("case-insensitive") && !args.containsKey("caseInsensitive")) {
+      builder.append(" --case-insensitive")
+    }
     appendRemainingOptions(builder, args, Set.of("query", "path", "paths"))
     builder.toString()
   }

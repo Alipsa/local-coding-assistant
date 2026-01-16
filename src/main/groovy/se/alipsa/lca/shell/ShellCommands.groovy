@@ -738,7 +738,8 @@ Type a command or your next question to proceed.
     @ShellOption(defaultValue = "20", help = "Maximum matches to return") int limit,
     @ShellOption(defaultValue = "false", help = "Pack results into a single context blob") boolean pack,
     @ShellOption(defaultValue = "8000", help = "Max chars when packing") int maxChars,
-    @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens
+    @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens,
+    @ShellOption(value = ["-i", "--case-insensitive"], defaultValue = "false", help = "Case-insensitive search") boolean caseInsensitive
   ) {
     requireNonBlank(query, "query")
     requireMin(context, 0, "context")
@@ -746,24 +747,31 @@ Type a command or your next question to proceed.
     requireMin(maxChars, 0, "maxChars")
     requireMin(maxTokens, 0, "maxTokens")
     printProgressStart("Repository search")
-    List<CodeSearchTool.SearchHit> hits = codeSearchTool.search(query, paths, context, limit)
+    List<CodeSearchTool.SearchHit> hits = codeSearchTool.search(query, paths, context, limit, caseInsensitive)
     printProgressDone("Repository search")
+    String queryInfo = caseInsensitive ? "Query: '${query}' (case-insensitive)" : "Query: '${query}'"
     if (hits.isEmpty()) {
-      return formatSection("Code Search", "No matches found.")
+      String suggestion = """No matches found.
+
+Try:
+- Different keywords (e.g. method/class names)
+- Case-insensitive search: add -i or --case-insensitive
+- Broader search terms"""
+      return formatSection("Code Search", "${queryInfo}\n\n${suggestion}")
     }
     if (pack) {
       PackedContext packed = contextPacker.pack(hits, maxChars)
       int tokens = maxTokens > 0 ? maxTokens : contextBudgetManager.maxTokens
       int chars = maxChars > 0 ? maxChars : contextBudgetManager.maxChars
       def budgeted = contextBudgetManager.applyBudget(packed.text, packed.included, chars, tokens)
-      String summary = "Packed ${budgeted.included.size()} matches" +
+      String summary = "${queryInfo}\nPacked ${budgeted.included.size()} matches" +
         ((packed.truncated || budgeted.truncated) ? " (truncated)" : "")
       return formatSection("Code Search", summary + "\n" + budgeted.text)
     }
     String body = hits.collect { CodeSearchTool.SearchHit hit ->
       "${hit.path}:${hit.line}:${hit.column}\n${hit.snippet}"
     }.join("\n\n")
-    formatSection("Code Search", "Matches: ${hits.size()}\n${body}")
+    formatSection("Code Search", "${queryInfo}\nMatches: ${hits.size()}\n\n${body}")
   }
 
   @ShellMethod(key = ["/edit"], value = "Open default editor to draft a prompt, optionally send to assistant.")

@@ -35,6 +35,10 @@ class CodeSearchTool {
   }
 
   List<SearchHit> search(String query, List<String> paths, int contextLines, int limit) {
+    search(query, paths, contextLines, limit, false)
+  }
+
+  List<SearchHit> search(String query, List<String> paths, int contextLines, int limit, boolean caseInsensitive) {
     if (query == null || query.trim().isEmpty()) {
       return List.of()
     }
@@ -54,7 +58,7 @@ class CodeSearchTool {
         Iterator<Path> iterator = stream.filter { Path p -> Files.isRegularFile(p) }.iterator()
         while (iterator.hasNext() && hits.size() < cap) {
           Path file = iterator.next()
-          List<SearchHit> fileHits = processFile(query, ctx, file)
+          List<SearchHit> fileHits = processFile(query, ctx, file, caseInsensitive)
           if (!fileHits.isEmpty()) {
             long remaining = cap - hits.size()
             if (remaining < fileHits.size()) {
@@ -71,7 +75,7 @@ class CodeSearchTool {
     hits
   }
 
-  private List<SearchHit> processFile(String query, int contextLines, Path file) {
+  private List<SearchHit> processFile(String query, int contextLines, Path file, boolean caseInsensitive) {
     if (!Files.isRegularFile(file)) {
       return List.of()
     }
@@ -83,6 +87,7 @@ class CodeSearchTool {
     if (size > 5 * 1024 * 1024) {
       return List.of()
     }
+    String searchQuery = caseInsensitive ? query.toLowerCase() : query
     List<SearchHit> fileHits = new ArrayList<>()
     java.util.ArrayDeque<LineEntry> previous = new java.util.ArrayDeque<>()
     AtomicInteger lineCounter = new AtomicInteger(0)
@@ -93,7 +98,8 @@ class CodeSearchTool {
           previous.removeFirst()
         }
         previous.addLast(current)
-        int idx = current.text.indexOf(query)
+        String searchText = caseInsensitive ? current.text.toLowerCase() : current.text
+        int idx = searchText.indexOf(searchQuery)
         if (idx >= 0) {
           List<LineEntry> ahead = new ArrayList<>()
           for (int i = 0; i < contextLines; i++) {
@@ -112,7 +118,8 @@ class CodeSearchTool {
               previous.removeFirst()
             }
             previous.addLast(entry)
-            int aheadIdx = entry.text.indexOf(query)
+            String aheadSearchText = caseInsensitive ? entry.text.toLowerCase() : entry.text
+            int aheadIdx = aheadSearchText.indexOf(searchQuery)
             if (aheadIdx >= 0) {
               String aheadSnippet = buildSnippet(previous, List.of(), contextLines)
               fileHits.add(new SearchHit(relative, entry.number, aheadIdx + 1, aheadSnippet))

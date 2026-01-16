@@ -86,10 +86,10 @@ class CodeSearchCommandSpec extends Specification {
   def "codesearch delegates to tool and formats packed output"() {
     given:
     def hit = new CodeSearchTool.SearchHit("src/App.groovy", 10, 1, "10 | match")
-    codeSearchTool.search("query", ["src"], 2, 5) >> [hit]
+    codeSearchTool.search("query", ["src"], 2, 5, false) >> [hit]
 
     when:
-    def out = commands.codeSearch("query", ["src"], 2, 5, true, 100, 10)
+    def out = commands.codeSearch("query", ["src"], 2, 5, true, 100, 10, false)
 
     then:
     out.contains("Packed 1 matches")
@@ -99,10 +99,10 @@ class CodeSearchCommandSpec extends Specification {
   def "codesearch returns matches without packing"() {
     given:
     def hit = new CodeSearchTool.SearchHit("src/App.groovy", 10, 1, "10 | match")
-    codeSearchTool.search("query", ["src"], 2, 1) >> [hit]
+    codeSearchTool.search("query", ["src"], 2, 1, false) >> [hit]
 
     when:
-    def out = commands.codeSearch("query", ["src"], 2, 1, false, 0, 0)
+    def out = commands.codeSearch("query", ["src"], 2, 1, false, 0, 0, false)
 
     then:
     out.contains("src/App.groovy:10:1")

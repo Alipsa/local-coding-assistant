@@ -287,7 +287,8 @@ class CommandExecutor {
       parseInt(parsed.limit) ?: 20,
       parseBoolean(parsed.pack) ?: false,
       parseInt(parsed.maxChars) ?: 8000,
-      parseInt(parsed.maxTokens) ?: 0
+      parseInt(parsed.maxTokens) ?: 0,
+      parseBoolean(parsed.'case-insensitive') ?: parseBoolean(parsed.i) ?: false
     )
   }
 
