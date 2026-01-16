@@ -12,7 +12,7 @@ These settings control how natural language input is routed into commands.
 assistant.intent.enabled=true
 assistant.intent.model=tinyllama
 assistant.intent.fallback-model=gpt-oss:20b
-assistant.intent.temperature=0.0
+assistant.intent.temperature=0.1
 assistant.intent.max-tokens=256
 assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
 assistant.intent.destructive-commands=/edit,/apply,/run,/gitapply,/git-push

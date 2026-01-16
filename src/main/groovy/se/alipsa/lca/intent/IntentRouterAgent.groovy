@@ -19,7 +19,7 @@ class IntentRouterAgent {
 
   private static final Logger log = LoggerFactory.getLogger(IntentRouterAgent)
   private static final String DEFAULT_ALLOW_LIST =
-    "/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search"
+    "/chat,/plan,/review,/implement,/edit,/apply,/run,/gitapply,/git-push,/search,/codesearch"
 
   private final Ai ai
   private final ModelRegistry modelRegistry
@@ -153,6 +153,7 @@ class IntentRouterAgent {
     builder.append("- /implement: Actually create or modify files to implement changes\n")
     builder.append("- /edit: Open editor to draft or modify a prompt\n")
     builder.append("- /search: Web search for information\n")
+    builder.append("- /codesearch: Search repository files for code patterns\n")
     builder.append("- /run: Execute project commands\n")
     builder.append("- /apply: Apply diffs or patches\n")
     builder.append("- /gitapply: Apply patches using git\n")
@@ -163,6 +164,8 @@ class IntentRouterAgent {
     builder.append("- Phrases like 'give a suggestion', 'provide suggestions', 'what would be', 'how should I' → use /plan\n")
     builder.append("- Phrases like 'review this code', 'check for bugs', 'validate' (WITHOUT asking for suggestions) → use /review\n")
     builder.append("- Phrases like 'create', 'implement', 'build', 'add feature' (requesting actual implementation) → use /implement\n")
+    builder.append("- Phrases like 'search repository', 'search the code', 'find in files', 'grep for' → use /codesearch\n")
+    builder.append("- Phrases like 'search the web', 'look up', 'google' → use /search\n")
     builder.append("- When user asks to 'review... AND give suggestions/ideas', the PRIMARY intent is suggestions → use /plan\n")
     builder.append("- 'Please review... and suggest how...' → PRIMARY intent is architectural suggestions → use /plan\n")
     builder.append("- For multi-line input, focus on the main request/question, not code examples or context.\n")

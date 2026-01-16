@@ -17,13 +17,14 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.SpringBootVersion
-import org.springframework.shell.ExitRequest
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
+import org.springframework.stereotype.Component
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.ChatRequest
 import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.tools.ToolCallParser
 import se.alipsa.lca.agent.ReviewRequest
 import se.alipsa.lca.agent.ReviewResponse
 import se.alipsa.lca.review.ReviewFinding
@@ -64,7 +65,7 @@ import java.util.Properties
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
-@ShellComponent("lcaShellCommands")
+@Component("lcaShellCommands")
 @CompileStatic
 class ShellCommands {
 
@@ -107,6 +108,7 @@ Do not execute any commands.
   private final SessionState sessionState
   private final EditorLauncher editorLauncher
   private final FileEditingTool fileEditingTool
+  private final ToolCallParser toolCallParser
   private final GitTool gitTool
   private final CodeSearchTool codeSearchTool
   private final ContextPacker contextPacker
@@ -125,12 +127,8 @@ Do not execute any commands.
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
 
-  @ShellMethod(key = ["/exit", "/quit"], value = "Exit the shell.")
-  ExitRequest exitShell() {
-    new ExitRequest(0)
-  }
+  // Exit is handled by JLineRepl built-in command handler
 
-  @ShellMethod(key = ["/version"], value = "Show the running application version.")
   String version() {
     List<String> lines = new ArrayList<String>()
     lines.add("lca version: ${resolveVersion()}".toString())
@@ -260,6 +258,7 @@ Do not execute any commands.
     SessionState sessionState,
     EditorLauncher editorLauncher,
     FileEditingTool fileEditingTool,
+    ToolCallParser toolCallParser,
     GitTool gitTool,
     CodeSearchTool codeSearchTool,
     ContextPacker contextPacker,
@@ -282,6 +281,7 @@ Do not execute any commands.
     this.sessionState = sessionState
     this.editorLauncher = editorLauncher
     this.fileEditingTool = fileEditingTool
+    this.toolCallParser = toolCallParser
     Path root = resolveProjectRoot(fileEditingTool)
     this.gitTool = gitTool != null ? gitTool : new GitTool(root)
     this.codeSearchTool = codeSearchTool != null ? codeSearchTool : new CodeSearchTool()
@@ -378,15 +378,15 @@ Do not execute any commands.
     replyText + (saveNote ?: "") + (followUp ?: "")
   }
 
-  @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement \"your task\" or /implement --prompt your task here")
+  @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement your task here OR /implement --prompt \"your task\"")
   String implement(
-    @ShellOption(value = "--prompt", arity = -1, help = "The implementation task") String[] words,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = "false", help = "Auto-save code blocks") boolean autoSave
+    @ShellOption(arity = -1, help = "The implementation task") String[] words,
+    @ShellOption(value = "--session", defaultValue = "default", help = "Session id") String session,
+    @ShellOption(value = "--model", defaultValue = ShellOption.NULL, help = "Override model") String model,
+    @ShellOption(value = "--temperature", defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
+    @ShellOption(value = "--review-temperature", defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
+    @ShellOption(value = "--max-tokens", defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
+    @ShellOption(value = "--auto-save", defaultValue = "false", help = "Auto-save code blocks") boolean autoSave
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /implement \"your task\" or /implement --prompt your task without quotes"
@@ -400,15 +400,23 @@ Do not execute any commands.
     println("Preparing implementation request...")
     ModelResolution resolution = resolveModel(model)
     String implementSystemPrompt = """
-You MUST use the available file editing tools to actually create and modify files.
-Available tools:
-- writeFile(filePath, content) - create new files or overwrite existing ones
-- replace(filePath, oldString, newString) - make targeted changes in existing files
-- replaceRange(filePath, startLine, endLine, newContent, false) - replace specific line ranges
-- applySearchReplaceBlocks(filePath, blocksText, false) - multiple changes in one file
+You are a file editing assistant. Use tool call syntax to create and modify files.
 
-DO NOT just show code snippets. Actually call these tools to implement the changes.
-After using tools, confirm what files were created/modified in your response.
+TOOL SYNTAX - Use these exact formats in your response:
+- writeFile("file-path", "content") - create or overwrite a file
+- replace("file-path", "old-text", "new-text") - modify existing file
+- deleteFile("file-path") - delete a file
+
+CRITICAL: Use actual tool calls in your response, not just descriptions.
+
+Example Response Format:
+"I'll create the requested file:
+
+writeFile("hello.sh", "#!/bin/bash\\necho hello")
+
+The file has been created."
+
+DO NOT just show code blocks. Use the tool call syntax above.
 """.trim()
     SessionSettings settings = sessionState.update(
       session,
@@ -431,12 +439,20 @@ After using tools, confirm what files were created/modified in your response.
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
     ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, null)
-    println("Implementing with ${settings.model} (implementation mode)...")
+    println("Implementing with ${settings.model} (tool call parsing mode)...")
     AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
     }
+
+    // Parse and execute any tool calls in the response
+    List<ToolCallParser.ToolCall> toolCalls = toolCallParser.parseToolCalls(replyText)
+    String toolResults = null
+    if (!toolCalls.isEmpty()) {
+      toolResults = toolCallParser.executeToolCalls(toolCalls, fileEditingTool)
+    }
+
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
 
     // Auto-save code blocks if enabled
@@ -454,9 +470,9 @@ After using tools, confirm what files were created/modified in your response.
     }
 
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText + (saveNote ?: "")
+      return fallbackNote + "\n" + replyText + (toolResults ?: "") + (saveNote ?: "")
     }
-    replyText + (saveNote ?: "")
+    replyText + (toolResults ?: "") + (saveNote ?: "")
   }
 
   @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands. Usage: /plan \"your question\" or /plan --prompt your question here")

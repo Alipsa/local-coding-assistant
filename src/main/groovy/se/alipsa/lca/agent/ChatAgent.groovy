@@ -22,6 +22,7 @@ import java.util.Objects
 class ChatAgent {
 
   private final int snippetWordCount
+  private final CodingAssistantAgent codingAssistantAgent
   private static final String DEFAULT_RESPONSE_FORMAT = """
 Respond with:
 Plan:
@@ -35,8 +36,12 @@ Notes:
 - risks, required configuration, and follow-up tasks
 """.stripIndent().trim()
 
-  ChatAgent(@Value('${snippetWordCount:200}') int snippetWordCount) {
+  ChatAgent(
+    @Value('${snippetWordCount:200}') int snippetWordCount,
+    CodingAssistantAgent codingAssistantAgent
+  ) {
     this.snippetWordCount = snippetWordCount
+    this.codingAssistantAgent = codingAssistantAgent
   }
 
   @AchievesGoal(description = "Respond to a user message in an ongoing coding conversation")
@@ -56,6 +61,7 @@ Notes:
       .withLlm(options)
       .withPromptContributor(template.persona)
       .withSystemPrompt(systemPrompt)
+      .withToolObject(codingAssistantAgent)
       .respond(conversation.messages)
     conversation.addMessage(reply)
     reply

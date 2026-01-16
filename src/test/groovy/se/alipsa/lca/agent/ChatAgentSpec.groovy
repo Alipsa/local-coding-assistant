@@ -16,8 +16,10 @@ class ChatAgentSpec extends Specification {
     Ai ai = Mock()
     ai.withLlm(_ as LlmOptions) >> runner
     runner.withPromptContributor(_) >> runner
+    runner.withToolObject(_) >> runner
     runner.respond(_ as List) >> new AssistantMessage("ok")
-    ChatAgent agent = new ChatAgent(200)
+    CodingAssistantAgent codingAssistant = Mock()
+    ChatAgent agent = new ChatAgent(200, codingAssistant)
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)
@@ -38,8 +40,10 @@ class ChatAgentSpec extends Specification {
     Ai ai = Mock()
     ai.withLlm(_ as LlmOptions) >> runner
     runner.withPromptContributor(_) >> runner
+    runner.withToolObject(_) >> runner
     runner.respond(_ as List) >> new AssistantMessage("ok")
-    ChatAgent agent = new ChatAgent(200)
+    CodingAssistantAgent codingAssistant = Mock()
+    ChatAgent agent = new ChatAgent(200, codingAssistant)
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)

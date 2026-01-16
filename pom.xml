@@ -230,10 +230,21 @@
         </configuration>
         <executions>
           <execution>
+            <id>build-info</id>
             <phase>process-resources</phase>
             <goals>
               <goal>build-info</goal>
             </goals>
+          </execution>
+          <execution>
+            <id>repackage</id>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+            <configuration>
+              <classifier>exec</classifier>
+              <layout>ZIP</layout>
+            </configuration>
           </execution>
         </executions>
       </plugin>

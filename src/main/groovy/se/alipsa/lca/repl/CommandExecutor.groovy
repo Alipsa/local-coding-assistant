@@ -84,6 +84,11 @@ class CommandExecutor {
         return shellCommands.help()
       case "health":
         return shellCommands.health()
+      case "exit":
+      case "quit":
+        // Trigger system exit
+        System.exit(0)
+        return null // Never reached
       default:
         return "Unknown command: /${command}. Type /help for available commands."
     }

@@ -61,12 +61,16 @@ class IntentCommandMapper {
         return buildChatCommand(input, args)
       case "/plan":
         return buildPlanCommand(input, args)
+      case "/implement":
+        return buildImplementCommand(input, args)
       case "/review":
         return buildReviewCommand(input, args, contextPaths)
       case "/edit":
         return buildEditCommand(input, args, contextPaths)
       case "/search":
         return buildSearchCommand(input, args)
+      case "/codesearch":
+        return buildCodeSearchCommand(input, args)
       case "/run":
         return buildRunCommand(args)
       case "/apply":
@@ -89,6 +93,14 @@ class IntentCommandMapper {
   private String buildPlanCommand(String input, Map<String, Object> args) {
     String prompt = stringValue(args.get("prompt")) ?: input
     StringBuilder builder = new StringBuilder("/plan --prompt ")
+    builder.append(quote(prompt))
+    appendRemainingOptions(builder, args, Set.of("prompt"))
+    builder.toString()
+  }
+
+  private String buildImplementCommand(String input, Map<String, Object> args) {
+    String prompt = stringValue(args.get("prompt")) ?: input
+    StringBuilder builder = new StringBuilder("/implement ")
     builder.append(quote(prompt))
     appendRemainingOptions(builder, args, Set.of("prompt"))
     builder.toString()
@@ -121,6 +133,28 @@ class IntentCommandMapper {
     StringBuilder builder = new StringBuilder("/search --query ")
     builder.append(quote(query))
     appendRemainingOptions(builder, args, Set.of("query"))
+    builder.toString()
+  }
+
+  private String buildCodeSearchCommand(String input, Map<String, Object> args) {
+    String query = stringValue(args.get("query")) ?: input
+    if (!query) {
+      return null
+    }
+    StringBuilder builder = new StringBuilder("/codesearch --query ")
+    builder.append(quote(query))
+    List<String> paths = stringList(args.get("paths"))
+    if (paths.isEmpty()) {
+      paths = stringList(args.get("path"))
+    }
+    paths.each { String path ->
+      builder.append(" --paths ").append(quote(path))
+    }
+    // Enable packing by default for better context
+    if (!args.containsKey("pack")) {
+      builder.append(" --pack")
+    }
+    appendRemainingOptions(builder, args, Set.of("query", "path", "paths"))
     builder.toString()
   }
 

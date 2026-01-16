@@ -327,7 +327,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     def template = personaTemplate(personaMode)
     String extraSystem = systemPromptOverride?.trim()
     String userRequest = userInput.getContent()
-    boolean isImplementationRequest = userRequest =~ /(?i)\b(implement|create|add|build|write|modify|update|refactor|fix)\b/
+    boolean isImplementationRequest = userRequest =~ /(?i)\b(implement|create|add|build|write|modify|update|refactor|fix|save|delete|remove|generate|edit)\b/
     """
 You are a repository-aware coding assistant.
 Follow these rules:

@@ -23,17 +23,18 @@ class ReplRunner implements ApplicationRunner {
 
   ReplRunner(JLineRepl repl) {
     this.repl = repl
+    log.debug("ReplRunner constructed with repl: {}", repl)
   }
 
   @Override
   void run(ApplicationArguments args) throws Exception {
-    log.info("Starting JLine REPL...")
+    log.debug("ReplRunner.run() called - about to start JLine REPL...")
 
     // Start REPL in the main thread (blocking)
     repl.start()
 
     // When REPL exits, shutdown the application
-    log.info("REPL exited, shutting down application")
+    log.debug("REPL exited, shutting down application")
     System.exit(0)
   }
 }

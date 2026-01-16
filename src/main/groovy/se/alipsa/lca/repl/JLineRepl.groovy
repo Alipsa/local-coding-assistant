@@ -83,21 +83,28 @@ class JLineRepl {
    * Start the REPL loop.
    */
   void start() {
+    log.debug("JLineRepl.start() called - beginning REPL loop")
     printWelcome()
 
     while (running) {
+      log.debug("REPL loop iteration starting, running={}", running)
       try {
         String line = lineReader.readLine(prompt)
+        log.debug("Read line from terminal: '{}'", line)
         if (line == null || line.trim().isEmpty()) {
           continue
         }
 
         String trimmed = line.trim()
+        log.debug("Trimmed input: '{}' (length: {})", trimmed, trimmed.length())
 
         // Handle built-in commands that don't need routing
+        log.debug("About to call handleBuiltInCommand with: '{}'", trimmed)
         if (handleBuiltInCommand(trimmed)) {
+          log.debug("Built-in command handler returned true - continuing loop")
           continue
         }
+        log.debug("Built-in handler returned false - routing through intent router")
 
         // Route through IntentRouterAgent
         processInput(trimmed)
@@ -107,11 +114,11 @@ class JLineRepl {
         log.debug("User interrupt")
         terminal.writer().println("^C")
       } catch (EndOfFileException e) {
-        // Ctrl+D pressed
-        log.debug("End of file")
+        // Ctrl+D pressed or exit command
+        log.debug("End of file - exiting REPL")
         break
       } catch (Exception e) {
-        log.error("Error processing input", e)
+        log.error("Error processing input: {}", e.getClass().getName(), e)
         terminal.writer().println("Error: " + e.message)
       }
     }
@@ -160,24 +167,30 @@ class JLineRepl {
    * Returns true if the command was handled.
    */
   private boolean handleBuiltInCommand(String input) {
-    String lower = input.toLowerCase()
+    String lower = input.toLowerCase().trim()
+    log.debug("handleBuiltInCommand called with: '{}' (lower: '{}')", input, lower)
 
-    if (lower == "exit" || lower == "quit") {
+    if (lower.equals("exit") || lower.equals("quit") || lower.equals("/exit") || lower.equals("/quit")) {
+      log.debug("EXIT COMMAND MATCHED! Input: '{}', lower: '{}'", input, lower)
       terminal.writer().println("Goodbye!")
-      running = false
-      return true
+      terminal.writer().flush()
+      shutdown()
+      System.exit(0)
+      return true // Never reached
     }
 
-    if (lower == "clear" || lower == "cls") {
+    if (lower.equals("clear") || lower.equals("cls")) {
       terminal.puts(org.jline.utils.InfoCmp.Capability.clear_screen)
       terminal.flush()
       return true
     }
 
+    log.debug("Not a built-in command '{}', returning false", input)
     return false
   }
 
   private void printWelcome() {
+    log.debug("printWelcome() called - displaying welcome banner")
     terminal.writer().println("Local Coding Assistant")
     terminal.writer().println("Type naturally to interact, or use commands like /plan, /chat, /review")
     terminal.writer().println("Type 'exit' to quit, 'clear' to clear screen")
@@ -185,8 +198,10 @@ class JLineRepl {
   }
 
   private void shutdown() {
+    log.debug("shutdown() called - closing terminal")
     try {
       terminal.close()
+      log.debug("Terminal closed successfully")
     } catch (Exception e) {
       log.warn("Error closing terminal", e)
     }

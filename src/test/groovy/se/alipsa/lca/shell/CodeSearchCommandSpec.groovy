@@ -64,6 +64,7 @@ class CodeSearchCommandSpec extends Specification {
       sessionState,
       editorLauncher,
       fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser),
       gitTool,
       codeSearchTool,
       contextPacker,
