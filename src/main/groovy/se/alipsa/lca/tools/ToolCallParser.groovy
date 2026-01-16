@@ -35,6 +35,11 @@ class ToolCallParser {
     /deleteFile\s*\(\s*["']([^"']+)["']\s*\)/
   )
 
+  private static final Pattern RUN_COMMAND_PATTERN = Pattern.compile(
+    /runCommand\s*\(\s*["']((?:[^"'\\]|\\.)*)["']\s*\)/,
+    Pattern.DOTALL
+  )
+
   @Canonical
   @CompileStatic
   static class ToolCall {
@@ -75,6 +80,14 @@ class ToolCallParser {
       log.debug("Detected deleteFile call: {}", filePath)
     }
 
+    // Extract runCommand calls
+    Matcher runMatcher = RUN_COMMAND_PATTERN.matcher(llmResponse)
+    while (runMatcher.find()) {
+      String command = unescapeString(runMatcher.group(1))
+      calls.add(new ToolCall("runCommand", [command]))
+      log.debug("Detected runCommand call: {}", command)
+    }
+
     return calls
   }
 
@@ -82,6 +95,13 @@ class ToolCallParser {
    * Execute detected tool calls.
    */
   String executeToolCalls(List<ToolCall> calls, FileEditingTool fileEditingTool) {
+    return executeToolCalls(calls, fileEditingTool, null)
+  }
+
+  /**
+   * Execute detected tool calls with optional command runner support.
+   */
+  String executeToolCalls(List<ToolCall> calls, FileEditingTool fileEditingTool, CommandRunner commandRunner) {
     if (calls.isEmpty()) {
       return null
     }
@@ -91,7 +111,7 @@ class ToolCallParser {
 
     for (ToolCall call : calls) {
       try {
-        String result = executeSingleTool(call, fileEditingTool)
+        String result = executeSingleTool(call, fileEditingTool, commandRunner)
         results.append("${call.toolName}: ${result}\n")
       } catch (Exception e) {
         log.error("Error executing tool call: {}", call.toolName, e)
@@ -102,7 +122,7 @@ class ToolCallParser {
     return results.toString()
   }
 
-  private String executeSingleTool(ToolCall call, FileEditingTool fileEditingTool) {
+  private String executeSingleTool(ToolCall call, FileEditingTool fileEditingTool, CommandRunner commandRunner) {
     switch (call.toolName) {
       case "writeFile":
         if (call.arguments.size() != 2) {
@@ -121,6 +141,21 @@ class ToolCallParser {
           throw new IllegalArgumentException("deleteFile requires 1 argument")
         }
         return fileEditingTool.deleteFile(call.arguments[0])
+
+      case "runCommand":
+        if (commandRunner == null) {
+          throw new IllegalStateException("CommandRunner not available - cannot execute shell commands")
+        }
+        if (call.arguments.size() != 1) {
+          throw new IllegalArgumentException("runCommand requires 1 argument")
+        }
+        String command = call.arguments[0]
+        CommandRunner.CommandResult result = commandRunner.run(command, 60000L, 8000)
+        if (result.exitCode == 0) {
+          return "Successfully executed: ${command}\n${result.output}"
+        } else {
+          return "Failed (exit ${result.exitCode}): ${command}\n${result.output}"
+        }
 
       default:
         throw new IllegalArgumentException("Unknown tool: ${call.toolName}")

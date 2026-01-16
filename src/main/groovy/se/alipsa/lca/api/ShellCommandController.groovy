@@ -41,6 +41,7 @@ class ShellCommandController {
     String prompt = request.prompt
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.CODER
+    boolean showReasoning = request.showReasoning != null ? request.showReasoning : false
     shellCommands.chat(
       [prompt] as String[],
       session,
@@ -50,7 +51,8 @@ class ShellCommandController {
       request.reviewTemperature,
       request.maxTokens,
       request.systemPrompt,
-      false // autoSave disabled for API calls by default
+      false, // autoSave disabled for API calls by default
+      showReasoning
     )
   }
 
@@ -59,6 +61,7 @@ class ShellCommandController {
     String prompt = request.prompt
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.ARCHITECT
+    boolean showReasoning = request.showReasoning != null ? request.showReasoning : false
     shellCommands.plan(
       [prompt] as String[],
       session,
@@ -67,7 +70,8 @@ class ShellCommandController {
       request.temperature,
       request.reviewTemperature,
       request.maxTokens,
-      request.systemPrompt
+      request.systemPrompt,
+      showReasoning
     )
   }
 
@@ -87,6 +91,7 @@ class ShellCommandController {
     boolean logReview = request.logReview != null ? request.logReview : true
     boolean security = request.security != null ? request.security : false
     boolean sast = request.sast != null ? request.sast : false
+    boolean withThinking = request.withThinking != null ? request.withThinking : false
     List<String> paths = request.paths != null ? request.paths : List.<String>of()
     shellCommands.review(
       request.code ?: "",
@@ -102,7 +107,8 @@ class ShellCommandController {
       noColor,
       logReview,
       security,
-      sast
+      sast,
+      withThinking
     )
   }
 
@@ -152,7 +158,7 @@ class ShellCommandController {
     String session = request.session ?: "default"
     PersonaMode persona = request.persona ?: PersonaMode.CODER
     if (send) {
-      return shellCommands.chat([seed] as String[], session, persona, null, null, null, null, null, false)
+      return shellCommands.chat([seed] as String[], session, persona, null, null, null, null, null, false, false)
     }
     seed
   }
@@ -296,6 +302,7 @@ class ShellCommandController {
     Double reviewTemperature
     Integer maxTokens
     String systemPrompt
+    Boolean showReasoning
   }
 
   @Canonical
@@ -310,6 +317,7 @@ class ShellCommandController {
     Double reviewTemperature
     Integer maxTokens
     String systemPrompt
+    Boolean showReasoning
   }
 
   @Canonical
@@ -337,6 +345,7 @@ class ShellCommandController {
     Boolean logReview
     Boolean security
     Boolean sast
+    Boolean withThinking
   }
 
   @Canonical

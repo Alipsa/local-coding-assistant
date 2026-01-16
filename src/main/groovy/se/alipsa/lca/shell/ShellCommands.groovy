@@ -23,6 +23,7 @@ import org.springframework.shell.standard.ShellOption
 import org.springframework.stereotype.Component
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.ChatRequest
+import se.alipsa.lca.agent.ChatResponse
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.tools.ToolCallParser
 import se.alipsa.lca.agent.ReviewRequest
@@ -313,7 +314,8 @@ Do not execute any commands.
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt,
-    @ShellOption(defaultValue = "false", help = "Auto-save code blocks") boolean autoSave
+    @ShellOption(defaultValue = "false", help = "Auto-save code blocks") boolean autoSave,
+    @ShellOption(value = ["--show-reasoning", "--with-thinking"], defaultValue = "false", help = "Show reasoning process") boolean showReasoning
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /chat \"your question\" or /chat --prompt your question without quotes"
@@ -346,14 +348,22 @@ Do not execute any commands.
     String planPrompt = buildPlanPrompt(session, prompt)
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
-    ChatRequest request = new ChatRequest(persona, options, system, null)
-    println("Processing with ${settings.model} (${persona.name().toLowerCase()} mode)...")
-    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    ChatRequest request = new ChatRequest(persona, options, system, null, showReasoning)
+    String thinkingMsg = showReasoning ? " (with reasoning)" : ""
+    println("Processing with ${settings.model} (${persona.name().toLowerCase()} mode)${thinkingMsg}...")
+    ChatResponse response = runAgent(agent, session, ChatResponse, conversation, request, userMessage)
+    AssistantMessage reply = response?.message
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
+
+    // Add reasoning section if available
+    String reasoningSection = ""
+    if (showReasoning && response?.reasoning != null && !response.reasoning.trim().isEmpty()) {
+      reasoningSection = "\n\n=== Reasoning Process ===\n" + response.reasoning
+    }
 
     // Auto-save code blocks if enabled
     String saveNote = null
@@ -373,9 +383,9 @@ Do not execute any commands.
     String followUp = shouldAddFollowUpPrompt(replyText, persona) ? buildPlanFollowUpPrompt() : null
 
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText + (saveNote ?: "") + (followUp ?: "")
+      return fallbackNote + "\n" + replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "")
     }
-    replyText + (saveNote ?: "") + (followUp ?: "")
+    replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "")
   }
 
   @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement your task here OR /implement --prompt \"your task\"")
@@ -400,23 +410,35 @@ Do not execute any commands.
     println("Preparing implementation request...")
     ModelResolution resolution = resolveModel(model)
     String implementSystemPrompt = """
-You are a file editing assistant. Use tool call syntax to create and modify files.
+You are a file editing assistant. Use tool call syntax to create, modify files, and run shell commands.
 
 TOOL SYNTAX - Use these exact formats in your response:
 - writeFile("file-path", "content") - create or overwrite a file
 - replace("file-path", "old-text", "new-text") - modify existing file
 - deleteFile("file-path") - delete a file
+- runCommand("command") - execute a shell command (e.g., chmod, mkdir, mv, cp)
 
 CRITICAL: Use actual tool calls in your response, not just descriptions.
 
 Example Response Format:
-"I'll create the requested file:
+"I'll create the requested script and make it executable:
 
 writeFile("hello.sh", "#!/bin/bash\\necho hello")
+runCommand("chmod +x hello.sh")
 
-The file has been created."
+The script has been created and marked as executable."
 
 DO NOT just show code blocks. Use the tool call syntax above.
+When you need to run shell commands (chmod, mkdir, etc.), use runCommand().
+""".trim()
+    String implementResponseFormat = """
+Respond concisely for file operations:
+1. Brief confirmation (1-2 sentences max)
+2. Tool calls (writeFile/replace/deleteFile/runCommand)
+3. Brief result note only if there are warnings or important details
+
+DO NOT include code blocks, detailed plans, or extensive notes.
+Keep total response under 50 words unless there are important warnings.
 """.trim()
     SessionSettings settings = sessionState.update(
       session,
@@ -438,9 +460,10 @@ DO NOT just show code blocks. Use the tool call syntax above.
     String planPrompt = buildPlanPrompt(session, prompt)
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
-    ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, null)
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, implementResponseFormat, false)
     println("Implementing with ${settings.model} (tool call parsing mode)...")
-    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    ChatResponse response = runAgent(agent, session, ChatResponse, conversation, request, userMessage)
+    AssistantMessage reply = response?.message
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
@@ -450,7 +473,7 @@ DO NOT just show code blocks. Use the tool call syntax above.
     List<ToolCallParser.ToolCall> toolCalls = toolCallParser.parseToolCalls(replyText)
     String toolResults = null
     if (!toolCalls.isEmpty()) {
-      toolResults = toolCallParser.executeToolCalls(toolCalls, fileEditingTool)
+      toolResults = toolCallParser.executeToolCalls(toolCalls, fileEditingTool, commandRunner)
     }
 
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
@@ -484,7 +507,8 @@ DO NOT just show code blocks. Use the tool call syntax above.
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt,
+    @ShellOption(value = ["--show-reasoning", "--with-thinking"], defaultValue = "false", help = "Show reasoning process") boolean showReasoning
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /plan \"your question\" or /plan --prompt your question without quotes"
@@ -518,18 +542,26 @@ DO NOT just show code blocks. Use the tool call syntax above.
     String planPrompt = buildPlanPrompt(session, prompt)
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
-    ChatRequest request = new ChatRequest(persona, options, planSystem, PLAN_RESPONSE_FORMAT)
-    println("Creating plan with ${settings.model}...")
-    AssistantMessage reply = runAgent(agent, session, AssistantMessage, conversation, request, userMessage)
+    ChatRequest request = new ChatRequest(persona, options, planSystem, PLAN_RESPONSE_FORMAT, showReasoning)
+    String thinkingMsg = showReasoning ? " (with reasoning)" : ""
+    println("Creating plan with ${settings.model}${thinkingMsg}...")
+    ChatResponse response = runAgent(agent, session, ChatResponse, conversation, request, userMessage)
+    AssistantMessage reply = response?.message
     String replyText = reply?.textContent
     if (replyText == null || replyText.trim().isEmpty()) {
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant (plan): ${replyText}")
 
+    // Add reasoning section if available
+    String reasoningSection = ""
+    if (showReasoning && response?.reasoning != null && !response.reasoning.trim().isEmpty()) {
+      reasoningSection = "\n\n=== Reasoning Process ===\n" + response.reasoning
+    }
+
     // Add follow-up action prompt
     String followUp = buildPlanFollowUpPrompt()
-    String fullResponse = replyText + "\n\n" + followUp
+    String fullResponse = replyText + reasoningSection + "\n\n" + followUp
 
     if (fallbackNote != null) {
       return fallbackNote + "\n" + fullResponse
@@ -569,7 +601,8 @@ Type a command or your next question to proceed.
     @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview,
     @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security,
-    @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast
+    @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast,
+    @ShellOption(value = ["--with-thinking", "--reasoning"], defaultValue = "false", help = "Show reasoning process") boolean withThinking
   ) {
     requireNonBlank(prompt, "prompt")
     // Track file paths for context resolution
@@ -592,8 +625,8 @@ Type a command or your next question to proceed.
       printProgressDone("Review")
       return "Review agent unavailable; ensure Embabel agents are enabled."
     }
-    println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}...")
-    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security)
+    println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}${withThinking ? ' (with reasoning)' : ''}...")
+    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security, withThinking)
     ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
     String reviewText = response?.review
@@ -617,7 +650,13 @@ Type a command or your next question to proceed.
       }
     }
 
-    String output = formatSection("Review", rendered + sastBlock + verificationNote)
+    // Add reasoning section if available
+    String reasoningSection = ""
+    if (withThinking && response?.reasoning != null && !response.reasoning.trim().isEmpty()) {
+      reasoningSection = "\n\n=== Reasoning Process ===\n" + response.reasoning
+    }
+
+    String output = formatSection("Review", rendered + sastBlock + verificationNote + reasoningSection)
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (logReview) {
       writeReviewLog(prompt, summary, paths, staged, severityThreshold)
@@ -785,7 +824,7 @@ Try:
     if (!send) {
       return content
     }
-    chat([content] as String[], session, persona, null, null, null, null, null, false)
+    chat([content] as String[], session, persona, null, null, null, null, null, false, false)
   }
 
   @ShellMethod(key = ["/paste"], value = "Enter paste mode; end input with a line containing only /end.")
@@ -806,7 +845,7 @@ Try:
     if (!send) {
       return body
     }
-    chat([body] as String[], session, persona, null, null, null, null, null, false)
+    chat([body] as String[], session, persona, null, null, null, null, null, false, false)
   }
 
   @ShellMethod(key = ["/status"], value = "Show git status for the current repository.")

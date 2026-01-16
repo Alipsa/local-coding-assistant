@@ -105,7 +105,8 @@ class CommandExecutor {
       parsed.reviewTemperature as Double,
       parsed.maxTokens as Integer,
       parsed.systemPrompt as String,
-      parseBoolean(parsed.autoSave) ?: false
+      parseBoolean(parsed.autoSave) ?: false,
+      parseBoolean(parsed.'show-reasoning') ?: parseBoolean(parsed.'with-thinking') ?: false
     )
   }
 
@@ -119,7 +120,8 @@ class CommandExecutor {
       parsed.temperature as Double,
       parsed.reviewTemperature as Double,
       parsed.maxTokens as Integer,
-      parsed.systemPrompt as String
+      parsed.systemPrompt as String,
+      parseBoolean(parsed.'show-reasoning') ?: parseBoolean(parsed.'with-thinking') ?: false
     )
   }
 
@@ -160,7 +162,8 @@ class CommandExecutor {
       parseBoolean(parsed.noColor) ?: false,
       parseBoolean(parsed.logReview) ?: true,
       parseBoolean(parsed.security) ?: false,
-      parseBoolean(parsed.sast) ?: false
+      parseBoolean(parsed.sast) ?: false,
+      parseBoolean(parsed.withThinking) ?: parseBoolean(parsed.reasoning) ?: false
     )
   }
 
@@ -296,7 +299,7 @@ class CommandExecutor {
    * Parse command arguments into a map.
    * Supports:
    * - Flags: --flag value
-   * - Quoted strings: --prompt "some text"
+   * - Quoted strings: --prompt "some text" (supports newlines in quotes)
    * - Positional args (everything not part of flags)
    */
   private Map<String, Object> parseArgs(String args) {
@@ -306,8 +309,9 @@ class CommandExecutor {
       return result
     }
 
-    // Pattern to match --flag value or --flag "value with spaces"
-    Pattern flagPattern = ~/--(\w+)(?:\s+(?:"([^"]*)"|'([^']*)'|(\S+)))?/
+    // Pattern to match --flag value or --flag "value with spaces and newlines"
+    // Use [\s\S] instead of . to match newlines inside quotes
+    Pattern flagPattern = Pattern.compile(/--(\w+)(?:\s+(?:"([\s\S]*?)"|'([\s\S]*?)'|(\S+)))?/)
 
     Matcher matcher = flagPattern.matcher(args)
     int lastEnd = 0

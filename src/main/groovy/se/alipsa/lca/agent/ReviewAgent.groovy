@@ -35,8 +35,9 @@ class ReviewAgent {
       ai,
       request.options,
       request.systemPrompt,
-      persona
+      persona,
+      request.withThinking
     )
-    new ReviewResponse(reviewed.review)
+    new ReviewResponse(reviewed.review, reviewed.reasoning)
   }
 }

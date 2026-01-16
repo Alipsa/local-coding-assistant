@@ -2,11 +2,15 @@ package se.alipsa.lca.repl
 
 import groovy.transform.CompileStatic
 import org.jline.reader.EndOfFileException
+import org.jline.reader.Highlighter
 import org.jline.reader.LineReader
 import org.jline.reader.LineReaderBuilder
 import org.jline.reader.UserInterruptException
 import org.jline.reader.impl.DefaultParser
 import org.jline.terminal.Terminal
+import org.jline.utils.AttributedString
+import org.jline.utils.AttributedStringBuilder
+import org.jline.utils.AttributedStyle
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -15,6 +19,7 @@ import se.alipsa.lca.intent.IntentCommandRouter
 import se.alipsa.lca.intent.IntentRoutingPlan
 
 import java.nio.file.Paths
+import java.util.regex.Pattern
 
 /**
  * JLine-based REPL that provides natural language interaction with the coding assistant.
@@ -31,6 +36,7 @@ class JLineRepl {
   private final Terminal terminal
   private final LineReader lineReader
   private final String prompt
+  private final AttributedStyle userInputStyle
   private volatile boolean running = true
 
   JLineRepl(
@@ -44,6 +50,7 @@ class JLineRepl {
     this.commandExecutor = commandExecutor
     this.terminal = terminal
     this.prompt = prompt
+    this.userInputStyle = AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN + AttributedStyle.BRIGHT)
 
     // Create line reader with history and editing
     def parser = new DefaultParser()
@@ -54,6 +61,7 @@ class JLineRepl {
       .terminal(terminal)
       .parser(parser)
       .appName("lca")
+      .highlighter(new UserInputHighlighter(userInputStyle))
       .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
       .variable(LineReader.HISTORY_SIZE, 500)
       .variable(LineReader.BELL_STYLE, "none")
@@ -179,7 +187,7 @@ class JLineRepl {
       return true // Never reached
     }
 
-    if (lower.equals("clear") || lower.equals("cls")) {
+    if (lower.equals("clear") || lower.equals("cls") || lower.equals("/clear") || lower.equals("/cls")) {
       terminal.puts(org.jline.utils.InfoCmp.Capability.clear_screen)
       terminal.flush()
       return true
@@ -193,7 +201,7 @@ class JLineRepl {
     log.debug("printWelcome() called - displaying welcome banner")
     terminal.writer().println("Local Coding Assistant")
     terminal.writer().println("Type naturally to interact, or use commands like /plan, /chat, /review")
-    terminal.writer().println("Type 'exit' to quit, 'clear' to clear screen")
+    terminal.writer().println("Type 'exit' or '/exit' to quit, 'clear' or '/clear' to clear screen")
     terminal.writer().println()
   }
 
@@ -213,5 +221,33 @@ class JLineRepl {
 
   LineReader getLineReader() {
     return lineReader
+  }
+
+  /**
+   * Highlighter that colors all user input in a specified style (light green by default).
+   */
+  @CompileStatic
+  static class UserInputHighlighter implements Highlighter {
+    private final AttributedStyle style
+
+    UserInputHighlighter(AttributedStyle style) {
+      this.style = style
+    }
+
+    @Override
+    AttributedString highlight(LineReader reader, String buffer) {
+      // Color the entire input buffer with the specified style
+      return new AttributedString(buffer, style)
+    }
+
+    @Override
+    void setErrorPattern(Pattern errorPattern) {
+      // Not used
+    }
+
+    @Override
+    void setErrorIndex(int errorIndex) {
+      // Not used
+    }
   }
 }

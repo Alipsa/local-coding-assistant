@@ -11,4 +11,5 @@ class ChatRequest {
   LlmOptions options
   String systemPrompt
   String responseFormat
+  boolean withThinking = false
 }

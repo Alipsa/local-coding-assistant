@@ -12,4 +12,5 @@ class ReviewRequest {
   LlmOptions options
   String systemPrompt
   boolean security
+  boolean withThinking = false
 }

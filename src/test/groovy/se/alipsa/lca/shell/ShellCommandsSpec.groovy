@@ -11,6 +11,7 @@ import com.embabel.chat.AssistantMessage
 import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
 import se.alipsa.lca.agent.ChatRequest
+import se.alipsa.lca.agent.ChatResponse
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.agent.ReviewRequest
@@ -125,7 +126,7 @@ class ShellCommandsSpec extends Specification {
   def "chat uses persona mode and session overrides"() {
     given:
     ChatRequest captured = null
-    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("result")
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("result"), null)
     agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
       Agent agentArg, ProcessOptions options, Object[] inputs ->
         captured = inputs.find { it instanceof ChatRequest } as ChatRequest
@@ -142,6 +143,7 @@ class ShellCommandsSpec extends Specification {
       0.4d,
       2048,
       "extra system",
+      false,
       false
     )
 
@@ -158,7 +160,7 @@ class ShellCommandsSpec extends Specification {
   def "plan uses planning format and architect persona"() {
     given:
     ChatRequest captured = null
-    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("plan output")
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("plan output"), null)
     agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
       Agent agentArg, ProcessOptions options, Object[] inputs ->
         captured = inputs.find { it instanceof ChatRequest } as ChatRequest
@@ -174,7 +176,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      false
     )
 
     then:
@@ -192,7 +195,7 @@ class ShellCommandsSpec extends Specification {
     given:
     ChatRequest captured = null
     UserMessage capturedUserMessage = null
-    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("plan output")
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("plan output"), null)
     agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> {
       Agent agentArg, ProcessOptions options, Object[] inputs ->
         captured = inputs.find { it instanceof ChatRequest } as ChatRequest
@@ -213,7 +216,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      false
     )
 
     then:
@@ -256,6 +260,7 @@ class ShellCommandsSpec extends Specification {
       false,
       ReviewSeverity.LOW,
       true,
+      false,
       false,
       false,
       false
@@ -303,11 +308,11 @@ class ShellCommandsSpec extends Specification {
       intentRoutingState,
       intentRoutingSettings
     )
-    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("context response")
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("context response"), null)
     platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
 
     when:
-    def response = withRepo.chat(["Hello"] as String[], "context-session", PersonaMode.CODER, null, null, null, null, null, false)
+    def response = withRepo.chat(["Hello"] as String[], "context-session", PersonaMode.CODER, null, null, null, null, null, false, false)
 
     then:
     response == "context response"
@@ -317,7 +322,7 @@ class ShellCommandsSpec extends Specification {
 
   def "paste can forward content to chat"() {
     given:
-    chatProcess.resultOfType(AssistantMessage) >> new AssistantMessage("assistant response")
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("assistant response"), null)
     agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
 
     when:
@@ -507,7 +512,7 @@ class ShellCommandsSpec extends Specification {
     fileEditingTool.readFile(_) >> "content"
 
     when:
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
 
     then:
     Files.exists(tempDir.resolve("reviews.log"))
@@ -583,7 +588,7 @@ class ShellCommandsSpec extends Specification {
     )
     agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
 
     when:
     def out = commands.reviewLog(ReviewSeverity.HIGH, "src/App.groovy", 5, 1, null, true)
@@ -629,8 +634,8 @@ class ShellCommandsSpec extends Specification {
         instants.hasNext() ? instants.next() : java.time.Instant.now()
       }
     }
-    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
-    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false)
+    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
+    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
 
     when:
     def out = clocked.reviewLog(ReviewSeverity.LOW, null, 1, 2, "2025-01-01T00:00:05Z", true)

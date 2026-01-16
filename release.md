@@ -1,4 +1,66 @@
-# Release Notes for the local-coding-assistant 
+# Release Notes for the local-coding-assistant
+
+## Version 1.2.0, 2026-01-16
+**Highlights**
+- Migrated from Spring Shell to custom JLine REPL for better control and natural language interaction.
+- Added Embabel 0.3.2 thinking/reasoning capabilities to chat and review commands.
+- Implemented tool call parsing for LLM-agnostic function calling (writeFile, replace, deleteFile, runCommand).
+- Enhanced /implement command with shell command execution and concise output format.
+- Added user input coloring (light green) for improved readability.
+
+**REPL & UX**
+- Replaced Spring Shell with custom JLine-based REPL for tighter control over input handling and natural language processing.
+- Added syntax highlighting for user input (light green) to distinguish from assistant output.
+- Fixed /clear command to work with both slash and non-slash variants (/clear, /cls, clear, cls).
+- Improved multi-line input handling in command parser to support quoted strings with newlines.
+- Enhanced intent routing with smart multi-line handling and conversational context tracking for file references.
+- Improved conversational language handling for more natural interactions.
+
+**AI & Agent Improvements**
+- Upgraded to Embabel 0.3.2 with thinking/reasoning support:
+  - ChatAgent now supports --show-reasoning and --with-thinking flags to expose LLM reasoning chains.
+  - ReviewAgent displays thinking output when using models with extended thinking capabilities.
+  - Added ChatResponse wrapper to return both message and reasoning content.
+- Added tool call parser for LLM-agnostic function calling:
+  - writeFile(path, content) - create or overwrite files.
+  - replace(path, old, new) - modify existing files.
+  - deleteFile(path) - delete files.
+  - runCommand(command) - execute shell commands (chmod, mkdir, mv, cp, etc.).
+- Enhanced /implement command:
+  - Made output more concise (removed verbose Plan/Implementation/Notes format).
+  - Added shell command execution support via runCommand() tool.
+  - Now responds with brief confirmations and tool execution results only.
+- Added auto-save feature for code blocks in /chat command.
+- Improved code search with case-insensitive option (-i flag) and better feedback.
+
+**Web Search Standardization**
+- Added Embabel InternetResource and InternetResources domain object support.
+- WebSearchTool now provides:
+  - searchAsInternetResources() - returns List<InternetResource>.
+  - searchAsWebSearchResults() - returns WebSearchResults wrapper.
+  - Backward compatibility maintained with existing search() methods.
+
+**Bug Fixes**
+- Fixed integration test failures caused by ChatResponse type mismatch in agent process execution.
+- Fixed /implement command to properly handle ChatResponse return type.
+- Fixed multi-line input breaking command parser when pasting error messages or prompts with newlines.
+- Fixed batch mode integration tests by implementing BatchModeRunner.
+- Fixed NPE in integration tests related to agent result type resolution.
+
+**Documentation & Tooling**
+- Added comprehensive documentation for Embabel 0.3.2 features and implementation opportunities.
+- Updated AGENTS.md to be language-agnostic (supports any programming language).
+- Enhanced shell scripts (lca launcher) with better error handling and compatibility.
+- Improved test output formatting and readability.
+- Added presentation materials and expanded docs.
+
+**Dependencies**
+- Upgraded to Embabel 0.3.2 (from 0.3.1).
+- Various dependency updates for improved stability and performance.
+
+**Breaking Changes**
+- Removed @Action annotation from ChatAgent.respond() method - now only respondWithThinking() is the agent action.
+- /implement command output format changed from verbose Plan/Implementation/Notes to concise confirmation + results.
 
 ## Version 1.1.0, 2025-12-28
 **Highlights**

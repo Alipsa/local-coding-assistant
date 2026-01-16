@@ -10,6 +10,7 @@ import com.embabel.chat.AssistantMessage
 import com.embabel.chat.Conversation
 import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
+import com.embabel.common.core.thinking.ThinkingResponse
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
@@ -45,9 +46,18 @@ Notes:
     this.codingAssistantAgent = codingAssistantAgent
   }
 
-  @AchievesGoal(description = "Respond to a user message in an ongoing coding conversation")
-  @Action(canRerun = true, trigger = UserMessage)
+  /**
+   * Convenience method that returns just the message without thinking/reasoning.
+   * This is not an @Action - the agent process executes respondWithThinking() instead.
+   */
   AssistantMessage respond(Conversation conversation, UserMessage userMessage, ChatRequest request, Ai ai) {
+    ChatResponse response = respondWithThinking(conversation, userMessage, request, ai)
+    response.message
+  }
+
+  @AchievesGoal(description = "Respond to a user message with optional thinking/reasoning support")
+  @Action(canRerun = true, trigger = UserMessage)
+  ChatResponse respondWithThinking(Conversation conversation, UserMessage userMessage, ChatRequest request, Ai ai) {
     Objects.requireNonNull(conversation, "conversation must not be null")
     Objects.requireNonNull(userMessage, "userMessage must not be null")
     Objects.requireNonNull(request, "request must not be null")
@@ -58,14 +68,39 @@ Notes:
     PersonaTemplate template = personaTemplate(request.persona)
     String systemPrompt = buildSystemPrompt(template, request)
     LlmOptions options = request.options ?: LlmOptions.withDefaultLlm()
-    AssistantMessage reply = ai
-      .withLlm(options)
-      .withPromptContributor(template.persona)
-      .withSystemPrompt(systemPrompt)
-      .withToolObject(codingAssistantAgent)
-      .respond(conversation.messages)
+
+    AssistantMessage reply
+    String reasoning = null
+
+    if (request.withThinking) {
+      def promptRunner = ai
+        .withLlm(options)
+        .withPromptContributor(template.persona)
+        .withSystemPrompt(systemPrompt)
+        .withToolObject(codingAssistantAgent)
+
+      if (promptRunner.supportsThinking()) {
+        ThinkingResponse<AssistantMessage> thinkingResponse = promptRunner
+          .withThinking()
+          .respond(conversation.messages)
+        reply = thinkingResponse.getResult()
+        if (thinkingResponse.hasThinking()) {
+          reasoning = thinkingResponse.getThinkingContent()
+        }
+      } else {
+        reply = promptRunner.respond(conversation.messages)
+      }
+    } else {
+      reply = ai
+        .withLlm(options)
+        .withPromptContributor(template.persona)
+        .withSystemPrompt(systemPrompt)
+        .withToolObject(codingAssistantAgent)
+        .respond(conversation.messages)
+    }
+
     conversation.addMessage(reply)
-    reply
+    new ChatResponse(reply, reasoning)
   }
 
   private String buildSystemPrompt(PersonaTemplate template, ChatRequest request) {

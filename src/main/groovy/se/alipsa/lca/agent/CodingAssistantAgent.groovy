@@ -10,6 +10,7 @@ import com.embabel.agent.domain.library.HasContent
 import com.embabel.agent.prompt.persona.RoleGoalBackstory
 import com.embabel.agent.prompt.persona.RoleGoalBackstorySpec
 import com.embabel.common.ai.model.LlmOptions
+import com.embabel.common.core.thinking.ThinkingResponse
 import com.embabel.common.core.types.Timestamped
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import groovy.transform.Canonical
@@ -92,6 +93,7 @@ class CodingAssistantAgent {
     CodeSnippet codeSnippet
     String review
     RoleGoalBackstorySpec reviewer
+    String reasoning
 
     @Override
     @NonNull
@@ -187,17 +189,43 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     String systemPromptOverride,
     RoleGoalBackstorySpec reviewerPersona
   ) {
+    reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, false)
+  }
+
+  @Action
+  ReviewedCodeSnippet reviewCode(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    Ai ai,
+    LlmOptions llmOverride,
+    String systemPromptOverride,
+    RoleGoalBackstorySpec reviewerPersona,
+    boolean withThinking
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     LlmOptions options = llmOverride ?: reviewLlmOptions
     RoleGoalBackstorySpec reviewer = reviewerPersona ?: Personas.REVIEWER
     String reviewPrompt = buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
-    String review = ai
-      .withLlm(options)
-      .withPromptContributor(reviewer)
-      .generateText(reviewPrompt)
-    String formattedReview = enforceReviewFormat(review)
 
-    new ReviewedCodeSnippet(codeSnippet, formattedReview, reviewer)
+    String review
+    String reasoning = null
+
+    def promptRunner = ai.withLlm(options).withPromptContributor(reviewer)
+
+    if (withThinking && promptRunner.supportsThinking()) {
+      ThinkingResponse<String> response = promptRunner
+        .withThinking()
+        .generateText(reviewPrompt)
+      review = response.getResult()
+      if (response.hasThinking()) {
+        reasoning = response.getThinkingContent()
+      }
+    } else {
+      review = promptRunner.generateText(reviewPrompt)
+    }
+
+    String formattedReview = enforceReviewFormat(review)
+    new ReviewedCodeSnippet(codeSnippet, formattedReview, reviewer, reasoning)
   }
 
   @Action

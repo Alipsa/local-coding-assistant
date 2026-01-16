@@ -38,7 +38,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.chat(["hello"] as String[], "default", PersonaMode.CODER, null, null, null, null, null, false) >> "ok"
+    1 * commands.chat(["hello"] as String[], "default", PersonaMode.CODER, null, null, null, null, null, false, false) >> "ok"
   }
 
   def "plan endpoint delegates with defaults"() {
@@ -49,7 +49,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.plan(["plan it"] as String[], "default", PersonaMode.ARCHITECT, null, null, null, null, null) >> "ok"
+    1 * commands.plan(["plan it"] as String[], "default", PersonaMode.ARCHITECT, null, null, null, null, null, false) >> "ok"
   }
 
   def "route endpoint delegates to intent router"() {
@@ -95,6 +95,7 @@ class ShellCommandControllerSpec extends Specification {
       true,
       false,
       false,
+      false,
       false
     ) >> "review"
   }
@@ -130,7 +131,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isOk())
-    1 * commands.chat(["draft"] as String[], "s1", PersonaMode.ARCHITECT, null, null, null, null, null, false) >> "sent"
+    1 * commands.chat(["draft"] as String[], "s1", PersonaMode.ARCHITECT, null, null, null, null, null, false, false) >> "sent"
   }
 
   // NOTE: The following tests are negative validation test cases
@@ -166,7 +167,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isBadRequest())
-    0 * commands.chat(_, _, _, _, _, _, _, _)
+    0 * commands.chat(_, _, _, _, _, _, _, _, _, _)
   }
 
   def "plan requires non-blank prompt"() {
@@ -177,7 +178,7 @@ class ShellCommandControllerSpec extends Specification {
 
     then:
     response.andExpect(status().isBadRequest())
-    0 * commands.plan(_, _, _, _, _, _, _, _)
+    0 * commands.plan(_, _, _, _, _, _, _, _, _)
   }
 
   def "route requires non-blank prompt"() {

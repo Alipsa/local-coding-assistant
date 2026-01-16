@@ -33,6 +33,7 @@ Options:
 - `--review-temperature`: Override review temperature.
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
+- `--show-reasoning`, `--with-thinking`: Show the LLM's reasoning process (if supported by the model).
 
 ## config (/config)
 View or update shell settings.
@@ -82,6 +83,7 @@ Options:
 - `--review-temperature`: Override review temperature.
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
+- `--show-reasoning`, `--with-thinking`: Show the LLM's reasoning process (if supported by the model).
 
 ## route (/route)
 Preview how the intent router would map text to commands.
@@ -119,6 +121,7 @@ Options:
 - `--log-review`: Persist review summary to log.
 - `--security`: Focus on security risks in the review.
 - `--sast`: Run optional static analysis (requires `assistant.sast.command`).
+- `--with-thinking`, `--reasoning`: Show the LLM's reasoning process (if supported by the model).
 - `--session`, `--model`, `--review-temperature`, `--max-tokens`, `--system-prompt`.
 
 ## reviewlog (/reviewlog)

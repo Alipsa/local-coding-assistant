@@ -1,5 +1,7 @@
 package se.alipsa.lca.tools
 
+import com.embabel.agent.domain.library.InternetResource
+import com.embabel.agent.domain.library.InternetResources
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.htmlunit.BrowserVersion
@@ -68,6 +70,41 @@ class WebSearchTool {
     String title
     String url
     String snippet
+
+    /**
+     * Convert this SearchResult to Embabel's InternetResource format
+     */
+    InternetResource toInternetResource() {
+      new SearchResultAsInternetResource(url, snippet ?: title)
+    }
+  }
+
+  /**
+   * Adapter class that converts our SearchResult to Embabel's InternetResource format
+   */
+  @CompileStatic
+  static class SearchResultAsInternetResource extends InternetResource {
+
+    SearchResultAsInternetResource(String url, String summary) {
+      super(url, summary)
+    }
+  }
+
+  /**
+   * Wrapper class that holds a list of search results in Embabel's InternetResources format
+   */
+  @CompileStatic
+  static class WebSearchResults implements InternetResources {
+    private final List<InternetResource> links
+
+    WebSearchResults(List<InternetResource> links) {
+      this.links = List.copyOf(links ?: [])
+    }
+
+    @Override
+    List<InternetResource> getLinks() {
+      return links
+    }
   }
 
   @Canonical
@@ -188,6 +225,36 @@ class WebSearchTool {
     } catch (Exception e) {
       return List.of(failureResult(e.message))
     }
+  }
+
+  /**
+   * Search and return results as Embabel InternetResources for better integration with Embabel agents
+   */
+  List<InternetResource> searchAsInternetResources(String query) {
+    searchAsInternetResources(query, new SearchOptions())
+  }
+
+  /**
+   * Search and return results as Embabel InternetResources for better integration with Embabel agents
+   */
+  List<InternetResource> searchAsInternetResources(String query, SearchOptions options) {
+    List<SearchResult> results = search(query, options)
+    return results.collect { it.toInternetResource() }
+  }
+
+  /**
+   * Search and wrap results in WebSearchResults for use with .withPromptContributor()
+   */
+  WebSearchResults searchAsWebSearchResults(String query) {
+    searchAsWebSearchResults(query, new SearchOptions())
+  }
+
+  /**
+   * Search and wrap results in WebSearchResults for use with .withPromptContributor()
+   */
+  WebSearchResults searchAsWebSearchResults(String query, SearchOptions options) {
+    List<InternetResource> resources = searchAsInternetResources(query, options)
+    new WebSearchResults(resources)
   }
 
   @CompileStatic
