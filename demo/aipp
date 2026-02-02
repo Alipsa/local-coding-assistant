@@ -4,11 +4,14 @@
 MODEL_NAME="qwen3-coder:30b"
 AIPP_DIR="$HOME/.aipp"
 VENV_PATH="$AIPP_DIR/venv"
+REQUIRED_CTX=32768
 
 # 1. Flag Detection
 COMMIT_FLAG=""
+UPGRADE_MODE=false
 for arg in "$@"; do
     [[ "$arg" == "--auto-commits" ]] && COMMIT_FLAG="--auto-commits"
+    [[ "$arg" == "--upgrade" ]] && UPGRADE_MODE=true
 done
 
 echo "--- 🚀 Starting AIPP (your AI Pair Programmer) ---"
@@ -24,6 +27,13 @@ fi
 
 # Use the full path to activate to be safe across shells (bash/zsh)
 source "$VENV_PATH/bin/activate"
+
+if [ "$UPGRADE_MODE" = true ]; then
+    echo "🔄 Upgrading Aider and Model..."
+    pip install --upgrade pip aider-chat
+    ollama pull "$MODEL_NAME"
+    echo "✅ Upgrade complete."
+fi
 
 # 4. Check/Install Aider & Model
 if ! command -v aider &> /dev/null; then

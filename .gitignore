@@ -12,4 +12,8 @@ embabel-agent-api/src/main/resources/mcp/**
 
 **/*.log
 /resumeSession.sh
+# Aider files
 .aider*
+!.aider.conf.yml
+!.aider.queries.json
+**/venv/
