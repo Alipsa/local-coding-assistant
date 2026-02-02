@@ -12,3 +12,4 @@ embabel-agent-api/src/main/resources/mcp/**
 
 **/*.log
 /resumeSession.sh
+.aider*
