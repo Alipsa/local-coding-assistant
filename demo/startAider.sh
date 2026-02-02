@@ -17,8 +17,14 @@ else
     exit 1
 fi
 
+EXTRA_ARGS=""
+if [ -f "AGENTS.md" ]; then
+    echo "--- Found AGENTS.md, adding to context ---"
+    EXTRA_ARGS="--read AGENTS.md"
+fi
+
 # 3. Launch Aider
 # --architect: Uses a powerful model for planning and a smaller one for editing (if configured). This uses a "reasoning" workflow where the model first describes the plan and then writes the code.
 # --auto-commits: Automatically commits changes to git
 echo "--- Launching Aider with $MODEL ---"
-aider --model "$MODEL" --architect
+aider --model "$MODEL" --architect $EXTRA_ARGS

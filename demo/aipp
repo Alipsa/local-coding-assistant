@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Configuration
+MODEL_NAME="qwen3-coder:30b"
+AIPP_DIR="$HOME/.aipp"
+VENV_PATH="$AIPP_DIR/venv"
+
+# 1. Flag Detection
+COMMIT_FLAG=""
+for arg in "$@"; do
+    [[ "$arg" == "--auto-commits" ]] && COMMIT_FLAG="--auto-commits"
+done
+
+echo "--- 🚀 Starting AIPP (your AI Pair Programmer) ---"
+
+# 2. Setup Environment
+[ ! -d "$AIPP_DIR" ] && mkdir -p "$AIPP_DIR"
+
+# 3. Create/Activate venv
+if [ ! -d "$VENV_PATH" ]; then
+    echo "📦 Creating virtual environment..."
+    python3 -m venv "$VENV_PATH"
+fi
+
+# Use the full path to activate to be safe across shells (bash/zsh)
+source "$VENV_PATH/bin/activate"
+
+# 4. Check/Install Aider & Model
+if ! command -v aider &> /dev/null; then
+    echo "🛠️ Installing Aider..."
+    # Ensure pip is current before installing aider to avoid build errors
+    pip install --upgrade pip
+    pip install aider-chat
+fi
+
+# Check for model - works on Mac and Linux
+if ! ollama list | grep -q "$MODEL_NAME"; then
+    echo "⚠️ Model $MODEL_NAME not found. Downloading..."
+    ollama pull "$MODEL_NAME"
+fi
+
+# 5. Launch
+EXTRA_ARGS=""
+[ -f "AGENTS.md" ] && EXTRA_ARGS="--read AGENTS.md"
+
+# Session exports - these are the best way to handle context in 2026
+export OLLAMA_API_BASE="http://127.0.0.1:11434"
+export OLLAMA_NUM_CTX=$REQUIRED_CTX
+export OLLAMA_CONTEXT_LENGTH=$REQUIRED_CTX
+
+# Launch Aider
+# --architect: Uses a powerful model for planning and a smaller one for editing (if configured). This uses a "reasoning" workflow where the model first describes the plan and then writes the code.
+# --auto-commits: Automatically commits changes to git
+aider --model "ollama_chat/$MODEL_NAME" --architect --subtree-only $COMMIT_FLAG $EXTRA_ARGS
