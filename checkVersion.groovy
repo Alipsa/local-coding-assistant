@@ -1,6 +1,10 @@
 #!/usr/bin/env groovy
 
 def checkVersion(String dependencyString) {
+    if (!dependencyString || dependencyString.trim().isEmpty()) {
+        throw new IllegalArgumentException("Dependency string cannot be empty")
+    }
+    
     def parts = dependencyString.trim().split(':')
     if (parts.length < 2 || parts.length > 3) {
         throw new IllegalArgumentException("Invalid dependency format. Expected: 'group:artifact:version' or 'group:artifact'")
