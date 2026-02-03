@@ -28,7 +28,7 @@ def checkVersion(String dependencyString) {
     }
 }
 
-def args = System.getProperty("args")?.split(' ') ?: []
+def args = System.args
 if (args.length == 0) {
     println "Hey! Usage: groovy checkVersion.groovy 'group:artifact:version' or 'group:artifact'"
     System.exit(1)
