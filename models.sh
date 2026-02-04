@@ -53,7 +53,40 @@ checkAndInstall() {
     fi
 }
 
+createCustomModel() {
+    base_model="$1"
+    custom_name="$2"
+    context_size="$3"
 
+    echo "Creating custom model $custom_name from $base_model with context size $context_size..."
+
+    # Check if custom model already exists
+    if ollama list 2>/dev/null | grep -q "^$custom_name"; then
+      echo "$custom_name already exists."
+      return
+    fi
+
+    # Create a temporary Modelfile
+    modelfile=$(mktemp)
+    cat > "$modelfile" << EOF
+FROM $base_model
+PARAMETER num_ctx $context_size
+EOF
+
+    # Create the custom model
+    ollama create "$custom_name" -f "$modelfile"
+
+    # Clean up
+    rm "$modelfile"
+
+    echo "$custom_name created successfully."
+}
+
+# Install base models
 #checkAndInstall deepseek-coder:6.7b
 checkAndInstall qwen3-coder:30b
 checkAndInstall gpt-oss:20b
+
+# Create custom models with larger context
+createCustomModel qwen3-coder:30b qwen-coder-32k 32768
+createCustomModel gpt-oss:20b gpt-oss-32k 32768

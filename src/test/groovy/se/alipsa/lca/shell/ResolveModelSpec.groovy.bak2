@@ -158,8 +158,6 @@ class ResolveModelSpec extends Specification {
         null,
         new ShellSettings(true),
         null,
-        null,
-        null,
         null
       )
     }

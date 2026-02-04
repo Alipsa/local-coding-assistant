@@ -1,0 +1,121 @@
+#!/usr/bin/env groovy
+@Grab('org.apache.httpcomponents:httpclient:4.5.14')
+@Grab('com.fasterxml.jackson.core:jackson-databind:2.15.2')
+import org.apache.http.client.methods.HttpGet
+import org.apache.http.impl.client.HttpClients
+import org.apache.http.util.EntityUtils
+import com.fasterxml.jackson.databind.ObjectMapper
+
+def parseArgs(args) {
+    if (args.length == 0) {
+        println "Usage: checkVersion <groupId:artifactId> or checkVersion <groupId:artifactId:version>"
+        System.exit(1)
+    }
+
+    def dep = args[0]
+    def parts = dep.split(':')
+
+    if (parts.length < 2 || parts.length > 3) {
+        println "Invalid dependency format. Use: groupId:artifactId or groupId:artifactId:version"
+        System.exit(1)
+    }
+
+    def groupId = parts[0]
+    def artifactId = parts[1]
+    def version = parts.length == 3 ? parts[2] : null
+
+    return [groupId: groupId, artifactId: artifactId, version: version]
+}
+
+def getLatestVersion(groupId, artifactId) {
+    def client = HttpClients.createDefault()
+
+    // Try Maven metadata API first for more accurate results
+    def url = "https://repo1.maven.org/maven2/${groupId.replace('.', '/')}/${artifactId}/maven-metadata.xml"
+    def request = new HttpGet(url)
+
+    try {
+        def response = client.execute(request)
+        def entity = response.getEntity()
+        def content = EntityUtils.toString(entity)
+
+        // Parse XML to extract latest version
+        def matcher = (content =~ /<latest>([^<]+)<\/latest>/)
+        if (matcher.find()) {
+            return matcher.group(1)
+        }
+
+        // If no latest found, try release tag
+        matcher = (content =~ /<release>([^<]+)<\/release>/)
+        if (matcher.find()) {
+            return matcher.group(1)
+        }
+
+        // If still no version found, fall back to search API
+        println "Warning: Could not extract version from Maven metadata, falling back to search API"
+
+    } catch (Exception e) {
+        println "Warning: Failed to fetch from Maven metadata API: ${e.message}"
+        // Fall back to search API
+    } finally {
+        client.close()
+    }
+
+    // Fall back to search API if metadata approach fails
+    client = HttpClients.createDefault()
+    url = "https://search.maven.org/solrsearch/select?q=g:%22${groupId}%22+AND+a:%22${artifactId}%22&core=central&wt=json"
+    request = new HttpGet(url)
+
+    try {
+        def response = client.execute(request)
+        def entity = response.getEntity()
+        def content = EntityUtils.toString(entity)
+
+        def mapper = new ObjectMapper()
+        def json = mapper.readValue(content, Map)
+
+        if (json.response && json.response.numFound > 0) {
+            def docs = json.response.docs
+            // Get the latest version (the first one should be the latest due to sorting)
+            return docs[0].latestVersion
+        }
+
+        return null
+    } catch (Exception e) {
+        println "Error fetching version information: ${e.message}"
+        return null
+    } finally {
+        client.close()
+    }
+}
+
+def main() {
+    def parsedArgs = parseArgs(args)
+    def groupId = parsedArgs.groupId
+    def artifactId = parsedArgs.artifactId
+    def version = parsedArgs.version
+
+    if (version) {
+        // Check if there's a newer version available
+        def latestVersion = getLatestVersion(groupId, artifactId)
+        if (latestVersion) {
+            if (version == latestVersion) {
+                println "${groupId}:${artifactId}:${version} is the latest version"
+            } else {
+                println "Newer version available: ${groupId}:${artifactId}:${latestVersion} (current: ${version})"
+            }
+        } else {
+            println "Could not determine latest version for ${groupId}:${artifactId}"
+        }
+    } else {
+        // Just get the latest version
+        def latestVersion = getLatestVersion(groupId, artifactId)
+        if (latestVersion) {
+            println "${groupId}:${artifactId}:${latestVersion}"
+        } else {
+            println "Could not find ${groupId}:${artifactId} on Maven Central"
+        }
+    }
+}
+
+main()

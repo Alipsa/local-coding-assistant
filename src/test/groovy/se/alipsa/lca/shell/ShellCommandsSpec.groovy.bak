@@ -120,9 +120,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
   }
 
@@ -310,9 +307,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
     chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("context response"), null)
     platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
@@ -408,9 +402,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
     def results = [new WebSearchTool.SearchResult("T1", "http://example.com", "S1")]
     InputStream originalIn = System.in
@@ -553,9 +544,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -640,9 +628,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       @Override
       protected java.time.Instant nowInstant() {
@@ -691,9 +676,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -778,9 +760,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -821,9 +800,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
     staging.configureBatchMode(true, false)
 
@@ -861,9 +837,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       ConfirmChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
@@ -908,9 +881,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -957,9 +927,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
     method.accessible = true
@@ -1001,9 +968,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1042,9 +1006,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1092,9 +1053,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1144,9 +1102,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1192,9 +1147,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1238,9 +1190,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1282,9 +1231,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1323,9 +1269,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1364,9 +1307,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1406,9 +1346,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     expect:
@@ -1439,9 +1376,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     expect:
@@ -1587,9 +1521,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
 
     when:
@@ -1623,9 +1554,6 @@ class ShellCommandsSpec extends Specification {
       shellSettings,
       intentRoutingState,
       intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
     )
   }
 }

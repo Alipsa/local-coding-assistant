@@ -71,6 +71,78 @@ class IntentRouterAgentSpec extends Specification {
     result.commands[0].name == "/chat"
   }
 
+  def "route gets second opinion when confidence is between thresholds"() {
+    given:
+    def agent = new TestIntentRouterAgent(stubAi(), stubRegistry())
+    agent.responses = [
+      '{"commands":[{"name":"/review","args":{}}],"confidence":0.7,"explanation":"medium confidence"}',
+      '{"commands":[{"name":"/plan","args":{}}],"confidence":0.85,"explanation":"better confidence"}'
+    ]
+
+    when:
+    IntentRouterResult result = agent.route("Review this")
+
+    then:
+    result.commands.size() == 1
+    result.commands[0].name == "/plan"
+    result.confidence == 0.85d
+    result.usedSecondOpinion == true
+    result.modelUsed == "gpt-oss:20b"
+  }
+
+  def "route uses primary result when second opinion has lower confidence"() {
+    given:
+    def agent = new TestIntentRouterAgent(stubAi(), stubRegistry())
+    agent.responses = [
+      '{"commands":[{"name":"/review","args":{}}],"confidence":0.75,"explanation":"primary"}',
+      '{"commands":[{"name":"/plan","args":{}}],"confidence":0.65,"explanation":"fallback"}'
+    ]
+
+    when:
+    IntentRouterResult result = agent.route("Review this")
+
+    then:
+    result.commands.size() == 1
+    result.commands[0].name == "/review"
+    result.confidence == 0.75d
+    result.usedSecondOpinion == false
+    result.modelUsed == "tinyllama"
+  }
+
+  def "route skips second opinion when confidence is high"() {
+    given:
+    def agent = new TestIntentRouterAgent(stubAi(), stubRegistry())
+    agent.responses = [
+      '{"commands":[{"name":"/review","args":{}}],"confidence":0.9,"explanation":"high confidence"}'
+    ]
+
+    when:
+    IntentRouterResult result = agent.route("Review src")
+
+    then:
+    result.commands.size() == 1
+    result.commands[0].name == "/review"
+    result.confidence == 0.9d
+    agent.optionsSeen.size() == 1
+    result.modelUsed == "tinyllama"
+  }
+
+  def "route falls back to chat when confidence is below second opinion threshold"() {
+    given:
+    def agent = new TestIntentRouterAgent(stubAi(), stubRegistry())
+    agent.responses = [
+      '{"commands":[{"name":"/review","args":{}}],"confidence":0.5,"explanation":"too low"}'
+    ]
+
+    when:
+    IntentRouterResult result = agent.route("Do something vague")
+
+    then:
+    result.commands.size() == 1
+    result.commands[0].name == "/chat"
+    result.confidence == 0.0d
+  }
+
   private static class TestIntentRouterAgent extends IntentRouterAgent {
 
     List<String> responses = []
@@ -87,7 +159,8 @@ class IntentRouterAgentSpec extends Specification {
         0.2d,
         128,
         0.8d,
-        "/chat,/review"
+        0.6d,
+        "/chat,/review,/plan"
       )
     }
 

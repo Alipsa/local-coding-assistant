@@ -9,4 +9,6 @@ class IntentRouterResult {
   List<IntentCommand> commands = List.of()
   double confidence
   String explanation
+  String modelUsed
+  boolean usedSecondOpinion = false
 }

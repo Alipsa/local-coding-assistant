@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import se.alipsa.lca.intent.IntentCommandRouter
+import se.alipsa.lca.intent.IntentRoutingOutcome
 import se.alipsa.lca.intent.IntentRoutingPlan
 
 import java.nio.file.Paths
@@ -36,6 +37,7 @@ class JLineRepl {
   private final Terminal terminal
   private final LineReader lineReader
   private final String prompt
+  private final double secondOpinionThreshold
   private final AttributedStyle userInputStyle
   private volatile boolean running = true
 
@@ -44,12 +46,14 @@ class JLineRepl {
     CommandExecutor commandExecutor,
     Terminal terminal,
     @Value('${lca.repl.prompt:lca> }') String prompt,
-    @Value('${lca.repl.history-file:#{null}}') String historyFile
+    @Value('${lca.repl.history-file:#{null}}') String historyFile,
+    @Value('${assistant.intent.second-opinion-threshold:0.6}') double secondOpinionThreshold
   ) {
     this.intentRouter = intentRouter
     this.commandExecutor = commandExecutor
     this.terminal = terminal
     this.prompt = prompt
+    this.secondOpinionThreshold = secondOpinionThreshold
     this.userInputStyle = AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN + AttributedStyle.BRIGHT)
 
     // Create line reader with history and editing
@@ -83,8 +87,6 @@ class JLineRepl {
     } else {
       log.warn("Running on a dumb terminal - line editing may be limited")
     }
-
-    log.info("JLine REPL initialized with prompt: {}", prompt)
   }
 
   /**
@@ -139,12 +141,21 @@ class JLineRepl {
    */
   private void processInput(String input) {
     try {
-      // Route through IntentRouterAgent
-      IntentRoutingPlan plan = intentRouter.route(input)
+      // Route through IntentRouterAgent - get full details
+      IntentRoutingOutcome outcome = intentRouter.routeDetails(input)
+      IntentRoutingPlan plan = outcome?.plan
 
       if (plan == null || plan.commands == null || plan.commands.isEmpty()) {
         terminal.writer().println("I couldn't understand that. Try rephrasing or use /help.")
         return
+      }
+
+      // If confidence is very low, ask for clarification
+      if (plan.confidence < secondOpinionThreshold) {
+        boolean shouldProceed = requestClarification(input, plan)
+        if (!shouldProceed) {
+          return
+        }
       }
 
       // Show routing info for low confidence or multiple commands
@@ -152,7 +163,12 @@ class JLineRepl {
         terminal.writer().println("Routing to: " + plan.commands.join(", "))
         if (plan.confidence < 0.85d && plan.commands.size() == 1) {
           String confidencePercent = String.format("%.0f%%", plan.confidence * 100)
-          terminal.writer().println("Confidence: ${confidencePercent}")
+          terminal.writer().print("Confidence: ${confidencePercent}")
+          if (outcome?.result?.usedSecondOpinion) {
+            terminal.writer().println(" (second opinion)")
+          } else {
+            terminal.writer().println()
+          }
         }
       }
 
@@ -167,6 +183,58 @@ class JLineRepl {
     } catch (Exception e) {
       log.error("Error processing input: {}", input, e)
       terminal.writer().println("Error: " + e.message)
+    }
+  }
+
+  /**
+   * Request clarification from user when confidence is too low.
+   * Returns true if should proceed with original plan, false otherwise.
+   */
+  private boolean requestClarification(String input, IntentRoutingPlan plan) {
+    String confidencePercent = String.format("%.0f%%", plan.confidence * 100)
+    terminal.writer().println()
+    terminal.writer().println("I'm not very confident about what you want (confidence: ${confidencePercent})")
+
+    if (plan.explanation != null && !plan.explanation.trim().isEmpty()) {
+      terminal.writer().println("Reason: ${plan.explanation}")
+    }
+
+    terminal.writer().println()
+    terminal.writer().println("I think you want: ${plan.commands.join(', ')}")
+    terminal.writer().println()
+    terminal.writer().println("What would you like to do?")
+    terminal.writer().println("  1) Proceed with this command anyway")
+    terminal.writer().println("  2) Let me rephrase my request")
+    terminal.writer().println("  3) Show me available commands (/help)")
+    terminal.writer().println()
+
+    try {
+      String choice = lineReader.readLine("Your choice (1-3): ")
+      choice = choice?.trim()
+
+      if (choice == "1") {
+        terminal.writer().println("Proceeding...")
+        return true
+      } else if (choice == "2") {
+        terminal.writer().println("Please rephrase your request:")
+        return false
+      } else if (choice == "3") {
+        String helpResult = commandExecutor.execute("/help")
+        if (helpResult != null && !helpResult.trim().isEmpty()) {
+          terminal.writer().println(helpResult)
+        }
+        terminal.writer().println()
+        terminal.writer().println("Please try again with a clearer command:")
+        return false
+      } else {
+        terminal.writer().println("Invalid choice. Please rephrase your request:")
+        return false
+      }
+    } catch (UserInterruptException e) {
+      terminal.writer().println("^C")
+      return false
+    } catch (EndOfFileException e) {
+      return false
     }
   }
 

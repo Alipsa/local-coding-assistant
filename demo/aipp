@@ -16,13 +16,43 @@ done
 
 echo "--- 🚀 Starting AIPP (your AI Pair Programmer) ---"
 
-# 2. Setup Environment
+# 2. Detect Compatible Python Version
+# aider-chat requires Python 3.10-3.12 (3.13+ has dependency issues)
+PYTHON_CMD=""
+for version in python3.12 python3.11 python3.10 python3; do
+    if command -v "$version" &> /dev/null; then
+        PY_VERSION=$("$version" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+        if [[ "$PY_VERSION" =~ ^3\.(10|11|12)$ ]]; then
+            PYTHON_CMD="$version"
+            echo "✓ Using $version (Python $PY_VERSION)"
+            break
+        elif [[ "$PY_VERSION" =~ ^3\.(13|14|15|16|17|18|19)$ ]]; then
+            echo "⚠ Found $version (Python $PY_VERSION) but it's too new for aider-chat dependencies"
+        fi
+    fi
+done
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo "❌ Error: aider-chat requires Python 3.10, 3.11, or 3.12"
+    echo "   Your system has Python 3.13+ which has dependency compatibility issues."
+    echo ""
+    echo "   Install Python 3.12:"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "   $ brew install python@3.12"
+    else
+        echo "   $ sudo apt install python3.12  # Ubuntu/Debian"
+        echo "   $ sudo dnf install python3.12  # Fedora"
+    fi
+    exit 1
+fi
+
+# 3. Setup Environment
 [ ! -d "$AIPP_DIR" ] && mkdir -p "$AIPP_DIR"
 
-# 3. Create/Activate venv
+# 4. Create/Activate venv
 if [ ! -d "$VENV_PATH" ]; then
     echo "📦 Creating virtual environment..."
-    python3 -m venv "$VENV_PATH"
+    "$PYTHON_CMD" -m venv "$VENV_PATH"
 fi
 
 # Use the full path to activate to be safe across shells (bash/zsh)
@@ -35,7 +65,7 @@ if [ "$UPGRADE_MODE" = true ]; then
     echo "✅ Upgrade complete."
 fi
 
-# 4. Check/Install Aider & Model
+# 5. Check/Install Aider & Model
 if ! command -v aider &> /dev/null; then
     echo "🛠️ Installing Aider..."
     # Ensure pip is current before installing aider to avoid build errors
@@ -49,7 +79,7 @@ if ! ollama list | grep -q "$MODEL_NAME"; then
     ollama pull "$MODEL_NAME"
 fi
 
-# 5. Launch
+# 6. Launch
 EXTRA_ARGS=""
 [ -f "AGENTS.md" ] && EXTRA_ARGS="--read AGENTS.md"
 

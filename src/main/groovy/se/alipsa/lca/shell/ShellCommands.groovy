@@ -124,6 +124,8 @@ Do not execute any commands.
   private final SecretScanner secretScanner
   private final SastTool sastTool
   private final Path reviewLogPath
+  private final se.alipsa.lca.validation.RequestValidator requestValidator
+  private final se.alipsa.lca.validation.ClarificationDialog clarificationDialog
   private volatile boolean applyAllConfirmed = false
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
@@ -274,7 +276,9 @@ Do not execute any commands.
     SastTool sastTool,
     ShellSettings shellSettings,
     IntentRoutingState intentRoutingState,
-    IntentRoutingSettings intentRoutingSettings
+    IntentRoutingSettings intentRoutingSettings,
+    @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.RequestValidator requestValidator,
+    @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ClarificationDialog clarificationDialog
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -302,6 +306,8 @@ Do not execute any commands.
     this.sastTool = sastTool != null ? sastTool : new SastTool(this.commandRunner, this.commandPolicy, "", 60000L, 8000)
     String reviewPath = reviewLogPath != null && reviewLogPath.trim() ? reviewLogPath : ".lca/reviews.log"
     this.reviewLogPath = Paths.get(reviewPath).toAbsolutePath()
+    this.requestValidator = requestValidator
+    this.clarificationDialog = clarificationDialog
   }
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
@@ -396,13 +402,27 @@ Do not execute any commands.
     @ShellOption(value = "--temperature", defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
     @ShellOption(value = "--review-temperature", defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(value = "--max-tokens", defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(value = "--auto-save", defaultValue = "false", help = "Auto-save code blocks") boolean autoSave
+    @ShellOption(value = "--auto-save", defaultValue = "false", help = "Auto-save code blocks") boolean autoSave,
+    @ShellOption(value = "--skip-validation", defaultValue = "false", help = "Skip request validation") boolean skipValidation
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /implement \"your task\" or /implement --prompt your task without quotes"
     }
     String prompt = String.join(" ", words)
     requireNonBlank(prompt, "prompt")
+
+    // Validate request and ask for clarification if needed
+    if (!skipValidation && !batchMode && requestValidator != null && clarificationDialog != null) {
+      se.alipsa.lca.validation.ValidationResult validation = requestValidator.validate(prompt, session)
+      if (validation.needsClarification) {
+        se.alipsa.lca.validation.ClarificationResult clarification = clarificationDialog.ask(validation, prompt)
+        if (clarification.cancelled) {
+          return "Implementation cancelled."
+        }
+        prompt = clarification.enrichedPrompt
+      }
+    }
+
     String health = ensureOllamaHealth()
     if (health != null) {
       return health

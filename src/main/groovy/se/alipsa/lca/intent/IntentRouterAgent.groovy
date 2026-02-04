@@ -29,6 +29,7 @@ class IntentRouterAgent {
   private final double temperature
   private final int maxTokens
   private final double confidenceThreshold
+  private final double secondOpinionThreshold
   private final List<String> allowedCommands
   private final Map<String, String> allowedLookup
 
@@ -41,6 +42,7 @@ class IntentRouterAgent {
     @Value('${assistant.intent.temperature:0.0}') double temperature,
     @Value('${assistant.intent.max-tokens:256}') int maxTokens,
     @Value('${assistant.intent.confidence-threshold:0.8}') double confidenceThreshold,
+    @Value('${assistant.intent.second-opinion-threshold:0.6}') double secondOpinionThreshold,
     @Value('${assistant.intent.allowed-commands:' + DEFAULT_ALLOW_LIST + '}') String allowedCommandsValue
   ) {
     this.ai = Objects.requireNonNull(ai, "ai must not be null")
@@ -51,6 +53,7 @@ class IntentRouterAgent {
     this.temperature = temperature
     this.maxTokens = maxTokens > 0 ? maxTokens : 256
     this.confidenceThreshold = confidenceThreshold > 0 ? confidenceThreshold : 0.8d
+    this.secondOpinionThreshold = secondOpinionThreshold > 0 ? secondOpinionThreshold : 0.6d
     List<String> parsed = parseAllowedCommands(allowedCommandsValue)
     this.allowedCommands = parsed.isEmpty() ? List.of("/chat") : List.copyOf(parsed)
     this.allowedLookup = Collections.unmodifiableMap(buildLookup(this.allowedCommands))
@@ -61,23 +64,59 @@ class IntentRouterAgent {
       return fallbackResult("Input was empty.")
     }
     String prompt = buildPrompt(input, false)
-    IntentRouterResult result = parseResponse(prompt, temperature)
+    IntentRouterResult result = parseResponse(prompt, temperature, model)
     if (result == null) {
       String retryPrompt = buildPrompt(input, true)
-      result = parseResponse(retryPrompt, 0.0d)
+      result = parseResponse(retryPrompt, 0.0d, model)
     }
     if (result == null) {
       return fallbackResult("I couldn't understand that request. Try rephrasing or use /help to see available commands.")
     }
-    validateResult(result)
+
+    // Pre-validate to normalize commands and confidence (but don't apply threshold yet)
+    IntentRouterResult preValidated = preValidateResult(result)
+
+    // If confidence is between secondOpinionThreshold and confidenceThreshold, get second opinion
+    if (preValidated.confidence >= secondOpinionThreshold && preValidated.confidence < confidenceThreshold &&
+        fallbackModel != null && !fallbackModel.equals(model)) {
+      log.debug("Primary model confidence {}%, getting second opinion from fallback model",
+        preValidated.confidence * 100)
+      IntentRouterResult secondOpinion = parseResponse(prompt, temperature, fallbackModel)
+      if (secondOpinion == null) {
+        String retryPrompt = buildPrompt(input, true)
+        secondOpinion = parseResponse(retryPrompt, 0.0d, fallbackModel)
+      }
+      if (secondOpinion != null) {
+        IntentRouterResult preValidatedSecondOpinion = preValidateResult(secondOpinion)
+        // Use the result with higher confidence (both are already >= secondOpinionThreshold)
+        if (preValidatedSecondOpinion.confidence > preValidated.confidence) {
+          log.debug("Using second opinion ({}%) over primary ({}%)",
+            preValidatedSecondOpinion.confidence * 100, preValidated.confidence * 100)
+          preValidatedSecondOpinion.modelUsed = fallbackModel
+          preValidatedSecondOpinion.usedSecondOpinion = true
+          // Accept the better result even if below normal threshold (it's above secondOpinionThreshold)
+          return preValidatedSecondOpinion
+        } else {
+          log.debug("Keeping primary result ({}%) over second opinion ({}%)",
+            preValidated.confidence * 100, preValidatedSecondOpinion.confidence * 100)
+          preValidated.modelUsed = model
+          // Accept the primary result even if below normal threshold (it's above secondOpinionThreshold)
+          return preValidated
+        }
+      }
+    }
+
+    preValidated.modelUsed = model
+    // Only apply threshold check if we didn't go through second opinion process
+    applyConfidenceThreshold(preValidated)
   }
 
   protected String generateResponse(String prompt, LlmOptions options) {
     ai.withLlm(options).generateText(prompt)
   }
 
-  private IntentRouterResult parseResponse(String prompt, double temp) {
-    String resolvedModel = resolveModel()
+  private IntentRouterResult parseResponse(String prompt, double temp, String targetModel) {
+    String resolvedModel = resolveSpecificModel(targetModel)
     LlmOptions options = resolvedModel != null ? LlmOptions.withModel(resolvedModel) : LlmOptions.withDefaultLlm()
     options = options.withTemperature(temp)
     if (maxTokens > 0) {
@@ -93,6 +132,11 @@ class IntentRouterAgent {
   }
 
   private IntentRouterResult validateResult(IntentRouterResult result) {
+    IntentRouterResult preValidated = preValidateResult(result)
+    applyConfidenceThreshold(preValidated)
+  }
+
+  private IntentRouterResult preValidateResult(IntentRouterResult result) {
     double confidence = normaliseConfidence(result?.confidence)
     List<IntentCommand> commands = new ArrayList<>()
     boolean invalid = false
@@ -112,10 +156,14 @@ class IntentRouterAgent {
     if (commands.isEmpty()) {
       return fallbackResult("I couldn't figure out what to do with that. Try being more specific, like 'review my code' or 'show me the project structure'.")
     }
-    if (confidence < confidenceThreshold) {
+    new IntentRouterResult(commands, confidence, result?.explanation, result?.modelUsed, result?.usedSecondOpinion ?: false)
+  }
+
+  private IntentRouterResult applyConfidenceThreshold(IntentRouterResult result) {
+    if (result.confidence < confidenceThreshold) {
       return fallbackResult("I'm not quite sure what you want. Could you rephrase that or use a slash command like /chat, /plan, or /review?")
     }
-    new IntentRouterResult(commands, confidence, result?.explanation)
+    result
   }
 
   private IntentCommand normaliseCommand(IntentCommand command) {
@@ -135,7 +183,7 @@ class IntentRouterAgent {
 
   private IntentRouterResult fallbackResult(String reason) {
     IntentCommand command = new IntentCommand("/chat", Collections.emptyMap())
-    new IntentRouterResult(List.of(command), 0.0d, reason)
+    new IntentRouterResult(List.of(command), 0.0d, reason, null, false)
   }
 
   private String buildPrompt(String input, boolean strict) {
@@ -200,6 +248,18 @@ class IntentRouterAgent {
       }
     }
     desired
+  }
+
+  private String resolveSpecificModel(String targetModel) {
+    if (targetModel == null) {
+      return resolveModel()
+    }
+    List<String> available = modelRegistry.listModels()
+    if (available == null || available.isEmpty()) {
+      return targetModel
+    }
+    String matched = available.find { it != null && it.equalsIgnoreCase(targetModel) }
+    matched ?: targetModel
   }
 
   private static List<String> parseAllowedCommands(String value) {

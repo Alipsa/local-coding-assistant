@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -e
+
+if ! command -v ollama >/dev/null 2>&1; then
+  echo "ollama could not be found, cannot continue"
+  exit 1
+fi
+
+unset ANTHROPIC_AUTH_TOKEN
+unset CLAUDE_CODE_USE_VERTEX
+unset CLOUD_ML_REGION
+unset ANTHROPIC_VERTEX_PROJECT_ID
+
+# just a dummy key
+export ANTHROPIC_API_KEY="sk-ant-local123"
+export ANTHROPIC_BASE_URL="http://localhost:11434"
+
+# Default is 0.7, 0.2 is a bit too conservative i think (but often recommend in blog posts)
+TEMPERATURE=0.4
+
+checkAndInstall() {
+    model="$1"
+    installed_models="$(ollama list 2>/dev/null | grep "$model" | awk '{print $1}')"
+    if [ -z "$installed_models" ]; then
+      echo "$model model not found. Installing..."
+      ollama pull "$model"
+    fi
+}
+
+update_and_rebuild() {
+    base_model="$1"
+    custom_name="$2"
+    context_size="$3"
+    STATE_FILE="$HOME/.claude_qwen_state"
+
+    # Precise ID fetcher
+    get_id() {
+        ollama list | grep -w "^$1" | awk '{print $2}' | head -n 1
+    }
+
+    OLD_ID=$(get_id "$base_model")
+
+    echo "Checking for updates for $base_model..."
+    ollama pull "$base_model" > /dev/null 2>&1
+
+    NEW_ID=$(get_id "$base_model")
+
+    if [[ -z "$NEW_ID" ]]; then
+        echo "❌ Error: Could not retrieve ID for $base_model. Check 'ollama list'."
+        return
+    fi
+
+    CUSTOM_EXISTS=$(ollama list | grep -q "^$custom_name" && echo "yes" || echo "no")
+    LAST_ID=$(cat "$STATE_FILE" 2>/dev/null || echo "")
+
+    if [[ "$NEW_ID" != "$LAST_ID" ]] || [[ "$CUSTOM_EXISTS" == "no" ]]; then
+        echo "🔄 Change detected (ID: ${NEW_ID:0:12}). Rebuilding $custom_name..."
+
+        modelfile=$(mktemp)
+        cat > "$modelfile" << EOF
+FROM $base_model
+PARAMETER num_ctx $context_size
+PARAMETER temperature $TEMPERATURE
+EOF
+        ollama create "$custom_name" -f "$modelfile" > /dev/null
+        rm "$modelfile"
+
+        echo "$NEW_ID" > "$STATE_FILE"
+        echo "✅ Model $custom_name is ready."
+    else
+        echo "✨ $custom_name is up to date. (ID: ${NEW_ID:0:12})"
+    fi
+}
+
+checkAndInstall qwen3-coder:30b
+update_and_rebuild qwen3-coder:30b qwen-coder-32k 32768
+claude --model qwen-coder-32k:latest --allow-dangerously-skip-permissions
