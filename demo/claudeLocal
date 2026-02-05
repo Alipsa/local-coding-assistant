@@ -16,7 +16,7 @@ export ANTHROPIC_API_KEY="sk-ant-local123"
 export ANTHROPIC_BASE_URL="http://localhost:11434"
 
 # Default is 0.7, 0.2 is a bit too conservative i think (but often recommend in blog posts)
-TEMPERATURE=0.4
+TEMPERATURE=0.3
 
 checkAndInstall() {
     model="$1"
