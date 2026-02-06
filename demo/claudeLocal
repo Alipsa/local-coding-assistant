@@ -14,6 +14,9 @@ unset ANTHROPIC_VERTEX_PROJECT_ID
 # just a dummy key
 export ANTHROPIC_API_KEY="sk-ant-local123"
 export ANTHROPIC_BASE_URL="http://localhost:11434"
+SOURCE_MODEL="qwen3-coder:30b"
+export CLAUDE_CODE_MODEL="qwen-coder-32k"
+CONTEXT_SIZE=32768
 
 # Default is 0.7, 0.2 is a bit too conservative i think (but often recommend in blog posts)
 TEMPERATURE=0.3
@@ -72,6 +75,6 @@ EOF
     fi
 }
 
-checkAndInstall qwen3-coder:30b
-update_and_rebuild qwen3-coder:30b qwen-coder-32k 32768
-claude --model qwen-coder-32k:latest --allow-dangerously-skip-permissions
+checkAndInstall $SOURCE_MODEL
+update_and_rebuild $SOURCE_MODEL $CLAUDE_CODE_MODEL $CONTEXT_SIZE
+claude --model $CLAUDE_CODE_MODEL:latest --allow-dangerously-skip-permissions
