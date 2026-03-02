@@ -117,6 +117,15 @@ Follow these rules:
 - Include imports, validation, and error handling; favour testable designs and mention Spock coverage ideas.
 ${template.instructions}
 ${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
+CODEBASE INVESTIGATION:
+You have access to searchFiles(query, paths, contextLines, limit) to search the project repository.
+When the user asks about project-specific behaviour, bugs, UI issues, or implementation details:
+1. FIRST use searchFiles() to find relevant code (e.g., search for class names, UI components, keywords from the question)
+2. Examine the search results to understand how the code actually works
+3. Base your answer on the actual project code, not generic advice
+4. Reference specific files and line numbers in your response
+Do not skip this step — investigating the project is what makes you a local coding assistant rather than a generic chatbot.
+
 Keep narrative text under ${snippetWordCount} words; code may exceed that to stay correct.
 ${formatBlock}
 """.stripIndent().trim()

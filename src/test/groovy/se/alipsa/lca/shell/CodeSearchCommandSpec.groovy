@@ -81,7 +81,10 @@ class CodeSearchCommandSpec extends Specification {
       null,
       null,
       Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog)
+      Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
+      null,
+      null
     )
   }
 

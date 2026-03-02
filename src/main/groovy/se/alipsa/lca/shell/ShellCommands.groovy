@@ -6,7 +6,6 @@ import com.embabel.agent.core.AgentPlatform
 import com.embabel.agent.core.AgentProcess
 import com.embabel.agent.core.ProcessOptions
 import com.embabel.agent.spi.ContextRepository
-import com.embabel.agent.spi.support.SimpleContext
 import com.embabel.chat.AssistantMessage
 import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
@@ -51,11 +50,13 @@ import se.alipsa.lca.tools.SecretScanner
 import se.alipsa.lca.tools.SastTool
 import se.alipsa.lca.tools.LogSanitizer
 import se.alipsa.lca.tools.CodeBlockExtractor
+import se.alipsa.lca.tools.ImplementContextPacker
 
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.IOException
+import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
@@ -99,6 +100,7 @@ Do not execute any commands.
   private static final int WEB_SEARCH_SUMMARY_LIMIT = 3
   private static final int WEB_SEARCH_SUMMARY_MAX_CHARS = 1200
   private static final long DIRECT_SHELL_TIMEOUT_MILLIS = 60000L
+  private static final long IMPLEMENT_LLM_TIMEOUT_SECONDS = 180L
   private static final int DIRECT_SHELL_MAX_OUTPUT_CHARS = 8000
   private static final int DIRECT_SHELL_SUMMARY_MAX_CHARS = 400
   private static final int DIRECT_SHELL_CONVERSATION_MAX_CHARS = 2000
@@ -126,6 +128,9 @@ Do not execute any commands.
   private final Path reviewLogPath
   private final se.alipsa.lca.validation.RequestValidator requestValidator
   private final se.alipsa.lca.validation.ClarificationDialog clarificationDialog
+  private final se.alipsa.lca.validation.ToolCallValidator toolCallValidator
+  private final se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck
+  private final ImplementContextPacker implementContextPacker
   private volatile boolean applyAllConfirmed = false
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
@@ -278,7 +283,10 @@ Do not execute any commands.
     IntentRoutingState intentRoutingState,
     IntentRoutingSettings intentRoutingSettings,
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.RequestValidator requestValidator,
-    @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ClarificationDialog clarificationDialog
+    @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ClarificationDialog clarificationDialog,
+    @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ToolCallValidator toolCallValidator,
+    @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck,
+    @org.springframework.beans.factory.annotation.Autowired(required = false) ImplementContextPacker implementContextPacker
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -308,6 +316,9 @@ Do not execute any commands.
     this.reviewLogPath = Paths.get(reviewPath).toAbsolutePath()
     this.requestValidator = requestValidator
     this.clarificationDialog = clarificationDialog
+    this.toolCallValidator = toolCallValidator
+    this.groundingCheck = groundingCheck
+    this.implementContextPacker = implementContextPacker
   }
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
@@ -430,35 +441,40 @@ Do not execute any commands.
     println("Preparing implementation request...")
     ModelResolution resolution = resolveModel(model)
     String implementSystemPrompt = """
-You are a file editing assistant. Use tool call syntax to create, modify files, and run shell commands.
+You are a file editing assistant for an existing project. You MUST follow these steps in order.
 
-TOOL SYNTAX - Use these exact formats in your response:
+STEP 1 - REVIEW CONTEXT:
+Read the pre-loaded project structure and file contents provided in the prompt.
+These show the actual project layout, package names, and referenced files.
+Do NOT call searchFiles() unless you need files not already provided.
+
+STEP 2 - PLAN:
+Based on the provided context, briefly describe what you will do and which existing files are relevant.
+If your plan involves creating files, ensure paths match the existing project structure.
+
+STEP 3 - IMPLEMENT:
+Use these exact tool call formats:
 - writeFile("file-path", "content") - create or overwrite a file
 - replace("file-path", "old-text", "new-text") - modify existing file
 - deleteFile("file-path") - delete a file
 - runCommand("command") - execute a shell command (e.g., chmod, mkdir, mv, cp)
 
-CRITICAL: Use actual tool calls in your response, not just descriptions.
-
-Example Response Format:
-"I'll create the requested script and make it executable:
-
-writeFile("hello.sh", "#!/bin/bash\\necho hello")
-runCommand("chmod +x hello.sh")
-
-The script has been created and marked as executable."
-
-DO NOT just show code blocks. Use the tool call syntax above.
+RULES:
+- NEVER invent package names, project structures, or frameworks not in the provided context
+- NEVER use com.example unless the project actually uses it
+- ALWAYS prefer modifying existing files over creating new ones
+- ALL new files must use the same package structure found in the project
+- Use actual tool calls, not code blocks
 When you need to run shell commands (chmod, mkdir, etc.), use runCommand().
 """.trim()
     String implementResponseFormat = """
-Respond concisely for file operations:
-1. Brief confirmation (1-2 sentences max)
-2. Tool calls (writeFile/replace/deleteFile/runCommand)
-3. Brief result note only if there are warnings or important details
+Respond in this order:
+1. Context review: confirm which provided files and patterns are relevant
+2. Brief plan (1-2 sentences)
+3. Tool calls (writeFile/replace/deleteFile/runCommand)
+4. Brief result note only if there are warnings
 
-DO NOT include code blocks, detailed plans, or extensive notes.
-Keep total response under 50 words unless there are important warnings.
+Use the pre-loaded context. DO NOT invent project structure.
 """.trim()
     SessionSettings settings = sessionState.update(
       session,
@@ -470,6 +486,7 @@ Keep total response under 50 words unless there are important warnings.
       null
     )
     LlmOptions options = sessionState.craftOptions(settings)
+      .withTimeout(Duration.ofSeconds(IMPLEMENT_LLM_TIMEOUT_SECONDS))
     String fallbackNote = resolution.fallbackUsed ? "Note: using fallback model ${resolution.chosen}." : null
     String system = sessionState.systemPrompt(settings)
     Agent agent = resolveAgent(CHAT_AGENT_NAME)
@@ -477,7 +494,8 @@ Keep total response under 50 words unless there are important warnings.
       return "Chat agent unavailable; ensure Embabel agents are enabled."
     }
     def conversation = sessionState.getOrCreateConversation(session)
-    String planPrompt = buildPlanPrompt(session, prompt)
+    String enriched = enrichImplementPrompt(prompt)
+    String planPrompt = buildPlanPrompt(session, enriched)
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
     ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, implementResponseFormat, false)
@@ -489,11 +507,36 @@ Keep total response under 50 words unless there are important warnings.
       return "No response generated."
     }
 
-    // Parse and execute any tool calls in the response
+    // Parse and validate tool calls before execution
     List<ToolCallParser.ToolCall> toolCalls = toolCallParser.parseToolCalls(replyText)
     String toolResults = null
     if (!toolCalls.isEmpty()) {
-      toolResults = toolCallParser.executeToolCalls(toolCalls, fileEditingTool, commandRunner)
+      // Run grounding check
+      if (groundingCheck != null) {
+        def grounding = groundingCheck.check(replyText, toolCalls)
+        if (grounding.shouldBlock()) {
+          return replyText + formatGroundingBlock(grounding)
+        }
+        if (grounding.shouldWarn()) {
+          println(formatGroundingWarning(grounding))
+        }
+      }
+
+      // Run tool call validation
+      if (toolCallValidator != null) {
+        def validation = toolCallValidator.validate(toolCalls)
+        if (!validation.safeToExecute) {
+          return replyText + formatToolCallBlock(validation)
+        }
+        if (validation.hasWarnings()) {
+          println(formatToolCallWarnings(validation))
+        }
+        toolCalls = validation.safe
+      }
+
+      if (!toolCalls.isEmpty()) {
+        toolResults = toolCallParser.executeToolCalls(toolCalls, fileEditingTool, commandRunner)
+      }
     }
 
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
@@ -1679,6 +1722,38 @@ ${rendered}
     builder.toString().stripTrailing()
   }
 
+  private static String formatGroundingBlock(
+    se.alipsa.lca.validation.ImplementationGroundingCheck.GroundingResult grounding
+  ) {
+    String issues = grounding.issues.collect { "  - ${it}" }.join("\n")
+    "\n\n=== BLOCKED: Response appears ungrounded ===\n" +
+      "The following issues were detected:\n${issues}\n" +
+      "Tip: use /chat to investigate the codebase first, then retry /implement."
+  }
+
+  private static String formatGroundingWarning(
+    se.alipsa.lca.validation.ImplementationGroundingCheck.GroundingResult grounding
+  ) {
+    String issues = grounding.issues.collect { "  - ${it}" }.join("\n")
+    "Warning: grounding check flagged potential issues:\n${issues}"
+  }
+
+  private static String formatToolCallBlock(
+    se.alipsa.lca.validation.ToolCallValidator.ToolCallValidationResult validation
+  ) {
+    String reasons = validation.blocked.collect { "  - ${it.call.toolName}: ${it.reason}" }.join("\n")
+    "\n\n=== BLOCKED: Tool calls target invalid paths ===\n" +
+      "The following operations were blocked:\n${reasons}\n" +
+      "Tip: use /chat to investigate the project structure, then retry /implement."
+  }
+
+  private static String formatToolCallWarnings(
+    se.alipsa.lca.validation.ToolCallValidator.ToolCallValidationResult validation
+  ) {
+    String reasons = validation.warned.collect { "  - ${it.call.toolName}: ${it.reason}" }.join("\n")
+    "Warning: tool call validation flagged potential issues:\n${reasons}"
+  }
+
   private static String formatSection(String title, String body) {
     String content = body ?: ""
     "=== ${title} ===\n${content}".stripTrailing()
@@ -1793,6 +1868,22 @@ ${rendered}
       return "unavailable"
     }
     intentRoutingState.isEnabled(intentRoutingSettings) ? "enabled" : "disabled"
+  }
+
+  private String enrichImplementPrompt(String prompt) {
+    if (implementContextPacker == null) {
+      return prompt
+    }
+    try {
+      ImplementContextPacker.PrePackedContext packed = implementContextPacker.buildContext(prompt)
+      if (packed.contextBlock == null || packed.contextBlock.trim().isEmpty()) {
+        return prompt
+      }
+      return packed.contextBlock + "\n\n" + prompt
+    } catch (Exception e) {
+      log.warn("Failed to pack implement context", e)
+      return prompt
+    }
   }
 
   private String buildPlanPrompt(String sessionId, String prompt) {
@@ -2114,7 +2205,7 @@ ${rendered}
     try {
       def existing = contextRepository.findById(contextId)
       if (existing == null) {
-        contextRepository.save(new SimpleContext(contextId))
+        contextRepository.createWithId(contextId)
       }
     } catch (Exception e) {
       log.debug("Failed to ensure context ${contextId}: ${e.message}", e)

@@ -1,6 +1,7 @@
 package se.alipsa.lca.shell
 
-import com.embabel.common.ai.model.Llm
+import com.embabel.agent.spi.LlmService
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import groovy.transform.CompileStatic
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.model.ChatModel
@@ -31,12 +32,12 @@ class BatchTestModelConfiguration {
   }
 
   @Bean
-  Llm batchTestLlm(ChatModel chatModel) {
-    new Llm("qwen3-coder:30b", "test", chatModel)
+  LlmService batchTestLlm(ChatModel chatModel) {
+    new SpringAiLlmService("qwen3-coder:30b", "test", chatModel)
   }
 
   @Bean
-  Llm batchTestFallbackLlm(ChatModel chatModel) {
-    new Llm("gpt-oss:20b", "test", chatModel)
+  LlmService batchTestFallbackLlm(ChatModel chatModel) {
+    new SpringAiLlmService("gpt-oss:20b", "test", chatModel)
   }
 }
