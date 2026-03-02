@@ -51,6 +51,7 @@ import se.alipsa.lca.tools.SastTool
 import se.alipsa.lca.tools.LogSanitizer
 import se.alipsa.lca.tools.CodeBlockExtractor
 import se.alipsa.lca.tools.ImplementContextPacker
+import se.alipsa.lca.team.TeamOrchestrator
 
 import java.io.BufferedReader
 import java.io.InputStream
@@ -131,6 +132,7 @@ Do not execute any commands.
   private final se.alipsa.lca.validation.ToolCallValidator toolCallValidator
   private final se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck
   private final ImplementContextPacker implementContextPacker
+  private final TeamOrchestrator teamOrchestrator
   private volatile boolean applyAllConfirmed = false
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
@@ -286,7 +288,8 @@ Do not execute any commands.
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ClarificationDialog clarificationDialog,
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ToolCallValidator toolCallValidator,
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck,
-    @org.springframework.beans.factory.annotation.Autowired(required = false) ImplementContextPacker implementContextPacker
+    @org.springframework.beans.factory.annotation.Autowired(required = false) ImplementContextPacker implementContextPacker,
+    @org.springframework.beans.factory.annotation.Autowired(required = false) TeamOrchestrator teamOrchestrator
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -319,6 +322,7 @@ Do not execute any commands.
     this.toolCallValidator = toolCallValidator
     this.groundingCheck = groundingCheck
     this.implementContextPacker = implementContextPacker
+    this.teamOrchestrator = teamOrchestrator
   }
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
@@ -497,6 +501,15 @@ Use the pre-loaded context. DO NOT invent project structure.
     }
     def conversation = sessionState.getOrCreateConversation(session)
     String enriched = enrichImplementPrompt(prompt)
+
+    // Feature-flagged agent team path
+    if (teamOrchestrator != null && teamOrchestrator.isEnabled()) {
+      println("Using agent team (Dispatcher/Architect/Engineer)...")
+      TeamOrchestrator.TeamResult teamResult = teamOrchestrator.execute(enriched, system)
+      sessionState.appendHistory(session, "User: ${prompt}", "Assistant (team): ${teamResult.summary}")
+      return teamResult.fullOutput
+    }
+
     String planPrompt = buildPlanPrompt(session, enriched)
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)

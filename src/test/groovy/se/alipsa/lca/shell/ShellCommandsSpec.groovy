@@ -125,6 +125,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
   }
@@ -318,6 +319,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
     chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("context response"), null)
@@ -417,6 +419,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -567,6 +570,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     ) {
       @Override
@@ -657,6 +661,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     ) {
       @Override
@@ -709,6 +714,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -801,6 +807,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     ) {
       @Override
@@ -847,6 +854,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
     staging.configureBatchMode(true, false)
@@ -888,6 +896,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -938,6 +947,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -992,6 +1002,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
@@ -1039,6 +1050,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1081,6 +1093,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -1134,6 +1147,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -1191,6 +1205,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     ) {
       @Override
@@ -1242,6 +1257,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1291,6 +1307,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1338,6 +1355,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1382,6 +1400,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1424,6 +1443,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -1471,6 +1491,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1505,6 +1526,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null
@@ -1658,6 +1680,7 @@ class ShellCommandsSpec extends Specification {
       Mock(se.alipsa.lca.validation.ClarificationDialog),
       null,
       null,
+      null,
       null
     )
 
@@ -1695,6 +1718,7 @@ class ShellCommandsSpec extends Specification {
       ,
       Mock(se.alipsa.lca.validation.RequestValidator),
       Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
       null,
       null,
       null

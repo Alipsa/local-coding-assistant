@@ -163,6 +163,7 @@ class ResolveModelSpec extends Specification {
         null,
         null,
         null,
+        null,
         null
       )
     }
