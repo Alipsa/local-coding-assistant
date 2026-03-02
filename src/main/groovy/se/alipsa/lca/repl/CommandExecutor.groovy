@@ -135,7 +135,8 @@ class CommandExecutor {
       parsed.reviewTemperature as Double,
       parsed.maxTokens as Integer,
       parseBoolean(parsed.autoSave) ?: false,
-      parseBoolean(parsed.skipValidation) ?: false
+      parseBoolean(parsed.skipValidation) ?: false,
+      parseBoolean(parsed.'show-reasoning') ?: parseBoolean(parsed.'with-thinking') ?: false
     )
   }
 

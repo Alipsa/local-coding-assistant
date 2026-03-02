@@ -100,7 +100,7 @@ Do not execute any commands.
   private static final int WEB_SEARCH_SUMMARY_LIMIT = 3
   private static final int WEB_SEARCH_SUMMARY_MAX_CHARS = 1200
   private static final long DIRECT_SHELL_TIMEOUT_MILLIS = 60000L
-  private static final long IMPLEMENT_LLM_TIMEOUT_SECONDS = 180L
+  private static final long IMPLEMENT_LLM_TIMEOUT_SECONDS = 600L
   private static final int DIRECT_SHELL_MAX_OUTPUT_CHARS = 8000
   private static final int DIRECT_SHELL_SUMMARY_MAX_CHARS = 400
   private static final int DIRECT_SHELL_CONVERSATION_MAX_CHARS = 2000
@@ -414,7 +414,9 @@ Do not execute any commands.
     @ShellOption(value = "--review-temperature", defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
     @ShellOption(value = "--max-tokens", defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
     @ShellOption(value = "--auto-save", defaultValue = "false", help = "Auto-save code blocks") boolean autoSave,
-    @ShellOption(value = "--skip-validation", defaultValue = "false", help = "Skip request validation") boolean skipValidation
+    @ShellOption(value = "--skip-validation", defaultValue = "false", help = "Skip request validation") boolean skipValidation,
+    @ShellOption(value = ["--show-reasoning", "--with-thinking"], defaultValue = "false",
+      help = "Show reasoning process") boolean showReasoning
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /implement \"your task\" or /implement --prompt your task without quotes"
@@ -498,8 +500,9 @@ Use the pre-loaded context. DO NOT invent project structure.
     String planPrompt = buildPlanPrompt(session, enriched)
     UserMessage userMessage = new UserMessage(planPrompt)
     conversation.addMessage(userMessage)
-    ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, implementResponseFormat, false)
-    println("Implementing with ${settings.model} (tool call parsing mode)...")
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, options, system, implementResponseFormat, showReasoning)
+    String thinkingMsg = showReasoning ? " (with reasoning)" : ""
+    println("Implementing with ${settings.model} (tool call parsing mode)${thinkingMsg}...")
     ChatResponse response = runAgent(agent, session, ChatResponse, conversation, request, userMessage)
     AssistantMessage reply = response?.message
     String replyText = reply?.textContent
@@ -541,6 +544,12 @@ Use the pre-loaded context. DO NOT invent project structure.
 
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
 
+    // Format reasoning section if available
+    String reasoningSection = ""
+    if (showReasoning && response?.reasoning != null && !response.reasoning.trim().isEmpty()) {
+      reasoningSection = "\n\n=== Reasoning Process ===\n" + response.reasoning
+    }
+
     // Auto-save code blocks if enabled
     String saveNote = null
     if (autoSave) {
@@ -556,9 +565,9 @@ Use the pre-loaded context. DO NOT invent project structure.
     }
 
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText + (toolResults ?: "") + (saveNote ?: "")
+      return fallbackNote + "\n" + replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "")
     }
-    replyText + (toolResults ?: "") + (saveNote ?: "")
+    replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "")
   }
 
   @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands. Usage: /plan \"your question\" or /plan --prompt your question here")
@@ -2151,6 +2160,7 @@ ${rendered}
     // Start a progress indicator thread
     AtomicBoolean running = new AtomicBoolean(true)
     AtomicBoolean interrupted = new AtomicBoolean(false)
+    long startTime = System.currentTimeMillis()
     Thread progressThread = new Thread({
       int dots = 0
       while (running.get()) {
@@ -2159,7 +2169,8 @@ ${rendered}
           if (running.get()) {
             dots = (dots + 1) % 4
             String indicator = "." * Math.max(1, dots)
-            print("\rThinking${indicator}   (Ctrl+C to cancel)")
+            long elapsed = (long) ((System.currentTimeMillis() - startTime) / 1000)
+            print("\rThinking${indicator} (${elapsed}s elapsed, Ctrl+C to cancel)   ")
             System.out.flush()
           }
         } catch (InterruptedException e) {
