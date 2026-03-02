@@ -7,6 +7,14 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.FileEditingTool
 
+import java.util.concurrent.Callable
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicBoolean
+
 @Component
 @CompileStatic
 class TeamOrchestrator {
@@ -99,31 +107,214 @@ class TeamOrchestrator {
       }
     }
 
-    // Engineer phase — execute steps serially
+    // Compute execution waves from dependency graph
     List<PlanStep> sortedSteps = plan.steps.sort { PlanStep a, PlanStep b -> a.order <=> b.order }
+    List<ExecutionWave> waves
+    try {
+      waves = computeExecutionWaves(sortedSteps)
+    } catch (IllegalStateException e) {
+      String failOutput = formatOutput(plan, [], false)
+      return new TeamResult(false, e.message, plan, [], failOutput)
+    }
+
+    // Print execution plan with wave info
+    println("\nExecution plan: ${waves.size()} wave(s)")
+    for (ExecutionWave wave : waves) {
+      String stepDescs = wave.steps.collect { PlanStep s ->
+        String deps = (s.dependsOn != null && !s.dependsOn.isEmpty()) ? " (depends on ${s.dependsOn})" : ""
+        "step ${s.order}${deps}"
+      }.join(", ")
+      println("  Wave ${wave.waveNumber}: ${stepDescs}")
+    }
+
+    // Engineer phase — execute waves
     List<EngineerStepResult> stepResults = []
+    int totalSteps = sortedSteps.size()
 
-    for (PlanStep step : sortedSteps) {
-      println("\nEngineer executing step ${step.order}/${sortedSteps.size()}: ${step.description}")
-
-      String context = readContextForStep(step)
-      EngineerStepResult result = engineer.executeStep(step, plan, stepResults, context)
-      stepResults.add(result)
-
-      if (!result.success) {
-        println("Step ${step.order} FAILED: ${result.errorMessage}")
+    for (ExecutionWave wave : waves) {
+      // Check for file collisions within this wave
+      List<FileCollision> collisions = detectFileCollisions(wave)
+      if (!collisions.isEmpty()) {
+        String collisionMsg = collisions.collect { FileCollision c ->
+          "${c.filePath} (steps ${c.conflictingStepOrders})"
+        }.join(", ")
         String failOutput = formatOutput(plan, stepResults, false)
-        int succeeded = stepResults.count { EngineerStepResult r -> r.success } as int
         return new TeamResult(false,
-          "Failed at step ${step.order}/${sortedSteps.size()} (${succeeded} steps succeeded)".toString(),
+          "File collision in wave ${wave.waveNumber}: ${collisionMsg}".toString(),
           plan, stepResults, failOutput)
       }
-      println("Step ${step.order} completed successfully")
+
+      // Execute wave
+      if (wave.steps.size() == 1) {
+        PlanStep step = wave.steps.first()
+        println("\nEngineer executing step ${step.order}/${totalSteps}: ${step.description}")
+      } else {
+        String stepNums = wave.steps.collect { PlanStep s -> s.order.toString() }.join(", ")
+        println("\nEngineer executing wave ${wave.waveNumber} (steps ${stepNums}) in parallel")
+      }
+
+      List<EngineerStepResult> waveResults = executeWave(wave, plan, stepResults)
+      stepResults.addAll(waveResults)
+
+      // Check for failures
+      List<EngineerStepResult> failures = waveResults.findAll { EngineerStepResult r -> !r.success }
+      if (!failures.isEmpty()) {
+        for (EngineerStepResult fail : failures) {
+          println("Step ${fail.stepOrder} FAILED: ${fail.errorMessage}")
+        }
+        String failOutput = formatOutput(plan, stepResults, false)
+        int succeeded = stepResults.count { EngineerStepResult r -> r.success } as int
+        int failedStep = failures.first().stepOrder
+        return new TeamResult(false,
+          "Failed at step ${failedStep}/${totalSteps} (${succeeded} steps succeeded)".toString(),
+          plan, stepResults, failOutput)
+      }
+
+      for (EngineerStepResult r : waveResults) {
+        println("Step ${r.stepOrder} completed successfully")
+      }
     }
 
     String fullOutput = formatOutput(plan, stepResults, false)
-    new TeamResult(true, "All ${sortedSteps.size()} steps completed successfully".toString(),
+    new TeamResult(true,
+      "All ${totalSteps} steps completed successfully in ${waves.size()} wave(s)".toString(),
       plan, stepResults, fullOutput)
+  }
+
+  List<ExecutionWave> computeExecutionWaves(List<PlanStep> steps) {
+    if (steps.isEmpty()) {
+      return []
+    }
+
+    Map<Integer, PlanStep> stepsByOrder = new LinkedHashMap<>()
+    Map<Integer, List<Integer>> dependencies = new LinkedHashMap<>()
+    for (PlanStep step : steps) {
+      stepsByOrder.put(step.order, step)
+      dependencies.put(step.order, step.dependsOn != null ? new ArrayList<>(step.dependsOn) : [])
+    }
+
+    Set<Integer> completed = new LinkedHashSet<>()
+    Set<Integer> remaining = new LinkedHashSet<>(stepsByOrder.keySet())
+    List<ExecutionWave> waves = []
+    int waveNumber = 1
+
+    while (!remaining.isEmpty()) {
+      List<PlanStep> ready = []
+      for (int order : remaining) {
+        List<Integer> deps = dependencies.get(order)
+        if (deps.every { int d -> completed.contains(d) }) {
+          ready.add(stepsByOrder.get(order))
+        }
+      }
+
+      if (ready.isEmpty()) {
+        throw new IllegalStateException(
+          "Circular dependency detected among steps: ${remaining}".toString()
+        )
+      }
+
+      waves.add(new ExecutionWave(waveNumber, ready))
+      for (PlanStep step : ready) {
+        completed.add(step.order)
+        remaining.remove(step.order)
+      }
+      waveNumber++
+    }
+
+    waves
+  }
+
+  List<FileCollision> detectFileCollisions(ExecutionWave wave) {
+    Set<StepAction> fileActions = EnumSet.of(StepAction.MODIFY, StepAction.CREATE, StepAction.DELETE)
+    Map<String, List<Integer>> fileToSteps = new LinkedHashMap<>()
+
+    for (PlanStep step : wave.steps) {
+      if (step.targetFile != null && fileActions.contains(step.action)) {
+        fileToSteps.computeIfAbsent(step.targetFile) { new ArrayList<>() }.add(step.order)
+      }
+    }
+
+    List<FileCollision> collisions = []
+    for (Map.Entry<String, List<Integer>> entry : fileToSteps.entrySet()) {
+      if (entry.value.size() > 1) {
+        collisions.add(new FileCollision(entry.key, entry.value))
+      }
+    }
+    collisions
+  }
+
+  private List<EngineerStepResult> executeWave(
+    ExecutionWave wave,
+    ArchitectPlan plan,
+    List<EngineerStepResult> priorResults
+  ) {
+    if (wave.steps.size() == 1) {
+      PlanStep step = wave.steps.first()
+      String context = readContextForStep(step)
+      EngineerStepResult result = engineer.executeStep(step, plan, priorResults, context)
+      return [result]
+    }
+
+    ConcurrentHashMap<Integer, EngineerStepResult> resultMap = new ConcurrentHashMap<>()
+    AtomicBoolean failed = new AtomicBoolean(false)
+    ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()
+
+    try {
+      List<Future<EngineerStepResult>> futures = []
+      for (PlanStep step : wave.steps) {
+        final PlanStep capturedStep = step
+        Future<EngineerStepResult> future = executor.submit(new Callable<EngineerStepResult>() {
+          @Override
+          EngineerStepResult call() {
+            try {
+              if (failed.get()) {
+                EngineerStepResult skipped = new EngineerStepResult(
+                  capturedStep.order, false, null, null, [],
+                  "Skipped due to failure in parallel step"
+                )
+                resultMap.put(capturedStep.order, skipped)
+                return skipped
+              }
+              String context = readContextForStep(capturedStep)
+              EngineerStepResult result = engineer.executeStep(
+                capturedStep, plan, priorResults, context
+              )
+              if (!result.success) {
+                failed.set(true)
+              }
+              resultMap.put(capturedStep.order, result)
+              result
+            } catch (Exception e) {
+              log.error("Step {} threw exception during execution", capturedStep.order, e)
+              EngineerStepResult errResult = new EngineerStepResult(
+                capturedStep.order, false, null, null, [],
+                "Exception: ${e.message}".toString()
+              )
+              resultMap.put(capturedStep.order, errResult)
+              failed.set(true)
+              errResult
+            }
+          }
+        })
+        futures.add(future)
+      }
+
+      for (Future<EngineerStepResult> future : futures) {
+        try {
+          future.get()
+        } catch (ExecutionException e) {
+          log.error("Step execution threw exception", e.cause)
+        }
+      }
+    } finally {
+      executor.shutdown()
+    }
+
+    wave.steps.collect { PlanStep s ->
+      resultMap.getOrDefault(s.order, new EngineerStepResult(
+        s.order, false, null, null, [], "Step did not produce a result"
+      ))
+    }.sort { EngineerStepResult a, EngineerStepResult b -> a.stepOrder <=> b.stepOrder }
   }
 
   private String readContextForStep(PlanStep step) {
@@ -221,5 +412,19 @@ class TeamOrchestrator {
     ArchitectPlan plan
     List<EngineerStepResult> stepResults
     String fullOutput
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ExecutionWave {
+    int waveNumber
+    List<PlanStep> steps
+  }
+
+  @Canonical
+  @CompileStatic
+  static class FileCollision {
+    String filePath
+    List<Integer> conflictingStepOrders
   }
 }
