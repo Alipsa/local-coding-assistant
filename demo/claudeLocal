@@ -15,8 +15,8 @@ unset ANTHROPIC_VERTEX_PROJECT_ID
 export ANTHROPIC_API_KEY="sk-ant-local123"
 export ANTHROPIC_BASE_URL="http://localhost:11434"
 SOURCE_MODEL="qwen3-coder:30b"
-export CLAUDE_CODE_MODEL="qwen-coder-32k"
-CONTEXT_SIZE=32768
+export CLAUDE_CODE_MODEL="qwen-coder-64k"
+CONTEXT_SIZE=65536
 
 # Default is 0.7, 0.2 is a bit too conservative i think (but often recommend in blog posts)
 TEMPERATURE=0.3

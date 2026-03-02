@@ -6,7 +6,9 @@ LIB_DIR="${HOME}/.local/lib"
 JAR_PREFIX="local-coding-assistant"
 JAR_PATTERN="${JAR_PREFIX}-*-exec.jar"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-MODELS="qwen3-coder:30b gpt-oss:20b"
+BASE_MODELS="qwen3-coder:30b gpt-oss:20b"
+CUSTOM_MODELS="qwen3-coder:30b|qwen-coder-64k|65536 gpt-oss:20b|gpt-oss-64k|65536"
+MODEL_STATE_DIR="${HOME}/.lca/model_state"
 
 die() {
   echo "Error: $*" >&2
@@ -17,6 +19,7 @@ usage() {
   cat <<'EOF'
 Usage:
   lca                         Run the local coding assistant (download if missing)
+  lca update                  Pull base models and rebuild custom models if changed
   lca upgrade                 Download the latest release if newer than the local jar
   lca upgrade --include <dir> Check for newer jars in <dir> before downloading
   lca install <jar>           Install a local jar file to ~/.local/lib
@@ -87,6 +90,78 @@ check_and_install_model() {
   fi
 }
 
+get_model_id() {
+  local model="$1"
+  ollama list 2>/dev/null | awk -v m="$model" '$1 == m {print $2; exit}'
+}
+
+ensure_custom_model() {
+  local base="$1"
+  local custom="$2"
+  local ctx="$3"
+  local list_output
+  list_output="$(ollama list 2>/dev/null || true)"
+  if printf '%s\n' "$list_output" | awk '{print $1}' | grep -Fxq "$custom:latest"; then
+    echo "${custom} custom model already exists."
+    return
+  fi
+  echo "Creating custom model ${custom} from ${base} with context ${ctx}..."
+  local modelfile
+  modelfile="$(mktemp)"
+  cat > "$modelfile" <<MODELFILE
+FROM ${base}
+PARAMETER num_ctx ${ctx}
+MODELFILE
+  ollama create "$custom" -f "$modelfile"
+  rm -f "$modelfile"
+  mkdir -p "$MODEL_STATE_DIR"
+  local base_id
+  base_id="$(get_model_id "$base")"
+  if [ -n "$base_id" ]; then
+    printf '%s\n' "$base_id" > "${MODEL_STATE_DIR}/${custom}.id"
+  fi
+  echo "${custom} created successfully."
+}
+
+rebuild_custom_model_if_changed() {
+  local base="$1"
+  local custom="$2"
+  local ctx="$3"
+  local current_id
+  current_id="$(get_model_id "$base")"
+  if [ -z "$current_id" ]; then
+    echo "Warning: could not retrieve ID for ${base}."
+    return
+  fi
+  local saved_id=""
+  local state_file="${MODEL_STATE_DIR}/${custom}.id"
+  if [ -f "$state_file" ]; then
+    saved_id="$(cat "$state_file")"
+  fi
+  local list_output
+  list_output="$(ollama list 2>/dev/null || true)"
+  local custom_exists="no"
+  if printf '%s\n' "$list_output" | awk '{print $1}' | grep -Fxq "$custom:latest"; then
+    custom_exists="yes"
+  fi
+  if [ "$current_id" != "$saved_id" ] || [ "$custom_exists" = "no" ]; then
+    echo "Rebuilding ${custom} (base model changed or custom model missing)..."
+    local modelfile
+    modelfile="$(mktemp)"
+    cat > "$modelfile" <<MODELFILE
+FROM ${base}
+PARAMETER num_ctx ${ctx}
+MODELFILE
+    ollama create "$custom" -f "$modelfile"
+    rm -f "$modelfile"
+    mkdir -p "$MODEL_STATE_DIR"
+    printf '%s\n' "$current_id" > "$state_file"
+    echo "${custom} rebuilt successfully."
+  else
+    echo "${custom} is up to date."
+  fi
+}
+
 ensure_prerequisites() {
   os="$(detect_os)"
   echo "Detected OS: ${os}"
@@ -94,8 +169,14 @@ ensure_prerequisites() {
     echo "ollama could not be found"
     install_ollama "$os"
   fi
-  for model in $MODELS; do
+  for model in $BASE_MODELS; do
     check_and_install_model "$model"
+  done
+  for entry in $CUSTOM_MODELS; do
+    base="$(printf '%s\n' "$entry" | cut -d'|' -f1)"
+    custom="$(printf '%s\n' "$entry" | cut -d'|' -f2)"
+    ctx="$(printf '%s\n' "$entry" | cut -d'|' -f3)"
+    ensure_custom_model "$base" "$custom" "$ctx"
   done
 }
 
@@ -351,7 +432,27 @@ install_local_jar() {
   echo "Successfully installed ${jar_name}"
 }
 
+update_models() {
+  if ! command -v ollama >/dev/null 2>&1; then
+    die "ollama is not installed. Run 'lca' first to install it."
+  fi
+  for model in $BASE_MODELS; do
+    echo "Pulling latest ${model}..."
+    ollama pull "$model"
+  done
+  for entry in $CUSTOM_MODELS; do
+    base="$(printf '%s\n' "$entry" | cut -d'|' -f1)"
+    custom="$(printf '%s\n' "$entry" | cut -d'|' -f2)"
+    ctx="$(printf '%s\n' "$entry" | cut -d'|' -f3)"
+    rebuild_custom_model_if_changed "$base" "$custom" "$ctx"
+  done
+  echo "All models are up to date."
+}
+
 case "${1:-}" in
+  update)
+    update_models
+    ;;
   upgrade)
     shift
     upgrade_release "$@"
