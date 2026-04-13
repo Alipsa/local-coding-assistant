@@ -133,6 +133,7 @@ Do not execute any commands.
   private final se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck
   private final ImplementContextPacker implementContextPacker
   private final TeamOrchestrator teamOrchestrator
+  private final int prContextBudget
   private volatile boolean applyAllConfirmed = false
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
@@ -289,7 +290,8 @@ Do not execute any commands.
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ToolCallValidator toolCallValidator,
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck,
     @org.springframework.beans.factory.annotation.Autowired(required = false) ImplementContextPacker implementContextPacker,
-    @org.springframework.beans.factory.annotation.Autowired(required = false) TeamOrchestrator teamOrchestrator
+    @org.springframework.beans.factory.annotation.Autowired(required = false) TeamOrchestrator teamOrchestrator,
+    @Value('${assistant.llm.review-pr-context-budget:80000}') int prContextBudget
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -323,6 +325,7 @@ Do not execute any commands.
     this.groundingCheck = groundingCheck
     this.implementContextPacker = implementContextPacker
     this.teamOrchestrator = teamOrchestrator
+    this.prContextBudget = prContextBudget
   }
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
@@ -687,7 +690,8 @@ Type a command or your next question to proceed.
     @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview,
     @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security,
     @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast,
-    @ShellOption(value = ["--with-thinking", "--reasoning"], defaultValue = "false", help = "Show reasoning process") boolean withThinking
+    @ShellOption(value = ["--with-thinking", "--reasoning"], defaultValue = "false", help = "Show reasoning process") boolean withThinking,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "GitHub PR number to review") Integer pr
   ) {
     requireNonBlank(prompt, "prompt")
     // Track file paths for context resolution
@@ -704,14 +708,30 @@ Type a command or your next question to proceed.
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
-    String reviewPayload = buildReviewPayload(code, paths, staged)
+    String reviewPayload
+    if (pr != null) {
+      GitTool.GitResult diffResult = gitTool.prDiff(pr)
+      if (!diffResult.success) {
+        printProgressDone("Review")
+        String error = diffResult.error ?: "Unknown error fetching PR diff."
+        return "PR review failed: ${error}"
+      }
+      reviewPayload = buildPrReviewPayload(pr, diffResult)
+      if (reviewPayload == null) {
+        printProgressDone("Review")
+        return "PR #${pr} has no diff content."
+      }
+    } else {
+      reviewPayload = buildReviewPayload(code, paths, staged)
+    }
     Agent agent = resolveAgent(REVIEW_AGENT_NAME)
     if (agent == null) {
       printProgressDone("Review")
       return "Review agent unavailable; ensure Embabel agents are enabled."
     }
     println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}${withThinking ? ' (with reasoning)' : ''}...")
-    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security, withThinking)
+    boolean isPrReview = pr != null
+    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security, withThinking, isPrReview)
     ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
     String reviewText = response?.review
@@ -1455,6 +1475,48 @@ Try:
     }
     String payload = builder.toString().trim()
     payload ? payload : "No additional context provided."
+  }
+
+  private String buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
+    String diff = diffResult.output ?: ""
+    if (diff.trim().isEmpty()) {
+      return null
+    }
+
+    GitTool.GitResult filesResult = gitTool.prChangedFiles(prNumber)
+    List<String> changedFiles = List.of()
+    if (filesResult.success && filesResult.output) {
+      changedFiles = filesResult.output.split("\\R").toList().findAll { it.trim() }
+    }
+
+    StringBuilder builder = new StringBuilder()
+
+    // Add full file contents within budget
+    int budgetUsed = diff.length()
+    boolean budgetExceeded = false
+    for (String filePath : changedFiles) {
+      try {
+        String content = fileEditingTool.readFile(filePath.trim())
+        int fileSize = filePath.length() + content.length() + 20
+        if (budgetUsed + fileSize > prContextBudget) {
+          budgetExceeded = true
+          break
+        }
+        builder.append("File: ").append(filePath.trim()).append("\n```\n")
+          .append(content).append("\n```\n\n")
+        budgetUsed += fileSize
+      } catch (Exception ex) {
+        // File may have been deleted in the PR or not present locally; skip it
+      }
+    }
+
+    if (budgetExceeded) {
+      println("PR is large; reviewing diff only (file contents exceeded context budget).")
+      builder.setLength(0)
+    }
+
+    builder.append("PR diff:\n```\n").append(diff).append("\n```\n")
+    builder.toString().trim()
   }
 
   private String stagedDiff() {

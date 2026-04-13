@@ -96,7 +96,8 @@ class ShellCommandControllerSpec extends Specification {
       false,
       false,
       false,
-      false
+      false,
+      null
     ) >> "review"
   }
 

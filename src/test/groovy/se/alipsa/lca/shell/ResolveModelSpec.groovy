@@ -164,7 +164,8 @@ class ResolveModelSpec extends Specification {
         null,
         null,
         null,
-        null
+        null,
+        80000
       )
     }
   }

@@ -108,7 +108,8 @@ class ShellCommandController {
       logReview,
       security,
       sast,
-      withThinking
+      withThinking,
+      null
     )
   }
 

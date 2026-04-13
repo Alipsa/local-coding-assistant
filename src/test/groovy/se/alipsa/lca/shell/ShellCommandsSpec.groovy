@@ -126,7 +126,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
   }
 
@@ -270,7 +271,8 @@ class ShellCommandsSpec extends Specification {
       false,
       false,
       false,
-      false
+      false,
+      (Integer) null
     )
 
     then:
@@ -320,7 +322,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
     chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("context response"), null)
     platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
@@ -422,7 +425,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
     def results = [new WebSearchTool.SearchResult("T1", "http://example.com", "S1")]
     InputStream originalIn = System.in
@@ -533,7 +537,7 @@ class ShellCommandsSpec extends Specification {
     fileEditingTool.readFile(_) >> "content"
 
     when:
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false, (Integer) null)
 
     then:
     Files.exists(tempDir.resolve("reviews.log"))
@@ -571,7 +575,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -616,7 +621,7 @@ class ShellCommandsSpec extends Specification {
     )
     agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
     fileEditingTool.readFile(_) >> "content"
-    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
+    commands.review("", "log it", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false, (Integer) null)
 
     when:
     def out = commands.reviewLog(ReviewSeverity.HIGH, "src/App.groovy", 5, 1, null, true)
@@ -662,15 +667,16 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       @Override
       protected java.time.Instant nowInstant() {
         instants.hasNext() ? instants.next() : java.time.Instant.now()
       }
     }
-    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
-    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false)
+    clocked.review("", "entry1", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false, (Integer) null)
+    clocked.review("", "entry2", "default", null, null, null, null, ["src/App.groovy"], false, ReviewSeverity.LOW, false, true, false, false, false, (Integer) null)
 
     when:
     def out = clocked.reviewLog(ReviewSeverity.LOW, null, 1, 2, "2025-01-01T00:00:05Z", true)
@@ -717,7 +723,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -808,7 +815,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -855,7 +863,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
     staging.configureBatchMode(true, false)
 
@@ -899,7 +908,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       ConfirmChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
@@ -950,7 +960,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1003,7 +1014,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
     method.accessible = true
@@ -1051,7 +1063,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1096,7 +1109,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1150,7 +1164,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1206,7 +1221,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1258,7 +1274,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1308,7 +1325,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1356,7 +1374,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1401,7 +1420,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1446,7 +1466,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1492,7 +1513,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     expect:
@@ -1529,7 +1551,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     expect:
@@ -1681,7 +1704,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
 
     when:
@@ -1721,7 +1745,8 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      null
+      null,
+      80000
     )
   }
 }

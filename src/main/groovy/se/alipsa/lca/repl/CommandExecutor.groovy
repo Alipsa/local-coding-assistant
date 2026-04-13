@@ -165,7 +165,8 @@ class CommandExecutor {
       parseBoolean(parsed.logReview) ?: true,
       parseBoolean(parsed.security) ?: false,
       parseBoolean(parsed.sast) ?: false,
-      parseBoolean(parsed.withThinking) ?: parseBoolean(parsed.reasoning) ?: false
+      parseBoolean(parsed.withThinking) ?: parseBoolean(parsed.reasoning) ?: false,
+      parsed.pr as Integer
     )
   }
 
