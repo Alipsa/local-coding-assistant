@@ -88,5 +88,5 @@ checkAndInstall qwen3-coder:30b
 checkAndInstall gpt-oss:20b
 
 # Create custom models with larger context
-createCustomModel qwen3-coder:30b qwen-coder-64k 65536
-createCustomModel gpt-oss:20b gpt-oss-64k 65536
+createCustomModel qwen3-coder:30b qwen-coder-96k 98304
+createCustomModel gpt-oss:20b gpt-oss-96k 98304

@@ -17,9 +17,9 @@ class TeamSettings {
 
   TeamSettings(
     @Value('${assistant.team.enabled:false}') boolean enabled,
-    @Value('${assistant.team.architect-model:${assistant.llm.model:qwen-coder-64k:latest}}') String architectModel,
-    @Value('${assistant.team.engineer-model:${assistant.llm.model:qwen-coder-64k:latest}}') String engineerModel,
-    @Value('${assistant.team.dispatcher-model:${assistant.llm.model:qwen-coder-64k:latest}}') String dispatcherModel,
+    @Value('${assistant.team.architect-model:${assistant.llm.model:qwen-coder-96k:latest}}') String architectModel,
+    @Value('${assistant.team.engineer-model:${assistant.llm.model:qwen-coder-96k:latest}}') String engineerModel,
+    @Value('${assistant.team.dispatcher-model:${assistant.llm.model:qwen-coder-96k:latest}}') String dispatcherModel,
     @Value('${assistant.team.dispatcher-temperature:0.1}') double dispatcherTemperature,
     @Value('${assistant.team.auto-execute:true}') boolean autoExecute
   ) {
