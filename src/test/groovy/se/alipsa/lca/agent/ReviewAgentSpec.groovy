@@ -10,7 +10,7 @@ class ReviewAgentSpec extends Specification {
     given:
     CodingAssistantAgent assistant = Mock()
     ReviewAgent agent = new ReviewAgent(assistant)
-    ReviewRequest request = new ReviewRequest("prompt", "payload", LlmOptions.withModel("m"), "system", true, false)
+    ReviewRequest request = new ReviewRequest("prompt", "payload", LlmOptions.withModel("m"), "system", true, false, false)
     def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
       new CodingAssistantAgent.CodeSnippet("payload"),
       "Findings:\n- [High] general - issue\nTests:\n- test",
@@ -26,8 +26,9 @@ class ReviewAgentSpec extends Specification {
       _ as LlmOptions,
       "system",
       _,
+      false,
       false
-    ) >> { userInput, snippet, aiArg, options, system, persona, withThinking ->
+    ) >> { userInput, snippet, aiArg, options, system, persona, withThinking, prReview ->
       capturedOptions = options as LlmOptions
       capturedPersona = persona
       reviewed
