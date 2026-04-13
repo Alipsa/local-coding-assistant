@@ -121,6 +121,11 @@ class IntentCommandMapper {
     paths.each { String path ->
       builder.append(" --paths ").append(quote(path))
     }
+    // Detect PR #N pattern in prompt
+    def prMatcher = prompt =~ /(?i)\bPR\s*#?\s*(\d+)\b/
+    if (prMatcher.find()) {
+      builder.append(" --pr ").append(prMatcher.group(1))
+    }
     appendRemainingOptions(builder, args, Set.of("prompt", "path", "paths"))
     builder.toString()
   }
