@@ -182,6 +182,20 @@ class GitTool {
     runGit(cmd)
   }
 
+  GitResult prDiff(int prNumber) {
+    if (prNumber <= 0) {
+      return new GitResult(false, false, 1, "", "PR number must be positive.")
+    }
+    runCommand(List.of("gh", "pr", "diff", String.valueOf(prNumber)))
+  }
+
+  GitResult prChangedFiles(int prNumber) {
+    if (prNumber <= 0) {
+      return new GitResult(false, false, 1, "", "PR number must be positive.")
+    }
+    runCommand(List.of("gh", "pr", "view", String.valueOf(prNumber), "--json", "files", "--jq", ".files[].path"))
+  }
+
   GitResult listFiles() {
     runGit(List.of("ls-files", "--others", "--cached", "--exclude-standard"))
   }
@@ -279,6 +293,38 @@ class GitTool {
         Thread.currentThread().interrupt()
       }
       log.warn("Git command failed: {}", args.join(" "), e)
+      return new GitResult(false, true, 1, "", e.message ?: e.class.simpleName)
+    }
+  }
+
+  private GitResult runCommand(List<String> command) {
+    ProcessBuilder pb = new ProcessBuilder(command)
+    pb.directory(projectRoot.toFile())
+    pb.redirectErrorStream(false)
+    Process process
+    try {
+      process = pb.start()
+      String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+      String error = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+      int exit = process.waitFor()
+      return new GitResult(exit == 0, true, exit, output.stripTrailing(), error.stripTrailing())
+    } catch (IOException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
+      String msg = e.message ?: e.class.simpleName
+      if (msg.toLowerCase().contains("no such file") || msg.toLowerCase().contains("cannot run program")) {
+        String cmdName = command.isEmpty() ? "command" : command.get(0)
+        if (cmdName == "gh") {
+          return new GitResult(false, true, 1, "",
+            "GitHub CLI (gh) is required for PR reviews. Install it from https://cli.github.com/")
+        }
+      }
+      log.warn("Command failed: {}", command.join(" "), e)
+      return new GitResult(false, true, 1, "", msg)
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt()
+      log.warn("Command interrupted: {}", command.join(" "), e)
       return new GitResult(false, true, 1, "", e.message ?: e.class.simpleName)
     }
   }

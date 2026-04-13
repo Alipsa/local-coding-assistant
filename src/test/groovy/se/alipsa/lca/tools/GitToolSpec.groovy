@@ -285,6 +285,48 @@ six
     !result.error.toLowerCase().contains("fatal")
   }
 
+  def "prDiff returns error when gh is not available"() {
+    given:
+    initRepo()
+
+    when:
+    def result = gitTool.prDiff(999)
+
+    then:
+    !result.success
+    result.error != null && !result.error.isEmpty()
+  }
+
+  def "prChangedFiles returns error when gh is not available"() {
+    given:
+    initRepo()
+
+    when:
+    def result = gitTool.prChangedFiles(999)
+
+    then:
+    !result.success
+    result.error != null && !result.error.isEmpty()
+  }
+
+  def "prDiff rejects non-positive PR number"() {
+    when:
+    def result = gitTool.prDiff(0)
+
+    then:
+    !result.success
+    result.error.contains("PR number must be positive")
+  }
+
+  def "prChangedFiles rejects non-positive PR number"() {
+    when:
+    def result = gitTool.prChangedFiles(0)
+
+    then:
+    !result.success
+    result.error.contains("PR number must be positive")
+  }
+
   private void initRepo() {
     runGit("init")
     runGit("config", "user.name", "Test User")
