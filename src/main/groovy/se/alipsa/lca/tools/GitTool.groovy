@@ -309,9 +309,6 @@ class GitTool {
       int exit = process.waitFor()
       return new GitResult(exit == 0, true, exit, output.stripTrailing(), error.stripTrailing())
     } catch (IOException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt()
-      }
       String msg = e.message ?: e.class.simpleName
       if (msg.toLowerCase().contains("no such file") || msg.toLowerCase().contains("cannot run program")) {
         String cmdName = command.isEmpty() ? "command" : command.get(0)
