@@ -202,10 +202,26 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     RoleGoalBackstorySpec reviewerPersona,
     boolean withThinking
   ) {
+    reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, withThinking, false)
+  }
+
+  @Action
+  ReviewedCodeSnippet reviewCode(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    Ai ai,
+    LlmOptions llmOverride,
+    String systemPromptOverride,
+    RoleGoalBackstorySpec reviewerPersona,
+    boolean withThinking,
+    boolean prReview
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     LlmOptions options = llmOverride ?: reviewLlmOptions
     RoleGoalBackstorySpec reviewer = reviewerPersona ?: Personas.REVIEWER
-    String reviewPrompt = buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
+    String reviewPrompt = prReview
+      ? buildPrReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
+      : buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
 
     String review
     String reasoning = null
@@ -224,7 +240,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
       review = promptRunner.generateText(reviewPrompt)
     }
 
-    String formattedReview = enforceReviewFormat(review)
+    String formattedReview = enforceReviewFormat(review, prReview)
     new ReviewedCodeSnippet(codeSnippet, formattedReview, reviewer, reasoning)
   }
 
@@ -445,19 +461,67 @@ Tests: list the specific tests or scenarios to validate
 """.stripIndent().trim()
   }
 
+  protected String buildPrReviewPrompt(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    String systemPromptOverride,
+    RoleGoalBackstorySpec reviewerPersona
+  ) {
+    String extraSystem = systemPromptOverride?.trim()
+    boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
+    String codeText = codeSnippet?.text ?: ""
+    """
+You are a repository code reviewer.
+Assess the proposal for correctness, repository fit, error handling, and testing strategy.
+Ensure code follows project conventions (check AGENTS.md if present) and avoid deprecated APIs.
+Reference likely target files or layers and call out missing test coverage.
+Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
+${securityFocus ? "Focus on secrets, injection risks, auth bypasses, insecure defaults, and data exposure." : ""}
+Format findings as bullet lines using: [Severity] file:line - comment (severity: High/Medium/Low; file may be 'general').
+${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
+This is a pull request review. Analyse the full diff and all changed files provided below.
+
+Cross-file analysis:
+- Trace data flow across changed files. If a method signature or column changes in one file, verify all callers/consumers are updated.
+- Check constraint consistency: if a unique constraint changes, verify all queries that depend on uniqueness.
+- Look for missing filters: if a table now requires a compound key, verify all lookups include all key columns.
+- Identify silent failures: null returns that callers don't check, catch blocks that swallow errors, fallbacks that hide problems.
+
+Report only issues found and suggested actions. Do not list strengths or summarise what the PR does well.
+Do not limit your response length. Be thorough.
+
+Code to review:
+${codeText}
+
+User request:
+${userInput.getContent()}
+
+Respond with sections:
+Findings: bullet points starting with High/Medium/Low
+Tests: list the specific tests or scenarios to validate
+""".stripIndent().trim()
+  }
+
   protected String enforceReviewFormat(String review) {
-    String limitedReview = enforceWordLimit(review ?: "", reviewWordCount)
-    boolean hasFindings = limitedReview =~ /(?im)^Findings:/
-    boolean hasTests = limitedReview =~ /(?im)^Tests:/
-    String findingsSection = hasFindings ? limitedReview.trim() : "Findings:\n- ${limitedReview.trim()}"
+    enforceReviewFormat(review, false)
+  }
+
+  protected String enforceReviewFormat(String review, boolean skipWordLimit) {
+    String processed = skipWordLimit ? (review ?: "").trim() : enforceWordLimit(review ?: "", reviewWordCount)
+    boolean hasFindings = processed =~ /(?im)^Findings:/
+    boolean hasTests = processed =~ /(?im)^Tests:/
+    String findingsSection = hasFindings ? processed.trim() : "Findings:\n- ${processed.trim()}"
     if (!hasTests) {
       String testsBlock = "\nTests:\n- Cover happy-path and failure-path behavior with Spock."
+      if (skipWordLimit) {
+        return (findingsSection + testsBlock).trim()
+      }
       int reserved = testsBlock.trim().split(/\s+/).length
       String limitedFindings = enforceWordLimit(findingsSection, Math.max(1, reviewWordCount - reserved))
       String combined = (limitedFindings + testsBlock).trim()
       return enforceWordLimit(combined, reviewWordCount)
     }
-    enforceWordLimit(findingsSection, reviewWordCount)
+    skipWordLimit ? findingsSection : enforceWordLimit(findingsSection, reviewWordCount)
   }
 
   protected String enforceWordLimit(String text, int limit) {
