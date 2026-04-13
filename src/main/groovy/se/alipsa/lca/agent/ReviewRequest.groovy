@@ -13,4 +13,5 @@ class ReviewRequest {
   String systemPrompt
   boolean security
   boolean withThinking = false
+  boolean prReview = false
 }
