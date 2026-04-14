@@ -19,6 +19,7 @@ import se.alipsa.lca.agent.ReviewResponse
 import se.alipsa.lca.intent.IntentRoutingSettings
 import se.alipsa.lca.intent.IntentRoutingState
 import se.alipsa.lca.review.ReviewSeverity
+import se.alipsa.lca.review.ReviewSummary
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.FileEditingTool
@@ -1770,6 +1771,19 @@ class ShellCommandsSpec extends Specification {
     !payload.contains("File: large.groovy")
     payload.contains("PR diff:")
     payload.contains("diff content")
+  }
+
+  def "renderReview shows raw response when no structured findings parsed"() {
+    given:
+    String rawText = "This PR looks good. No issues found. The changes correctly replace CompanySettingsService with CompanyService."
+    ReviewSummary summary = new ReviewSummary([], [], rawText)
+
+    when:
+    String rendered = ShellCommands.renderReview(summary, ReviewSeverity.LOW, false)
+
+    then:
+    rendered.contains(rawText)
+    !rendered.contains("Findings:\n- None")
   }
 
   private ShellCommands commitCommandsFor(GitTool repoGit) {

@@ -1527,8 +1527,11 @@ Try:
   }
 
   static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
-    StringBuilder builder = new StringBuilder("Findings:")
     List<ReviewFinding> filtered = summary.findings.findAll { it.severity.ordinal() <= minSeverity.ordinal() }
+    if (filtered.isEmpty() && summary.raw != null && !summary.raw.trim().isEmpty()) {
+      return summary.raw.trim()
+    }
+    StringBuilder builder = new StringBuilder("Findings:")
     if (filtered.isEmpty()) {
       builder.append("\n- None")
     } else {
