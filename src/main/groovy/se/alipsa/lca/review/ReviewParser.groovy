@@ -40,16 +40,23 @@ class ReviewParser {
   }
 
   private static ReviewFinding parseFinding(String line) {
-    // Expected format: [Severity] path:line - comment
-    def matcher = line =~ /^\[(High|Medium|Low)\]\s+([^:\n]+?)(?::(\d+))?\s*-\s*(.+)$/
-    if (!matcher.matches()) {
-      return null
+    // Strip markdown bold markers
+    String cleaned = line.replaceAll(/\*\*/, '')
+    // Expected format: [Severity] path:line - comment (case-insensitive)
+    def matcher = cleaned =~ /(?i)^\[(High|Medium|Low)\]\s+([^:\n]+?)(?::(\d+))?\s*-\s*(.+)$/
+    if (matcher.matches()) {
+      ReviewSeverity severity = ReviewSeverity.valueOf(matcher.group(1).toUpperCase())
+      String file = matcher.group(2).trim()
+      Integer lineNumber = matcher.group(3) ? Integer.valueOf(matcher.group(3)) : null
+      String comment = matcher.group(4).trim()
+      return new ReviewFinding(severity, file, lineNumber, comment)
     }
-    ReviewSeverity severity = ReviewSeverity.valueOf(matcher.group(1).toUpperCase())
-    String file = matcher.group(2).trim()
-    Integer lineNumber = matcher.group(3) ? Integer.valueOf(matcher.group(3)) : null
-    String comment = matcher.group(4).trim()
-    new ReviewFinding(severity, file, lineNumber, comment)
+    // Fallback: treat unstructured bullet as Low/general (skip noise like "None", "N/A")
+    String trimmed = line.trim()
+    if (trimmed && !(trimmed =~ /(?i)^(none|n\/?a|no issues?|no findings?)\.?$/)) {
+      return new ReviewFinding(ReviewSeverity.LOW, "general", null, trimmed)
+    }
+    null
   }
 }
 
