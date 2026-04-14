@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.AgentsMdProvider
 import se.alipsa.lca.tools.LocalOnlyState
 
+import java.time.Duration
 import java.time.Instant
 import java.util.ArrayDeque
 import java.util.ArrayList
@@ -38,6 +39,7 @@ class SessionState {
   private final String defaultWebSearchFallbackFetcher
   private final long toolSummaryTtlSeconds
   private final String fallbackModel
+  private final Duration defaultTimeout
   private final AgentsMdProvider agentsMdProvider
   private final LocalOnlyState localOnlyState
 
@@ -52,6 +54,7 @@ class SessionState {
     @Value('${assistant.web-search.fallback-fetcher:jsoup}') String defaultWebSearchFallbackFetcher,
     @Value('${assistant.tool-summary.ttl-seconds:600}') long toolSummaryTtlSeconds,
     @Value('${assistant.llm.fallback-model:${embabel.models.llms.cheapest:}}') String fallbackModel,
+    @Value('${assistant.llm.timeout-millis:300000}') long timeoutMillis,
     AgentsMdProvider agentsMdProvider,
     LocalOnlyState localOnlyState
   ) {
@@ -65,6 +68,7 @@ class SessionState {
     this.defaultWebSearchFallbackFetcher = normaliseFetcherName(defaultWebSearchFallbackFetcher, "jsoup")
     this.toolSummaryTtlSeconds = toolSummaryTtlSeconds > 0 ? toolSummaryTtlSeconds : 600L
     this.fallbackModel = (fallbackModel != null && fallbackModel.trim()) ? fallbackModel.trim() : null
+    this.defaultTimeout = timeoutMillis > 0 ? Duration.ofMillis(timeoutMillis) : null
     this.agentsMdProvider = Objects.requireNonNull(agentsMdProvider, "agentsMdProvider must not be null")
     this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
   }
@@ -319,6 +323,9 @@ class SessionState {
     Integer resolvedMaxTokens = (maxTokens != null && maxTokens > 0) ? maxTokens : defaultMaxTokens
     if (resolvedMaxTokens != null && resolvedMaxTokens > 0) {
       options = options.withMaxTokens(resolvedMaxTokens)
+    }
+    if (defaultTimeout != null) {
+      options = options.withTimeout(defaultTimeout)
     }
     options
   }

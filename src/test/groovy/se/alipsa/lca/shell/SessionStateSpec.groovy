@@ -23,6 +23,7 @@ class SessionStateSpec extends Specification {
     "jsoup",
     600L,
     "fallback",
+    300000L,
     agentsMdProvider,
     new LocalOnlyState(false)
   )
@@ -74,6 +75,7 @@ class SessionStateSpec extends Specification {
       "jsoup",
       600L,
       "fallback",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(false)
     )
@@ -98,6 +100,7 @@ class SessionStateSpec extends Specification {
       "jsoup",
       600L,
       "fallback",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(false)
     )
@@ -123,6 +126,7 @@ class SessionStateSpec extends Specification {
       "jsoup",
       600L,
       "fallback",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(true)
     )
@@ -145,6 +149,7 @@ class SessionStateSpec extends Specification {
       "jsoup",
       600L,
       "fallback",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(true)
     )
@@ -194,6 +199,7 @@ class SessionStateSpec extends Specification {
       "jsoup",
       2L,
       "fallback",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(false)
     )

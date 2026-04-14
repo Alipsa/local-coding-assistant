@@ -31,6 +31,7 @@ class ResolveModelSpec extends Specification {
     "jsoup",
     600L,
     "fallback-model",
+    300000L,
     agentsMdProvider,
     new LocalOnlyState(false)
   )

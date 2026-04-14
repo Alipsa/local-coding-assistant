@@ -36,6 +36,7 @@ class CodingAssistantControllerSpec extends Specification {
       "jsoup",
       600L,
       "fallback",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(false)
     )

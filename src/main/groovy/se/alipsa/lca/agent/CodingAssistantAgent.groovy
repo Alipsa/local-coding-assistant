@@ -11,6 +11,7 @@ import com.embabel.agent.prompt.persona.RoleGoalBackstory
 import com.embabel.agent.prompt.persona.RoleGoalBackstorySpec
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.core.thinking.ThinkingResponse
+import java.time.Duration
 import com.embabel.common.core.types.Timestamped
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import groovy.transform.Canonical
@@ -139,6 +140,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,
+    @Value('${assistant.llm.timeout-millis:300000}') long timeoutMillis,
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent,
     CodeSearchTool codeSearchTool,
@@ -151,8 +153,9 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.craftTemperature = craftTemperature
     this.reviewTemperature = reviewTemperature
     this.webSearchEnabledDefault = webSearchEnabledDefault
-    this.craftLlmOptions = LlmOptions.withModel(llmModel).withTemperature(craftTemperature)
-    this.reviewLlmOptions = LlmOptions.withModel(llmModel).withTemperature(reviewTemperature)
+    Duration timeout = timeoutMillis > 0 ? Duration.ofMillis(timeoutMillis) : null
+    this.craftLlmOptions = applyTimeout(LlmOptions.withModel(llmModel).withTemperature(craftTemperature), timeout)
+    this.reviewLlmOptions = applyTimeout(LlmOptions.withModel(llmModel).withTemperature(reviewTemperature), timeout)
     this.fileEditingAgent = fileEditingAgent
     this.webSearchAgent = webSearchAgent
     this.codeSearchTool = codeSearchTool
@@ -585,5 +588,9 @@ Notes:
   static class PersonaTemplate {
     RoleGoalBackstorySpec persona
     String instructions
+  }
+
+  private static LlmOptions applyTimeout(LlmOptions options, Duration timeout) {
+    timeout != null ? options.withTimeout(timeout) : options
   }
 }
