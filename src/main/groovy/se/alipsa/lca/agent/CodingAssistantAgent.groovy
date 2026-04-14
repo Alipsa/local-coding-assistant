@@ -167,12 +167,10 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     description = "The code snippet has been crafted and reviewed by a senior engineer",
     export = @Export(remote = true, name = "writeAndReviewCode")
   )
-  @Action
   ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
     reviewCode(userInput, codeSnippet, ai, null, null)
   }
 
-  @Action
   ReviewedCodeSnippet reviewCode(
     UserInput userInput,
     CodeSnippet codeSnippet,
@@ -183,7 +181,6 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, Personas.REVIEWER)
   }
 
-  @Action
   ReviewedCodeSnippet reviewCode(
     UserInput userInput,
     CodeSnippet codeSnippet,
@@ -195,7 +192,6 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, false)
   }
 
-  @Action
   ReviewedCodeSnippet reviewCode(
     UserInput userInput,
     CodeSnippet codeSnippet,
@@ -247,12 +243,10 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     new ReviewedCodeSnippet(codeSnippet, formattedReview, reviewer, reasoning)
   }
 
-  @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai) {
     craftCode(userInput, ai, PersonaMode.CODER)
   }
 
-  @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai, PersonaMode personaMode) {
     craftCode(userInput, ai, personaMode, null, null)
   }
@@ -337,7 +331,6 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     fileEditingAgent.applySearchReplaceBlocks(filePath, blocksText, dryRun)
   }
 
-  @Action(description = "Search the web for a given query")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query) {
     search(query, null)
