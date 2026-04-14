@@ -81,7 +81,7 @@ Notes:
 
       if (promptRunner.supportsThinking()) {
         ThinkingResponse<AssistantMessage> thinkingResponse = promptRunner
-          .withThinking()
+          .thinking()
           .respond(conversation.messages)
         reply = thinkingResponse.getResult()
         if (thinkingResponse.hasThinking()) {

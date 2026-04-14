@@ -163,10 +163,6 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.sessionState = Objects.requireNonNull(sessionState, "sessionState must not be null")
   }
 
-  @AchievesGoal(
-    description = "The code snippet has been crafted and reviewed by a senior engineer",
-    export = @Export(remote = true, name = "writeAndReviewCode")
-  )
   ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
     reviewCode(userInput, codeSnippet, ai, null, null)
   }
@@ -204,6 +200,10 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, withThinking, false)
   }
 
+  @AchievesGoal(
+    description = "The code snippet has been crafted and reviewed by a senior engineer",
+    export = @Export(remote = true, name = "writeAndReviewCode")
+  )
   @Action
   ReviewedCodeSnippet reviewCode(
     UserInput userInput,
@@ -229,7 +229,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
 
     if (withThinking && promptRunner.supportsThinking()) {
       ThinkingResponse<String> response = promptRunner
-        .withThinking()
+        .thinking()
         .generateText(reviewPrompt)
       review = response.getResult()
       if (response.hasThinking()) {
