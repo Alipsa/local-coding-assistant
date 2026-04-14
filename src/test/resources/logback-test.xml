@@ -14,6 +14,9 @@
   <!-- Suppress validation exception warnings from Spring MVC during negative test cases -->
   <logger name="org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver" level="OFF"/>
 
+  <!-- Suppress expected WARN/ERROR from rainy-day tests in team agents -->
+  <logger name="se.alipsa.lca.team" level="OFF"/>
+
   <!-- Set root logger to WARN to reduce test noise -->
   <root level="WARN">
     <appender-ref ref="CONSOLE"/>
