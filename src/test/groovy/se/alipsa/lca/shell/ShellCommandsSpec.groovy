@@ -57,6 +57,7 @@ class ShellCommandsSpec extends Specification {
     "jsoup",
     600L,
     "fallback-model",
+    300000L,
     agentsMdProvider,
     new LocalOnlyState(false)
   )
@@ -394,6 +395,7 @@ class ShellCommandsSpec extends Specification {
       "jsoup",
       600L,
       "fallback-model",
+      300000L,
       agentsMdProvider,
       new LocalOnlyState(true)
     )
@@ -1714,6 +1716,60 @@ class ShellCommandsSpec extends Specification {
     then:
     out.contains("=== Repository Tree ===")
     out.contains("src/")
+  }
+
+  def "buildPrReviewPayload keeps files that fit within budget"() {
+    given:
+    String diff = "diff content"
+    GitTool.GitResult diffResult = new GitTool.GitResult(true, true, 0, diff, "")
+    GitTool prGit = Stub(GitTool) {
+      prChangedFiles(1) >> new GitTool.GitResult(true, true, 0, "small.groovy\nlarge.groovy", "")
+    }
+    FileEditingTool prFileEditing = Stub(FileEditingTool) {
+      readFile("small.groovy") >> "small content"
+      readFile("large.groovy") >> "x" * 90000
+    }
+    ShellCommands shellCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      prFileEditing,
+      Mock(se.alipsa.lca.tools.ToolCallParser),
+      prGit,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("pr-budget.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+      ,
+      Mock(se.alipsa.lca.validation.RequestValidator),
+      Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
+      null,
+      null,
+      null,
+      80000
+    )
+
+    when:
+    String payload = shellCommands.buildPrReviewPayload(1, diffResult)
+
+    then:
+    payload.contains("File: small.groovy")
+    payload.contains("small content")
+    !payload.contains("File: large.groovy")
+    payload.contains("PR diff:")
+    payload.contains("diff content")
   }
 
   private ShellCommands commitCommandsFor(GitTool repoGit) {

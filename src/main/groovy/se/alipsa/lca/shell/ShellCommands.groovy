@@ -1477,7 +1477,7 @@ Try:
     payload ? payload : "No additional context provided."
   }
 
-  private String buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
+  String buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
     String diff = diffResult.output ?: ""
     if (diff.trim().isEmpty()) {
       return null
@@ -1511,8 +1511,7 @@ Try:
     }
 
     if (budgetExceeded) {
-      println("PR is large; reviewing diff only (file contents exceeded context budget).")
-      builder.setLength(0)
+      println("PR is large; some file contents excluded (context budget reached).")
     }
 
     builder.append("PR diff:\n```\n").append(diff).append("\n```\n")
