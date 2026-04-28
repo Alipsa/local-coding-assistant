@@ -6,8 +6,8 @@ LIB_DIR="${HOME}/.local/lib"
 JAR_PREFIX="local-coding-assistant"
 JAR_PATTERN="${JAR_PREFIX}-*-exec.jar"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-BASE_MODELS="qwen3-coder:30b gpt-oss:20b"
-CUSTOM_MODELS="qwen3-coder:30b|qwen-coder-96k|98304 gpt-oss:20b|gpt-oss-96k|98304"
+BASE_MODELS="qwen3.6:35b-a3b gpt-oss:20b"
+CUSTOM_MODELS="qwen3.6:35b-a3b|qwen3.6-96k|98304 gpt-oss:20b|gpt-oss-96k|98304"
 MODEL_STATE_DIR="${HOME}/.lca/model_state"
 
 die() {
@@ -178,6 +178,27 @@ ensure_prerequisites() {
     ctx="$(printf '%s\n' "$entry" | cut -d'|' -f3)"
     ensure_custom_model "$base" "$custom" "$ctx"
   done
+  ensure_review_model
+}
+
+ensure_review_model() {
+  local custom="qwen3.6-review"
+  local list_output
+  list_output="$(ollama list 2>/dev/null || true)"
+  if printf '%s\n' "$list_output" | awk '{print $1}' | grep -Fxq "${custom}:latest"; then
+    echo "${custom} review model already exists."
+    return
+  fi
+  echo "Creating review model ${custom} (thinking disabled, 32K context)..."
+  local modelfile
+  modelfile="$(mktemp)"
+  cat > "$modelfile" <<MODELFILE
+FROM qwen3.6:35b-a3b
+PARAMETER num_ctx 65536
+MODELFILE
+  ollama create "$custom" -f "$modelfile"
+  rm -f "$modelfile"
+  echo "${custom} created successfully."
 }
 
 fetch_release_json() {

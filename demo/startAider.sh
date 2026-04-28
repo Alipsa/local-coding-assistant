@@ -5,7 +5,7 @@ VENV_PATH="./venv/bin/activate"
 
 # 2. Configuration
 export OLLAMA_API_BASE="http://127.0.0.1:11434"
-MODEL="ollama_chat/qwen3-coder:30b"
+MODEL="ollama_chat/qwen3.6:35b-a3b"
 # ollama_chat/: This prefix is essential. It tells Aider to use the Chat completion API, which handles the "System Prompt" much better than the basic generation API.
 
 # Check if venv exists

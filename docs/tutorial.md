@@ -5,7 +5,7 @@ for the Local Coding Assistant.
 
 ## Prerequisites
 - Java 21 installed and available on your PATH.
-- Ollama running locally with `qwen3-coder:30b` pulled (run `./models.sh` if needed).
+- Ollama running locally with `qwen3.6:35b-a3b` pulled (run `./models.sh` if needed).
 - This repository cloned locally.
 
 ## Basic usage

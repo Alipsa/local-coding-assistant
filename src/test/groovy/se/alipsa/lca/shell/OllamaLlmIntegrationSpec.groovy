@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
  *
  * Requirements:
  * - Ollama must be running at http://localhost:11434
- * - Model qwen3-coder:30b must be pulled (or fallback gpt-oss:20b)
+ * - Model qwen3.6:35b-a3b must be pulled (or fallback gpt-oss:20b)
  * - System property runSlowIntegrationTests must be set to true
  *
  * Tests will be skipped if:

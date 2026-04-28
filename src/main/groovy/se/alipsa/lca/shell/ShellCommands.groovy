@@ -134,6 +134,8 @@ Do not execute any commands.
   private final ImplementContextPacker implementContextPacker
   private final TeamOrchestrator teamOrchestrator
   private final int prContextBudget
+  private final int reviewContextBudget
+  private final String reviewModel
   private volatile boolean applyAllConfirmed = false
   private volatile boolean batchMode = false
   private volatile boolean assumeYes = false
@@ -291,7 +293,9 @@ Do not execute any commands.
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck,
     @org.springframework.beans.factory.annotation.Autowired(required = false) ImplementContextPacker implementContextPacker,
     @org.springframework.beans.factory.annotation.Autowired(required = false) TeamOrchestrator teamOrchestrator,
-    @Value('${assistant.llm.review-pr-context-budget:80000}') int prContextBudget
+    @Value('${assistant.llm.review-pr-context-budget:80000}') int prContextBudget,
+    @Value('${assistant.llm.review-context-budget:30000}') int reviewContextBudget,
+    @Value('${assistant.llm.review-model:}') String reviewModel
   ) {
     this.codingAssistantAgent = codingAssistantAgent
     this.ai = ai
@@ -326,6 +330,8 @@ Do not execute any commands.
     this.implementContextPacker = implementContextPacker
     this.teamOrchestrator = teamOrchestrator
     this.prContextBudget = prContextBudget
+    this.reviewContextBudget = reviewContextBudget > 0 ? reviewContextBudget : 30000
+    this.reviewModel = (reviewModel != null && reviewModel.trim()) ? reviewModel.trim() : null
   }
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
@@ -704,7 +710,8 @@ Type a command or your next question to proceed.
       return health
     }
     printProgressStart("Review")
-    ModelResolution resolution = resolveModel(model)
+    String effectiveModel = model != null ? model : reviewModel
+    ModelResolution resolution = resolveModel(effectiveModel)
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
@@ -722,7 +729,11 @@ Type a command or your next question to proceed.
         return "PR #${pr} has no diff content."
       }
     } else {
-      reviewPayload = buildReviewPayload(code, paths, staged)
+      List<String> effectivePaths = paths
+      if ((effectivePaths == null || effectivePaths.isEmpty()) && prompt != null) {
+        effectivePaths = extractPathsFromPrompt(prompt)
+      }
+      reviewPayload = buildReviewPayload(code, effectivePaths, staged)
     }
     Agent agent = resolveAgent(REVIEW_AGENT_NAME)
     if (agent == null) {
@@ -1448,6 +1459,28 @@ Try:
     builder.toString().stripTrailing()
   }
 
+  private List<String> extractPathsFromPrompt(String prompt) {
+    Path root = resolveProjectRoot(fileEditingTool)
+    List<String> found = []
+    for (String word : prompt.split(/\s+/)) {
+      String candidate = word.replaceAll(/[.,;:!?'"]+$/, '')
+      if (!candidate || candidate.length() < 2) {
+        continue
+      }
+      Path resolved = root.resolve(candidate).normalize()
+      if (resolved.startsWith(root) && Files.exists(resolved)) {
+        found.add(candidate)
+      }
+    }
+    found
+  }
+
+  private static final Set<String> SOURCE_EXTENSIONS = Set.of(
+    ".groovy", ".java", ".kt", ".scala", ".py", ".js", ".ts", ".tsx", ".jsx",
+    ".go", ".rs", ".rb", ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".xml",
+    ".gradle", ".properties", ".yml", ".yaml", ".json", ".toml", ".md"
+  )
+
   private String buildReviewPayload(String code, List<String> paths, boolean staged) {
     StringBuilder builder = new StringBuilder()
     if (code != null && code.trim()) {
@@ -1458,12 +1491,12 @@ Try:
         if (path == null || path.trim().isEmpty()) {
           return
         }
-        try {
-          String content = fileEditingTool.readFile(path.trim())
-          builder.append("File: ").append(path.trim()).append("\n```\n")
-            .append(content).append("\n```\n\n")
-        } catch (IllegalArgumentException ex) {
-          builder.append("File: ").append(path.trim()).append(" (error: ").append(ex.message).append(")\n\n")
+        Path root = resolveProjectRoot(fileEditingTool)
+        Path resolved = root.resolve(path.trim()).normalize()
+        if (Files.isDirectory(resolved)) {
+          appendDirectoryContents(builder, resolved, path.trim())
+        } else {
+          appendFileContent(builder, path.trim())
         }
       }
     }
@@ -1475,6 +1508,80 @@ Try:
     }
     String payload = builder.toString().trim()
     payload ? payload : "No additional context provided."
+  }
+
+  private void appendFileContent(StringBuilder builder, String path) {
+    try {
+      String content = fileEditingTool.readFile(path)
+      builder.append("File: ").append(path).append("\n```\n")
+        .append(content).append("\n```\n\n")
+    } catch (IllegalArgumentException ex) {
+      builder.append("File: ").append(path).append(" (error: ").append(ex.message).append(")\n\n")
+    }
+  }
+
+  private void appendDirectoryContents(StringBuilder builder, Path dirPath, String displayPath) {
+    List<Path> sourceFiles = []
+    try {
+      Files.walkFileTree(dirPath, new java.nio.file.SimpleFileVisitor<Path>() {
+        @Override
+        java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) {
+          String name = file.fileName.toString()
+          for (String ext : SOURCE_EXTENSIONS) {
+            if (name.endsWith(ext)) {
+              sourceFiles.add(file)
+              break
+            }
+          }
+          java.nio.file.FileVisitResult.CONTINUE
+        }
+      })
+      sourceFiles.sort { Path a, Path b ->
+        int pa = filePriority(a)
+        int pb = filePriority(b)
+        pa != pb ? pa <=> pb : a <=> b
+      }
+    } catch (IOException ex) {
+      builder.append("Directory: ").append(displayPath).append(" (error: ").append(ex.message).append(")\n\n")
+      return
+    }
+    if (sourceFiles.isEmpty()) {
+      builder.append("Directory: ").append(displayPath).append(" (no source files found)\n\n")
+      return
+    }
+    int filesIncluded = 0
+    for (Path file : sourceFiles) {
+      if (builder.length() >= reviewContextBudget) {
+        int skipped = sourceFiles.size() - filesIncluded
+        builder.append("\n(${skipped} more file(s) skipped — context budget reached)\n")
+        break
+      }
+      String relativePath = dirPath.parent != null
+        ? dirPath.parent.relativize(file).toString()
+        : file.fileName.toString()
+      try {
+        String content = Files.readString(file)
+        builder.append("File: ").append(relativePath).append("\n```\n")
+          .append(content).append("\n```\n\n")
+        filesIncluded++
+      } catch (IOException ex) {
+        builder.append("File: ").append(relativePath).append(" (error: ").append(ex.message).append(")\n\n")
+      }
+    }
+  }
+
+  private static final Set<String> CONFIG_EXTENSIONS = Set.of(
+    ".gradle", ".xml", ".properties", ".yml", ".yaml", ".json", ".toml", ".md"
+  )
+
+  private static int filePriority(Path file) {
+    String name = file.fileName.toString()
+    for (String ext : CONFIG_EXTENSIONS) {
+      if (name.endsWith(ext)) {
+        return 1
+      }
+    }
+    0
   }
 
   String buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
@@ -1531,27 +1638,29 @@ Try:
     if (filtered.isEmpty() && summary.raw != null && !summary.raw.trim().isEmpty()) {
       return summary.raw.trim()
     }
-    StringBuilder builder = new StringBuilder("Findings:")
+    StringBuilder builder = new StringBuilder("## Findings\n")
     if (filtered.isEmpty()) {
-      builder.append("\n- None")
+      builder.append("\n- None\n")
     } else {
       List<ReviewFinding> sorted = new ArrayList<>(filtered)
       sorted.sort { ReviewFinding a, ReviewFinding b -> b.severity.ordinal() <=> a.severity.ordinal() }
+      builder.append("\n")
       sorted.each { ReviewFinding finding ->
         String location = finding.file ?: "general"
         if (finding.line != null) {
           location += ":${finding.line}"
         }
         String severity = capitalize(finding.severity.name().toLowerCase())
-        builder.append("\n- [").append(colorize ? colorSeverity(severity) : severity)
-          .append("] ").append(location).append(" - ").append(finding.comment)
+        builder.append("- [").append(colorize ? colorSeverity(severity) : severity)
+          .append("] ").append(location).append("\n")
+        builder.append("    - ").append(finding.comment).append("\n\n")
       }
     }
-    builder.append("\nTests:")
+    builder.append("## Tests\n\n")
     if (summary.tests.isEmpty()) {
-      builder.append("\n- None provided")
+      builder.append("- None provided\n")
     } else {
-      summary.tests.each { builder.append("\n- ").append(it) }
+      summary.tests.each { builder.append("- ").append(it).append("\n") }
     }
     builder.toString().stripTrailing()
   }

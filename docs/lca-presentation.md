@@ -92,7 +92,7 @@ A **local-first coding assistant** that provides:
 
 ### AI & Models
 - **Ollama** (Local LLM provider)
-- **qwen3-coder:30b** (Primary model)
+- **qwen3.6:35b-a3b** (Primary model)
 - **gpt-oss:20b** (Fallback)
 - **tinyllama** (Intent routing)
 
@@ -120,7 +120,7 @@ A **local-first coding assistant** that provides:
                   │
 ┌─────────────────▼───────────────────────────┐
 │         LLM Layer (Ollama)                  │
-│  qwen3-coder:30b, gpt-oss:20b               │
+│  qwen3.6:35b-a3b, gpt-oss:20b               │
 └─────────────────────────────────────────────┘
 ```
 
@@ -411,7 +411,7 @@ lca> /git-push
 
 # Configuration
 lca> /config --local-only true
-lca> /model --set qwen3-coder:30b
+lca> /model --set qwen3.6:35b-a3b
 ```
 
 ---
@@ -425,7 +425,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 ### 2. Pull models
 ```bash
-ollama pull qwen3-coder:30b
+ollama pull qwen3.6:35b-a3b
 ollama pull gpt-oss:20b
 ollama pull tinyllama
 ```

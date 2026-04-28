@@ -10,7 +10,7 @@ Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell expos
 - **Framework**: Spring Boot 3.5.7
 - **Agent Runtime**: Embabel 0.3.0+
 - **LLM Backend**: Ollama (local models only, no cloud)
-- **Default Model**: `qwen3-coder:30b`
+- **Default Model**: `qwen3.6:35b-a3b`
 - **JVM**: Java 21
 - **Build Tool**: Maven
 - **Testing Framework**: Spock 2.4-M7-groovy-5.0

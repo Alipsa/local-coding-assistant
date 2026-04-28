@@ -136,7 +136,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
     @Value('${reviewWordCount:150}') int reviewWordCount,
-    @Value('${assistant.llm.model:qwen3-coder:30b}') String llmModel,
+    @Value('${assistant.llm.model:qwen3.6:35b-a3b}') String llmModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,
@@ -163,6 +163,11 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.sessionState = Objects.requireNonNull(sessionState, "sessionState must not be null")
   }
 
+  @AchievesGoal(
+    description = "The code snippet has been crafted and reviewed by a senior engineer",
+    export = @Export(remote = true, name = "writeAndReviewCode")
+  )
+  @Action
   ReviewedCodeSnippet reviewCode(UserInput userInput, CodeSnippet codeSnippet, Ai ai) {
     reviewCode(userInput, codeSnippet, ai, null, null)
   }
@@ -200,11 +205,6 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     reviewCode(userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, withThinking, false)
   }
 
-  @AchievesGoal(
-    description = "The code snippet has been crafted and reviewed by a senior engineer",
-    export = @Export(remote = true, name = "writeAndReviewCode")
-  )
-  @Action
   ReviewedCodeSnippet reviewCode(
     UserInput userInput,
     CodeSnippet codeSnippet,
@@ -243,6 +243,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     new ReviewedCodeSnippet(codeSnippet, formattedReview, reviewer, reasoning)
   }
 
+  @Action
   CodeSnippet craftCode(UserInput userInput, Ai ai) {
     craftCode(userInput, ai, PersonaMode.CODER)
   }
@@ -251,7 +252,6 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     craftCode(userInput, ai, personaMode, null, null)
   }
 
-  @Action
   CodeSnippet craftCode(
     UserInput userInput,
     Ai ai,
@@ -419,41 +419,19 @@ Notes:
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
     String codeText = codeSnippet?.text ?: ""
     boolean hasSpecificCode = codeText.trim().length() > 50
-    """
-You are a repository code reviewer.
-Assess the proposal for correctness, repository fit, error handling, and testing strategy.
-Ensure code follows project conventions (check AGENTS.md if present) and avoid deprecated APIs.
-Reference likely target files or layers and call out missing test coverage.
-Prioritize security flaws, unsafe file handling, missing validation, and unclear error paths.
-${securityFocus ? "Focus on secrets, injection risks, auth bypasses, insecure defaults, and data exposure." : ""}
-Format findings as bullet lines using: [Severity] file:line - comment (severity: High/Medium/Low; file may be 'general').
-${extraSystem ? "Additional system guidance: ${extraSystem}\n" : ""}
-Limit narrative to ${reviewWordCount} words.
-
-${!hasSpecificCode ? """CRITICAL - VERIFICATION REQUIREMENTS:
-You have access to searchFiles(query, paths, contextLines, limit) tool to search the codebase.
-Before making ANY claim about code structure, presence/absence of annotations, or implementation details:
-1. USE searchFiles() to verify the claim by actually searching the codebase
-2. If you cannot verify a claim with searchFiles(), mark it as [Low] and prefix with "Suggestion: " instead of asserting it as fact
-3. NEVER claim a file "lacks" something (like @CompileStatic) without searching for it first
-4. If searchFiles() shows the opposite of what you expect, trust the search result, not your assumptions
-
-Examples of what requires verification:
-- "Class X lacks @CompileStatic" → MUST search for "class X" first to verify
-- "File Y doesn't have error handling" → MUST read/search file Y first
-- "Method Z is missing validation" → MUST search for method Z first
-
-Only make definitive statements about code you have actually searched/verified.
-""" : ""}
-Code snippet to review:
+    """/no_think
+You are a code reviewer. Review the code below and report findings directly.
+${securityFocus ? "Focus on security risks: injection, auth bypasses, insecure defaults, data exposure." : ""}
+Format each finding as: - [High/Medium/Low] file:line - description
+${extraSystem ? extraSystem + "\n" : ""}
+${!hasSpecificCode ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n" : ""}
+Code to review:
 ${codeText}
 
 User request:
 ${userInput.getContent()}
 
-Respond with sections:
-Findings: bullet points starting with High/Medium/Low
-Tests: list the specific tests or scenarios to validate
+Findings:
 """.stripIndent().trim()
   }
 

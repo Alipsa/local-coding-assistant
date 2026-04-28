@@ -139,7 +139,7 @@ LCA exclusively uses Ollama for all AI capabilities, ensuring complete privacy a
 
 | Model             | Purpose                          | Temperature                 | Configuration                  |
 |-------------------|----------------------------------|-----------------------------|--------------------------------|
-| `qwen3-coder:30b` | Primary code generation & review | 0.7 (craft) / 0.35 (review) | `embabel.models.default-llm`   |
+| `qwen3.6:35b-a3b` | Primary code generation & review | 0.7 (craft) / 0.35 (review) | `embabel.models.default-llm`   |
 | `gpt-oss:20b`     | Fallback/cheaper model           | 0.35                        | `embabel.models.llms.cheapest` |
 | `tinyllama`       | Intent routing (NLU)             | 0.0                         | `assistant.intent.model`       |
 
@@ -148,8 +148,8 @@ LCA exclusively uses Ollama for all AI capabilities, ensuring complete privacy a
 **Configuration**: `src/main/resources/application.properties:2`
 ```properties
 spring.ai.ollama.base-url=http://localhost:11434
-embabel.models.default-llm=qwen3-coder:30b
-embabel.models.llms.best=qwen3-coder:30b
+embabel.models.default-llm=qwen3.6:35b-a3b
+embabel.models.llms.best=qwen3.6:35b-a3b
 embabel.models.llms.cheapest=gpt-oss:20b
 ```
 
@@ -178,7 +178,7 @@ Response streamed/returned as JSON
 From `ModelRegistry.resolveModel()`:
 1. User-specified model (via `--model` flag)
 2. Session-configured model
-3. Default model (`qwen3-coder:30b`)
+3. Default model (`qwen3.6:35b-a3b`)
 4. Fallback model (`gpt-oss:20b`)
 5. Any available model from `modelRegistry.listModels()`
 
@@ -321,7 +321,7 @@ User: /chat --prompt "explain this function"
   │     │     └─→ HTTP GET http://localhost:11434/api/tags
   │     │
   │     ├─→ resolveModel(model)
-  │     │     └─→ ModelRegistry: qwen3-coder:30b or fallback
+  │     │     └─→ ModelRegistry: qwen3.6:35b-a3b or fallback
   │     │
   │     ├─→ sessionState.update(model, temperature)
   │     │
@@ -340,7 +340,7 @@ User: /chat --prompt "explain this function"
   │                             │
   │                             └─→ http://localhost:11434/api/generate
   │                                   {
-  │                                     "model": "qwen3-coder:30b",
+  │                                     "model": "qwen3.6:35b-a3b",
   │                                     "prompt": "[combined prompt]",
   │                                     "temperature": 0.7
   │                                   }
@@ -439,7 +439,7 @@ User: /review --paths src/main/groovy --security
   │                 │     - Expected format (Findings + Tests)
   │                 │
   │                 └─→ ai.withLlm(LlmOptions
-  │                       .withModel("qwen3-coder:30b")
+  │                       .withModel("qwen3.6:35b-a3b")
   │                       .withTemperature(0.35))  // Lower for determinism
   │                     .withPromptContributor(SECURITY_REVIEWER)
   │                     .generateText(reviewPrompt)
@@ -475,11 +475,11 @@ User: /review --paths src/main/groovy --security
 
 **Primary Models**: `src/main/resources/application.properties:12-17`
 ```properties
-embabel.models.default-llm=qwen3-coder:30b
-embabel.models.llms.best=qwen3-coder:30b
+embabel.models.default-llm=qwen3.6:35b-a3b
+embabel.models.llms.best=qwen3.6:35b-a3b
 embabel.models.llms.cheapest=gpt-oss:20b
 
-assistant.llm.model=${embabel.models.default-llm:qwen3-coder:30b}
+assistant.llm.model=${embabel.models.default-llm:qwen3.6:35b-a3b}
 assistant.llm.fallback-model=${embabel.models.llms.cheapest:gpt-oss:20b}
 ```
 
@@ -885,7 +885,7 @@ assistant.api.oidc.issuer=https://your-issuer.com
 2. **Ollama**: Install from [ollama.ai](https://ollama.ai)
 3. **Models**: Pull required models:
    ```bash
-   ollama pull qwen3-coder:30b
+   ollama pull qwen3.6:35b-a3b
    ollama pull gpt-oss:20b
    ollama pull tinyllama
    ```
@@ -910,7 +910,7 @@ java -jar target/local-coding-assistant-1.1.1.jar \
 Edit `src/main/resources/application.properties` or provide environment variables:
 ```bash
 export SPRING_AI_OLLAMA_BASE_URL=http://localhost:11434
-export EMBABEL_MODELS_DEFAULT_LLM=qwen3-coder:30b
+export EMBABEL_MODELS_DEFAULT_LLM=qwen3.6:35b-a3b
 ```
 
 ---

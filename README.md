@@ -21,7 +21,7 @@ It requires at least 20 GB of free RAM to run comfortably.
 - Embabel agents for code crafting, review, planning and git operations with safety guardrails.
 - Spring Boot entry point with Embabel agents enabled
   (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
-- Ollama-first configuration using `qwen3-coder:30b` (see `src/main/resources/application.properties`).
+- Ollama-first configuration using `qwen3.6:35b-a3b` (see `src/main/resources/application.properties`).
 - Helper script for launching the shell (`lca`) and installing the models locally.
 - Documentation stub for Ollama setup (`docs/llm-docs.md`).
 

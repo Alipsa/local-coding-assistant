@@ -20,7 +20,7 @@ The AGENTS.md file contains essential project-specific rules including:
 4. Write Spock tests for all new functionality
 
 ## Important Notes
-- This project uses local LLMs only (Ollama with qwen3-coder:30b)
+- This project uses local LLMs only (Ollama with qwen3.6:35b-a3b)
 - The project is language-agnostic in its AI prompts but the codebase itself is Groovy
 - Use British English spelling in documentation
 - Avoid deprecated APIs when possible

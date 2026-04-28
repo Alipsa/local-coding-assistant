@@ -75,11 +75,8 @@ class CodingAssistantAgentSpec extends Specification {
     1 * ai.withLlm(agent.reviewLlmOptions) >> runner
     1 * runner.withPromptContributor(Personas.REVIEWER) >> runner
     1 * runner.generateText({
-      it.contains("repository code reviewer") &&
-      it.contains("testing strategy") &&
-      it.contains("project conventions") &&
-      it.contains("check AGENTS.md") &&
-      it.contains("test coverage") &&
+      it.contains("code reviewer") &&
+      it.contains("Code to review:") &&
       it.contains("User request:")
     }) >> "High risk of errors in patch handling. Missing tests."
     review.review.contains("Findings:")

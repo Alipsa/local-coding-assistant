@@ -24,6 +24,6 @@ class RenderReviewSpec extends Specification {
     then:
     !text.contains("Low")
     text.contains("High")
-    text.contains("Tests:")
+    text.contains("## Tests")
   }
 }

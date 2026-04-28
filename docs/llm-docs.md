@@ -7,11 +7,11 @@ The Local Coding Assistant is limited to Ollama models so everything runs locall
 - Java 21+.
 
 ## Model selection
-- Default model is `qwen3-coder:30b` configured in `src/main/resources/application.properties`.
+- Default model is `qwen3.6:35b-a3b` configured in `src/main/resources/application.properties`.
   - Fallback model for simpler tasks is `gpt-oss:20b`
 - Use `./models.sh` to install the suitable models based on available RAM, or pull them manually:
   ```bash
-  ollama pull qwen3-coder:30b && ollama pull gpt-oss:20b
+  ollama pull qwen3.6:35b-a3b && ollama pull gpt-oss:20b
   ```
 - Point to a different model by updating `embabel.models.default-llm` (and `embabel.models.llms.*` if you define roles).
 
@@ -22,11 +22,11 @@ These properties live in `src/main/resources/application.properties` and drive t
 # Ollama endpoint
 spring.ai.ollama.base-url=http://localhost:11434
 
-# Preferred model; defaults to qwen3-coder:30b
-embabel.models.default-llm=qwen3-coder:30b
+# Preferred model; defaults to qwen3.6:35b-a3b
+embabel.models.default-llm=qwen3.6:35b-a3b
 
 # Coding assistant tuning
-assistant.llm.model=${embabel.models.default-llm:qwen3-coder:30b}
+assistant.llm.model=${embabel.models.default-llm:qwen3.6:35b-a3b}
 assistant.llm.temperature.craft=0.7      # higher for creative code generation
 assistant.llm.temperature.review=0.35    # lower for concise, deterministic reviews
 assistant.llm.max-tokens=0               # optional ceiling; 0 means unset

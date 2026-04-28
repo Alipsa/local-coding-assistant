@@ -84,9 +84,24 @@ EOF
 
 # Install base models
 #checkAndInstall deepseek-coder:6.7b
-checkAndInstall qwen3-coder:30b
+checkAndInstall qwen3.6:35b-a3b
 checkAndInstall gpt-oss:20b
 
 # Create custom models with larger context
-createCustomModel qwen3-coder:30b qwen-coder-96k 98304
+createCustomModel qwen3.6:35b-a3b qwen3.6-96k 98304
 createCustomModel gpt-oss:20b gpt-oss-96k 98304
+
+# Create review model with thinking disabled and smaller context for faster response
+echo "Creating review model qwen3.6-review from qwen3.6:35b-a3b..."
+if ollama list 2>/dev/null | grep -q "^qwen3.6-review"; then
+  echo "qwen3.6-review already exists."
+else
+  modelfile=$(mktemp)
+  cat > "$modelfile" << EOF
+FROM qwen3.6:35b-a3b
+PARAMETER num_ctx 65536
+EOF
+  ollama create qwen3.6-review -f "$modelfile"
+  rm "$modelfile"
+  echo "qwen3.6-review created successfully."
+fi

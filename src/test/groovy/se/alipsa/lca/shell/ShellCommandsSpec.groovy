@@ -129,7 +129,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
   }
 
@@ -279,9 +281,10 @@ class ShellCommandsSpec extends Specification {
 
     then:
     response.contains("=== Review ===")
-    response.contains("[High] src/App.groovy:10 - bug")
+    response.contains("[High] src/App.groovy:10")
+    response.contains("    - bug")
     !response.contains("\u001B[")
-    response.contains("Tests:")
+    response.contains("## Tests")
     captured != null
     captured.prompt == "check safety"
     captured.payload.contains("println 'hi'")
@@ -325,7 +328,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
     chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("context response"), null)
     platform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
@@ -429,7 +434,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
     def results = [new WebSearchTool.SearchResult("T1", "http://example.com", "S1")]
     InputStream originalIn = System.in
@@ -579,7 +586,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -671,7 +680,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       @Override
       protected java.time.Instant nowInstant() {
@@ -727,7 +738,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
     ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
       assert opts.model == "default-model"
@@ -819,7 +832,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -867,7 +882,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
     staging.configureBatchMode(true, false)
 
@@ -912,7 +929,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       ConfirmChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
@@ -964,7 +983,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1018,7 +1039,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
     def method = ShellCommands.getDeclaredMethod("buildSastBlock", boolean, List)
     method.accessible = true
@@ -1067,7 +1090,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1113,7 +1138,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1168,7 +1195,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1225,7 +1254,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     ) {
       @Override
       protected ConfirmChoice confirmAction(String prompt) {
@@ -1278,7 +1309,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1329,7 +1362,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1378,7 +1413,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1424,7 +1461,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1470,7 +1509,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1517,7 +1558,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     expect:
@@ -1555,7 +1598,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     expect:
@@ -1708,7 +1753,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1759,7 +1806,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
 
     when:
@@ -1783,7 +1832,7 @@ class ShellCommandsSpec extends Specification {
 
     then:
     rendered.contains(rawText)
-    !rendered.contains("Findings:\n- None")
+    !rendered.contains("## Findings\n\n- None")
   }
 
   private ShellCommands commitCommandsFor(GitTool repoGit) {
@@ -1816,7 +1865,9 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
-      80000
+      80000,
+      30000,
+      null
     )
   }
 }

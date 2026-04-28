@@ -1,7 +1,7 @@
 # Aider - a local coding assistant that rivals Claude CLI or Codex
 
 ## The Engine: Ollama & Models
-`ollama pull qwen3-coder:30b`
+`ollama pull qwen3.6:35b-a3b`
 
 Create a virtual environment
 `python3 -m venv venv`
@@ -31,7 +31,7 @@ sudo systemctl restart ollama
 ```
 
 ## Run it
-`aider --model ollama_chat/qwen3-coder:30b`
+`aider --model ollama_chat/qwen3.6:35b-a3b`
 
 Example prompt
 ```
@@ -58,7 +58,7 @@ Environment="OLLAMA_NUM_CTX=32768"
 Point your Laptop to the Server
 ```
 export OLLAMA_API_BASE="http://192.168.1.50:11434"
-aider --model ollama_chat/qwen3-coder:30b
+aider --model ollama_chat/qwen3.6:35b-a3b
 ```
 
 

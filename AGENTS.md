@@ -3,7 +3,7 @@
 - Avoid using deprecated classes or methods if possible, prefer modern alternatives.
 - All code should be written in Groovy 5.0.3 with @CompileStatic where possible.
 - Use Embabel 0.3.0+ and Spring Boot 3.5.x
-- The default LLM is `qwen3-coder:30b` served by Ollama (local models only, no cloud).
+- The default LLM is `qwen3.6:35b-a3b` served by Ollama (local models only, no cloud).
 - Use JVM 21.
 - Indent with 2 spaces. Max line length is 120 characters.
 - Follow existing code style and conventions.

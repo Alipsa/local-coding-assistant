@@ -275,7 +275,7 @@
                     <h3>AI & Models</h3>
                     <ul>
                         <li><strong>Ollama</strong> (Local LLM provider)</li>
-                        <li><strong>qwen3-coder:30b</strong> (Primary)</li>
+                        <li><strong>qwen3.6:35b-a3b</strong> (Primary)</li>
                         <li><strong>gpt-oss:20b</strong> (Fallback)</li>
                         <li><strong>tinyllama</strong> (Intent routing)</li>
                     </ul>
@@ -303,7 +303,7 @@
                   ↓
 ┌─────────────────▼───────────────────────────┐
 │         LLM Layer (Ollama)                  │
-│  qwen3-coder:30b, gpt-oss:20b               │
+│  qwen3.6:35b-a3b, gpt-oss:20b               │
 └─────────────────────────────────────────────┘</code></pre>
         </div>
 
@@ -598,7 +598,7 @@ lca> /git-push
 
 # Configuration
 lca> /config --local-only true
-lca> /model --set qwen3-coder:30b</code></pre>
+lca> /model --set qwen3.6:35b-a3b</code></pre>
         </div>
 
         <div class="slide">
@@ -606,7 +606,7 @@ lca> /model --set qwen3-coder:30b</code></pre>
             <p><strong>1. Install Ollama:</strong></p>
             <pre><code>curl -fsSL https://ollama.ai/install.sh | sh</code></pre>
             <p><strong>2. Pull models:</strong></p>
-            <pre><code>ollama pull qwen3-coder:30b
+            <pre><code>ollama pull qwen3.6:35b-a3b
 ollama pull gpt-oss:20b
 ollama pull tinyllama</code></pre>
             <p><strong>3. Install LCA:</strong></p>

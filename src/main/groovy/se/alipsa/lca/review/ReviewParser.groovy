@@ -17,20 +17,27 @@ class ReviewParser {
     boolean inTests = false
     for (String rawLine : lines) {
       String line = rawLine.trim()
-      if (line.toLowerCase().startsWith("findings")) {
+      String lower = line.replaceFirst(/^#+\s*/, '').toLowerCase()
+      if (lower.startsWith("findings")) {
         inFindings = true
         inTests = false
         continue
       }
-      if (line.toLowerCase().startsWith("tests")) {
+      if (lower.startsWith("tests")) {
         inTests = true
         inFindings = false
         continue
       }
       if (inFindings && line.startsWith("-")) {
-        ReviewFinding finding = parseFinding(line.substring(1).trim())
+        String text = line.substring(1).trim()
+        ReviewFinding finding = parseFinding(text)
         if (finding != null) {
           findings.add(finding)
+        } else if (!findings.isEmpty() && rawLine.startsWith("    ")) {
+          ReviewFinding last = findings.get(findings.size() - 1)
+          String extra = text.startsWith("-") ? text.substring(1).trim() : text
+          String merged = last.comment ? last.comment + " " + extra : extra
+          findings.set(findings.size() - 1, new ReviewFinding(last.severity, last.file, last.line, merged))
         }
       } else if (inTests && line.startsWith("-")) {
         tests.add(line.substring(1).trim())
@@ -42,13 +49,13 @@ class ReviewParser {
   private static ReviewFinding parseFinding(String line) {
     // Strip markdown bold markers
     String cleaned = line.replaceAll(/\*\*/, '')
-    // Expected format: [Severity] path:line - comment (case-insensitive)
-    def matcher = cleaned =~ /(?i)^\[(High|Medium|Low)\]\s+([^:\n]+?)(?::(\d+))?\s*-\s*(.+)$/
+    // Expected format: [Severity] path:line - comment (case-insensitive), comment may be on next line
+    def matcher = cleaned =~ /(?i)^\[(High|Medium|Low)\]\s+([^:\n]+?)(?::(\d+))?(?:\s*[-—]\s*(.+))?$/
     if (matcher.matches()) {
       ReviewSeverity severity = ReviewSeverity.valueOf(matcher.group(1).toUpperCase())
       String file = matcher.group(2).trim()
       Integer lineNumber = matcher.group(3) ? Integer.valueOf(matcher.group(3)) : null
-      String comment = matcher.group(4).trim()
+      String comment = matcher.group(4) ? matcher.group(4).trim() : ""
       return new ReviewFinding(severity, file, lineNumber, comment)
     }
     // Fallback: treat unstructured bullet as Low/general (skip noise like "None", "N/A")
