@@ -136,7 +136,7 @@ Call MCP tools with JSON arguments:
 - `/mcp resources [server]` — list available resources (URI, name, description, MIME type)
 - `/mcp read <uri>` — read and display a resource
 - Agent context injection — `ContextPacker` can pull MCP resources as additional context
-- `mcp_read_resource(uri)` tool call pattern available to the LLM
+- `mcp_read_resource(uri)` — a virtual built-in tool (not from any MCP server). `ToolCallParser` recognises it as a special-cased built-in pattern and routes it through `McpToolRegistry.readResource()`. It appears in the system prompt alongside MCP tools when resources are available, but flows through the built-in `ToolCall` path (single positional argument: the URI).
 - Change notifications handled automatically by the starter
 
 **Prompts:**
@@ -166,7 +166,7 @@ Implemented in `McpCommands` component, routed from `CommandExecutor`.
 
 JLine tab completion for server names and tool names. Resource URI completion is lazy-loaded (fetched on first tab press for a given server) to avoid expensive upfront listing.
 
-`IntentRouterAgent` gets `/mcp` added to allowed commands for natural language routing.
+`IntentRouterAgent` gets `/mcp` added to its `allowedCommands` list (configured via `assistant.intent.allowed-commands` in `application.properties`). `IntentRouterParser` (JSON response parsing) and `IntentCommandMapper` are unchanged.
 
 ### 6. Autoselect / Budget-Based Tool Inclusion
 
@@ -176,7 +176,7 @@ Default mode — includes all active servers' tools up to a context budget cap.
 1. All healthy servers' tools are candidates for inclusion
 2. `McpToolPromptBuilder` serialises tool descriptions and tracks character count
 3. Hard cap: `assistant.mcp.tool-description-budget` (default: 3000 chars)
-4. Tools are included in server registration order until budget is exhausted
+4. Tools are included in config file order — the order servers appear in the JSON config determines priority. If a user has 5 servers but only 2 fit the budget, the first 2 (by config order) get full descriptions. Users control priority by reordering their config file.
 5. If budget is exceeded, remaining tools are listed by name only (no parameter descriptions) as a compact fallback
 6. Code context always takes priority — MCP tool descriptions are allocated from the remaining budget after code context
 
@@ -207,6 +207,7 @@ Default mode — includes all active servers' tools up to a context budget cap.
 - Tool names containing `write`, `delete`, `create`, `update`, `send`, `execute`, `run` → prompt user for confirmation before execution
 - Read-only tools (`list`, `get`, `read`, `search`, `query`) → execute without confirmation
 - Configurable via `assistant.mcp.confirm-destructive` (default: `true`)
+- Known limitation: the name-based heuristic will produce false positives (e.g. `write_log` is read-only) and may miss destructive tools with unusual names. This is acceptable for v1 given the escape hatch (`confirm-destructive=false`) and will be tuned based on real usage. A future improvement could allow per-server or per-tool overrides in config.
 
 **Argument sanitisation:** `McpToolExecutor` does not sanitise arguments beyond JSON schema validation. The MCP server is user-configured (trusted), and sanitisation would break legitimate use cases (e.g. SQL queries contain path-like strings). The confirmation prompt is the safety net for destructive operations.
 
@@ -229,7 +230,8 @@ Default mode — includes all active servers' tools up to a context budget cap.
 |---|---|
 | `ToolCallParser` | Return `ParsedToolCalls` (both `List<ToolCall>` and `List<StandardToolCall>`). Add MCP tool call pattern with lenient JSON parsing. |
 | `CommandExecutor` | Route `/mcp` to `McpCommands` |
-| `IntentRouterAgent` | Add `/mcp` to allowed commands |
+| `IntentRouterAgent` | Add `/mcp` to `allowedCommands` list |
+| `application.properties` (intent section) | Add `/mcp` to `assistant.intent.allowed-commands` |
 | `CodingAssistantAgent` | Inject `McpToolPromptBuilder` to include MCP tool descriptions in system prompts |
 | `ContextBudgetManager` | Add MCP tool description budget tier (after code context, before history) |
 | `application.properties` | Add `assistant.mcp.*` properties |
