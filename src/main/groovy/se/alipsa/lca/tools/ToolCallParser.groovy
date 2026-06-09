@@ -1,5 +1,7 @@
 package se.alipsa.lca.tools
 
+import com.fasterxml.jackson.core.JsonParser as JacksonJsonParser
+import com.fasterxml.jackson.databind.ObjectMapper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
@@ -40,11 +42,73 @@ class ToolCallParser {
     Pattern.DOTALL
   )
 
+  // MCP tool call patterns
+  private static final Pattern MCP_TOOL_PATTERN = Pattern.compile(
+    /mcp_(\w+?)_(\w+)\(\s*(\{[\s\S]*?\})\s*\)/
+  )
+
+  private static final Pattern MCP_READ_RESOURCE_PATTERN = Pattern.compile(
+    /mcp_read_resource\s*\(\s*["']([^"']+)["']\s*\)/
+  )
+
+  private static final ObjectMapper lenientMapper = new ObjectMapper()
+    .configure(JacksonJsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true)
+    .configure(JacksonJsonParser.Feature.ALLOW_SINGLE_QUOTES, true)
+    .configure(JacksonJsonParser.Feature.ALLOW_TRAILING_COMMA, true)
+
   @Canonical
   @CompileStatic
   static class ToolCall {
     String toolName
     List<String> arguments
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ParsedToolCalls {
+    List<ToolCall> builtinCalls
+    List<StandardToolCall> mcpCalls
+    List<String> errors
+  }
+
+  /**
+   * Parse LLM response and extract all tool calls: built-in and MCP.
+   * Built-in calls include the standard file/command tools and mcp_read_resource.
+   * MCP calls use the mcp_&lt;server&gt;_&lt;tool&gt;({json}) pattern.
+   */
+  @SuppressWarnings('CatchException')
+  ParsedToolCalls parseAllToolCalls(String llmResponse) {
+    List<ToolCall> builtinCalls = parseToolCalls(llmResponse)
+    List<StandardToolCall> mcpCalls = []
+    List<String> errors = []
+
+    // Extract mcp_read_resource calls as virtual built-in ToolCalls
+    Matcher readMatcher = MCP_READ_RESOURCE_PATTERN.matcher(llmResponse)
+    while (readMatcher.find()) {
+      String uri = readMatcher.group(1)
+      builtinCalls.add(new ToolCall('mcp_read_resource', [uri]))
+      log.debug('Detected mcp_read_resource call: {}', uri)
+    }
+
+    // Extract mcp_<server>_<tool>({json}) calls as StandardToolCalls
+    Matcher mcpMatcher = MCP_TOOL_PATTERN.matcher(llmResponse)
+    while (mcpMatcher.find()) {
+      String serverName = mcpMatcher.group(1)
+      String toolName = mcpMatcher.group(2)
+      String jsonArgs = mcpMatcher.group(3)
+      try {
+        @SuppressWarnings('unchecked')
+        Map<String, Object> args = lenientMapper.readValue(jsonArgs, Map)
+        mcpCalls.add(new StandardToolCall(serverName, toolName, args))
+        log.debug('Detected MCP tool call: {}.{}', serverName, toolName)
+      } catch (Exception e) {
+        String errorMsg = "Failed to parse JSON for mcp_${serverName}_${toolName}: ${e.message}"
+        errors.add(errorMsg)
+        log.warn(errorMsg)
+      }
+    }
+
+    return new ParsedToolCalls(builtinCalls, mcpCalls, errors)
   }
 
   /**
