@@ -1,22 +1,83 @@
 #!/usr/bin/env bash
+#####################################################
+# Launch script to run claude cli using a local llm #
+# Note: 32, 96, and 128 GB RAM are not tested       #
+# Author: Per Nyfelt                                #
+#####################################################
 set -e
 
 if ! command -v ollama >/dev/null 2>&1; then
   echo "ollama could not be found, cannot continue"
+  echo "install Ollama and try again"
+  echo "e.g: curl -fsSL https://ollama.com/install.sh | sh"
   exit 1
 fi
 
+# Set appropriate resource config based on the installed memory size
+RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+RAM_GB=$((RAM_BYTES / 1073741824))
+
+if [[ $RAM_GB -ge 128 ]]; then
+  GPU_WIRED_LIMIT=114688  # 112GB
+  SOURCE_MODEL="qwen3.6:27b-q6_K"
+  CONTEXT_SIZE=131072     # 128K
+  CLAUDE_CODE_MODEL="qwen3.6-27b-128k"
+elif [[ $RAM_GB -ge 96 ]]; then
+  GPU_WIRED_LIMIT=86016   # 84GB
+  SOURCE_MODEL="qwen3.6:27b"
+  CONTEXT_SIZE=98304      # 96K
+  CLAUDE_CODE_MODEL="qwen3.6-27b-96k"
+elif [[ $RAM_GB -ge 64 ]]; then
+  GPU_WIRED_LIMIT=55296   # 54GB
+  SOURCE_MODEL="glm-4.7-flash" #overflows
+  # SOURCE_MODEL="batiai/qwen3.6-35b:iq4" # Fast but not smart enough
+  # SOURCE_MODEL="qwen3.6:27b-mlx" too slow
+  # SOURCE_MODEL="devstral-small-2" too slow
+  # SOURCE_MODEL="qwen3.6:35b-a3b" # thinking overflow
+  CONTEXT_SIZE=65536      # 64K
+  CLAUDE_CODE_MODEL="glm-4.7-flash-64k"
+elif [[ $RAM_GB -ge 48 ]]; then
+  GPU_WIRED_LIMIT=40960   # 40GB
+  SOURCE_MODEL="batiai/qwen3.6-35b:iq4"
+  CONTEXT_SIZE=40960      # 40K
+  CLAUDE_CODE_MODEL="qwen3.6-35b-iq4-40k"
+elif [[ $RAM_GB -ge 32 ]]; then
+  GPU_WIRED_LIMIT=24576   # 24GB
+  SOURCE_MODEL="batiai/qwen3.6-35b:iq4"
+  CONTEXT_SIZE=32768      # 32K
+  CLAUDE_CODE_MODEL="qwen3.6-35b-iq4-32k"
+else
+  echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
+  exit 1
+fi
+
+echo "Detected ${RAM_GB}GB RAM -> model: $SOURCE_MODEL, context: $((CONTEXT_SIZE/1024))K, GPU: $((GPU_WIRED_LIMIT/1024))GB"
+
+# The mac default is quite conservative and limits the GPU memory too much
+# increasing it greatly improved local llm performance
+current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
+if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
+  echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
+  sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
+fi
+
+# Always restart Ollama to clear any residuals
+pkill ollama && open -a Ollama
+sleep 5
+
+# Remove all cloud model access to ensure Claude does not switch over
+# (it likes to switch to Sonnet and Haiku otherwise)
 unset ANTHROPIC_AUTH_TOKEN
 unset CLAUDE_CODE_USE_VERTEX
 unset CLOUD_ML_REGION
 unset ANTHROPIC_VERTEX_PROJECT_ID
 
-# just a dummy key
+# an api key is required by claude but not needed for a local model so set a dummy value
 export ANTHROPIC_API_KEY="sk-ant-local123"
 export ANTHROPIC_BASE_URL="http://localhost:11434"
-SOURCE_MODEL="qwen3.6:35b-a3b"
-export CLAUDE_CODE_MODEL="qwen3.6-96k"
-CONTEXT_SIZE=98304
+export CLAUDE_CODE_DISABLE_TELEMETRY=1
+export CLAUDE_CODE_DISABLE_THINKING=1
+export CLAUDE_CODE_MODEL
 
 # Default is 0.7, 0.2 is a bit too conservative i think (but often recommend in blog posts)
 TEMPERATURE=0.3
@@ -77,4 +138,31 @@ EOF
 
 checkAndInstall $SOURCE_MODEL
 update_and_rebuild $SOURCE_MODEL $CLAUDE_CODE_MODEL $CONTEXT_SIZE
-claude --model $CLAUDE_CODE_MODEL:latest --allow-dangerously-skip-permissions
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=$((CONTEXT_SIZE/2))
+
+# Claude is designed to use Sonnet and Opus, we need to instruct it a bit differently
+# to not overload the local model
+LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
+## No subagents
+Do NOT use the Agent tool (Explore, Plan, or any subagent). Work directly in the main conversation using Read, Edit, Write, Bash, and grep. Subagents will loop and waste time on this model.
+## Small steps only
+When asked to implement a plan or feature:
+1. Read the plan file first
+2. Break it into individual file-level tasks (one file per step)
+3. Use TaskCreate to list each step, then work through them one at a time
+4. Each step should be: read the relevant file, make the change, verify it compiles/passes
+## Be concrete
+- Never explore broadly. Ask the user which files to look at if unsure.
+- Never churn. If you don't know what to do next, ask the user immediately.
+- Never spend more than 5 tool calls exploring before starting to write code.
+## Keep responses extremely short
+- NEVER exceed 2000 tokens in a single response. If more work is needed, use multiple tool calls instead of writing long text.
+- Maximum 2 sentences of explanation between tool calls
+- No summaries, no restating the plan, no listing what you will do
+- Do NOT output the entire file content when editing — use the Edit tool with only the changed section
+- Do NOT think out loud or explain your reasoning. Just act.
+## When stuck
+If you find yourself making more than 8 tool calls without producing a code change, STOP and tell the user what is blocking you. Do not keep searching."
+
+#ollama launch claude --model $CLAUDE_CODE_MODEL:latest -- "$@"
+ollama launch claude --model $CLAUDE_CODE_MODEL:latest -- --append-system-prompt "$LOCAL_MODEL_PROMPT" "$@"
