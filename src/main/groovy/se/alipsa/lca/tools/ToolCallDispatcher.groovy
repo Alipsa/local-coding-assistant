@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory
 
 /**
  * Dispatches tool calls to their respective executors.
- * Routes built-in ToolCall instances to FileEditingTool/CommandRunner,
+ * Routes built-in ToolCall instances via ToolCallParser (single source of truth),
  * and StandardToolCall instances to the MCP executor function.
  */
 @CompileStatic
@@ -14,72 +14,73 @@ class ToolCallDispatcher {
 
   private static final Logger log = LoggerFactory.getLogger(ToolCallDispatcher)
 
+  private final ToolCallParser toolCallParser
   private final FileEditingTool fileEditingTool
   private final CommandRunner commandRunner
   private final McpToolExecutorFunction mcpExecutor
 
   ToolCallDispatcher(
+    ToolCallParser toolCallParser,
     FileEditingTool fileEditingTool,
     CommandRunner commandRunner,
     McpToolExecutorFunction mcpExecutor
   ) {
+    this.toolCallParser = toolCallParser
     this.fileEditingTool = fileEditingTool
     this.commandRunner = commandRunner
     this.mcpExecutor = mcpExecutor
   }
 
-  /**
-   * Dispatch a built-in tool call to FileEditingTool or CommandRunner.
-   * Mirrors the logic from ToolCallParser.executeSingleTool().
-   */
+  private static final String TOOL_RESULT_BANNER = "\n\n=== Tool Execution Results ===\n"
+
   String dispatchBuiltin(ToolCallParser.ToolCall call) {
-    switch (call.toolName) {
-      case "writeFile":
-        if (call.arguments.size() != 2) {
-          throw new IllegalArgumentException("writeFile requires 2 arguments")
-        }
-        return fileEditingTool.writeFile(call.arguments[0], call.arguments[1])
-
-      case "replace":
-        if (call.arguments.size() != 3) {
-          throw new IllegalArgumentException("replace requires 3 arguments")
-        }
-        return fileEditingTool.replace(call.arguments[0], call.arguments[1], call.arguments[2])
-
-      case "deleteFile":
-        if (call.arguments.size() != 1) {
-          throw new IllegalArgumentException("deleteFile requires 1 argument")
-        }
-        return fileEditingTool.deleteFile(call.arguments[0])
-
-      case "runCommand":
-        if (commandRunner == null) {
-          throw new IllegalStateException("CommandRunner not available - cannot execute shell commands")
-        }
-        if (call.arguments.size() != 1) {
-          throw new IllegalArgumentException("runCommand requires 1 argument")
-        }
-        String command = call.arguments[0]
-        CommandRunner.CommandResult result = commandRunner.run(command, 60000L, 8000)
-        if (result.exitCode == 0) {
-          return "Successfully executed: ${command}\n${result.output}"
-        } else {
-          return "Failed (exit ${result.exitCode}): ${command}\n${result.output}"
-        }
-
-      default:
-        throw new IllegalArgumentException("Unknown tool: ${call.toolName}")
+    String result = toolCallParser.executeToolCalls(
+      [call], fileEditingTool, commandRunner
+    )
+    if (result == null) {
+      return "No result from ${call.toolName}"
     }
+    result.startsWith(TOOL_RESULT_BANNER)
+      ? result.substring(TOOL_RESULT_BANNER.length()).trim()
+      : result.trim()
   }
 
-  /**
-   * Dispatch an MCP tool call to the configured MCP executor function.
-   */
   String dispatchMcp(StandardToolCall call) {
     if (mcpExecutor == null) {
-      throw new IllegalStateException("MCP executor not configured - cannot execute MCP tools")
+      throw new IllegalStateException(
+        "MCP executor not configured - cannot execute MCP tools"
+      )
     }
-    log.debug("Dispatching MCP tool call: server={}, tool={}", call.serverName, call.toolName)
+    log.debug("Dispatching MCP tool call: server={}, tool={}",
+      call.serverName, call.toolName)
     return mcpExecutor.execute(call)
+  }
+
+  String dispatchAll(ToolCallParser.ParsedToolCalls parsed) {
+    StringBuilder results = new StringBuilder()
+
+    for (ToolCallParser.ToolCall call : parsed.builtinCalls) {
+      try {
+        results.append(dispatchBuiltin(call)).append('\n')
+      } catch (Exception e) {
+        log.error("Built-in tool call failed: {}", call.toolName, e)
+        results.append("ERROR: ${call.toolName}: ${e.message}\n")
+      }
+    }
+
+    for (StandardToolCall call : parsed.mcpCalls) {
+      try {
+        results.append(dispatchMcp(call)).append('\n')
+      } catch (Exception e) {
+        log.error("MCP tool call failed: {}.{}", call.serverName, call.toolName, e)
+        results.append("ERROR: ${call.serverName}.${call.toolName}: ${e.message}\n")
+      }
+    }
+
+    for (String error : parsed.errors) {
+      results.append("PARSE ERROR: ${error}\n")
+    }
+
+    results.length() > 0 ? results.toString().trim() : null
   }
 }
