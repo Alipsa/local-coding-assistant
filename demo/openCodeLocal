@@ -13,9 +13,13 @@ if ! command -v ollama >/dev/null 2>&1; then
   exit 1
 fi
 
+# Ensure opencode bin dir is on PATH (installer adds it to .zshrc but current shell may not have it)
+[[ -d "$HOME/.opencode/bin" ]] && export PATH="$HOME/.opencode/bin:$PATH"
+
 if ! command -v opencode >/dev/null 2>&1; then
   echo "opencode could not be found, installing..."
   curl -fsSL https://opencode.ai/install | bash
+  export PATH="$HOME/.opencode/bin:$PATH"
   if ! command -v opencode >/dev/null 2>&1; then
     echo "opencode installation failed, cannot continue"
     exit 1
