@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+##########################################################
+# Launch script to run OpenCode cli using a local llm    #
+# Note: 32, 96, and 128 GB RAM are not tested            #
+# Author: Per Nyfelt                                     #
+##########################################################
+set -e
+
+if ! command -v ollama >/dev/null 2>&1; then
+  echo "ollama could not be found, cannot continue"
+  echo "install Ollama and try again"
+  echo "e.g: curl -fsSL https://ollama.com/install.sh | sh"
+  exit 1
+fi
+
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "opencode could not be found, installing..."
+  curl -fsSL https://opencode.ai/install | bash
+  if ! command -v opencode >/dev/null 2>&1; then
+    echo "opencode installation failed, cannot continue"
+    exit 1
+  fi
+  echo "opencode installed successfully"
+fi
+
+# Set appropriate resource config based on the installed memory size
+RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+RAM_GB=$((RAM_BYTES / 1073741824))
+
+if [[ $RAM_GB -ge 128 ]]; then
+  GPU_WIRED_LIMIT=114688  # 112GB
+  SOURCE_MODEL="qwen3.6:27b-q6_K"
+  CONTEXT_SIZE=131072     # 128K
+  OPENCODE_MODEL="qwen3.6-27b-128k"
+elif [[ $RAM_GB -ge 96 ]]; then
+  GPU_WIRED_LIMIT=86016   # 84GB
+  SOURCE_MODEL="qwen3.6:27b"
+  CONTEXT_SIZE=98304      # 96K
+  OPENCODE_MODEL="qwen3.6-27b-96k"
+elif [[ $RAM_GB -ge 64 ]]; then
+  GPU_WIRED_LIMIT=55296   # 54GB
+  SOURCE_MODEL="glm-4.7-flash"
+  CONTEXT_SIZE=65536      # 64K
+  OPENCODE_MODEL="glm-4.7-flash-64k"
+elif [[ $RAM_GB -ge 48 ]]; then
+  GPU_WIRED_LIMIT=40960   # 40GB
+  SOURCE_MODEL="batiai/qwen3.6-35b:iq4"
+  CONTEXT_SIZE=40960      # 40K
+  OPENCODE_MODEL="qwen3.6-35b-iq4-40k"
+elif [[ $RAM_GB -ge 32 ]]; then
+  GPU_WIRED_LIMIT=24576   # 24GB
+  SOURCE_MODEL="batiai/qwen3.6-35b:iq4"
+  CONTEXT_SIZE=32768      # 32K
+  OPENCODE_MODEL="qwen3.6-35b-iq4-32k"
+else
+  echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
+  exit 1
+fi
+
+echo "Detected ${RAM_GB}GB RAM -> model: $SOURCE_MODEL, context: $((CONTEXT_SIZE/1024))K, GPU: $((GPU_WIRED_LIMIT/1024))GB"
+
+# The mac default is quite conservative and limits the GPU memory too much
+# increasing it greatly improved local llm performance
+current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
+if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
+  echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
+  sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
+fi
+
+# Always restart Ollama to clear any residuals
+pkill ollama && open -a Ollama
+sleep 5
+
+TEMPERATURE=0.3
+
+checkAndInstall() {
+    model="$1"
+    installed_models="$(ollama list 2>/dev/null | grep "$model" | awk '{print $1}')"
+    if [ -z "$installed_models" ]; then
+      echo "$model model not found. Installing..."
+      ollama pull "$model"
+    fi
+}
+
+update_and_rebuild() {
+    base_model="$1"
+    custom_name="$2"
+    context_size="$3"
+    STATE_FILE="$HOME/.opencode_qwen_state"
+
+    get_id() {
+        ollama list | grep -w "^$1" | awk '{print $2}' | head -n 1
+    }
+
+    OLD_ID=$(get_id "$base_model")
+
+    echo "Checking for updates for $base_model..."
+    ollama pull "$base_model" > /dev/null 2>&1
+
+    NEW_ID=$(get_id "$base_model")
+
+    if [[ -z "$NEW_ID" ]]; then
+        echo "Error: Could not retrieve ID for $base_model. Check 'ollama list'."
+        return
+    fi
+
+    CUSTOM_EXISTS=$(ollama list | grep -q "^$custom_name" && echo "yes" || echo "no")
+    LAST_ID=$(cat "$STATE_FILE" 2>/dev/null || echo "")
+
+    if [[ "$NEW_ID" != "$LAST_ID" ]] || [[ "$CUSTOM_EXISTS" == "no" ]]; then
+        echo "Change detected (ID: ${NEW_ID:0:12}). Rebuilding $custom_name..."
+
+        modelfile=$(mktemp)
+        cat > "$modelfile" << EOF
+FROM $base_model
+PARAMETER num_ctx $context_size
+PARAMETER temperature $TEMPERATURE
+EOF
+        ollama create "$custom_name" -f "$modelfile" > /dev/null
+        rm "$modelfile"
+
+        echo "$NEW_ID" > "$STATE_FILE"
+        echo "Model $custom_name is ready."
+    else
+        echo "$custom_name is up to date. (ID: ${NEW_ID:0:12})"
+    fi
+}
+
+checkAndInstall $SOURCE_MODEL
+update_and_rebuild $SOURCE_MODEL $OPENCODE_MODEL $CONTEXT_SIZE
+
+LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
+## No subagents
+Do NOT spawn sub-agents or delegate to other agents. Work directly in the main conversation using read, edit, write, and bash tools. Subagents will loop and waste time on this model.
+## Small steps only
+When asked to implement a plan or feature:
+1. Read the plan file first
+2. Break it into individual file-level tasks (one file per step)
+3. Work through them one at a time
+4. Each step should be: read the relevant file, make the change, verify it compiles/passes
+## Be concrete
+- Never explore broadly. Ask the user which files to look at if unsure.
+- Never churn. If you do not know what to do next, ask the user immediately.
+- Never spend more than 5 tool calls exploring before starting to write code.
+## Keep responses extremely short
+- NEVER exceed 2000 tokens in a single response. If more work is needed, use multiple tool calls instead of writing long text.
+- Maximum 2 sentences of explanation between tool calls
+- No summaries, no restating the plan, no listing what you will do
+- Do NOT output the entire file content when editing - use the edit tool with only the changed section
+- Do NOT think out loud or explain your reasoning. Just act.
+## When stuck
+If you find yourself making more than 8 tool calls without producing a code change, STOP and tell the user what is blocking you. Do not keep searching."
+
+MAX_TOKENS=$((CONTEXT_SIZE/2))
+
+# Build config inline via OPENCODE_CONFIG_CONTENT
+# This avoids writing config files into the project directory
+export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
+{
+  "model": "ollama/${OPENCODE_MODEL}:latest",
+  "provider": {
+    "ollama": {
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "${OPENCODE_MODEL}:latest": {
+          "tools": true
+        }
+      }
+    }
+  },
+  "agent": {
+    "local": {
+      "description": "Local LLM agent with constrained behaviour",
+      "prompt": $(printf '%s' "$LOCAL_MODEL_PROMPT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
+      "tools": {
+        "read": true,
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    }
+  },
+  "default_agent": "local",
+  "snapshot": true,
+  "autoupdate": false,
+  "compaction": {
+    "auto": true
+  }
+}
+EOJSON
+)
+
+export OPENCODE_DISABLE_AUTOUPDATE=1
+
+opencode "$@"
