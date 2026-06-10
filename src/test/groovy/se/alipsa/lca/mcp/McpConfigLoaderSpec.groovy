@@ -281,4 +281,39 @@ class McpConfigLoaderSpec extends Specification {
     then: "order is preserved from JSON (implementation-dependent, but LinkedHashMap should preserve)"
     servers.keySet().toList() == ["zebra", "apple", "middle"]
   }
+
+  def "sanitises server names with underscores to hyphens"() {
+    given:
+    Path configFile = tempDir.resolve("underscore.json")
+    Files.writeString(configFile, '''
+    {
+      "mcpServers": {
+        "my_bq_server": {"command": "uvx", "args": ["bq"]},
+        "clean-name": {"command": "npx", "args": ["fs"]}
+      }
+    }
+    ''')
+
+    when:
+    def loader = new McpConfigLoader([configFile.toString()], tempDir.toString())
+    def servers = loader.loadServers()
+
+    then:
+    servers.containsKey("my-bq-server")
+    !servers.containsKey("my_bq_server")
+    servers.containsKey("clean-name")
+  }
+
+  def "sanitiseServerName replaces underscores with hyphens"() {
+    expect:
+    McpConfigLoader.sanitiseServerName(name) == expected
+
+    where:
+    name            | expected
+    "bq"            | "bq"
+    "my_server"     | "my-server"
+    "a_b_c"         | "a-b-c"
+    "clean-name"    | "clean-name"
+    null            | "unknown"
+  }
 }

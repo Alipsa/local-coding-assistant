@@ -65,13 +65,14 @@ class McpConfigLoader {
 
         if (mcpServers) {
           mcpServers.each { String serverName, Map<String, Object> serverData ->
+            String safeName = sanitiseServerName(serverName)
             ServerConfig serverConfig = new ServerConfig(
               command: serverData.command as String,
               args: serverData.args as List<String> ?: [],
               env: serverData.env as Map<String, String> ?: [:]
             )
-            merged[serverName] = serverConfig
-            log.debug("Loaded server '{}' from {}", serverName, configPath)
+            merged[safeName] = serverConfig
+            log.debug("Loaded server '{}' from {}", safeName, configPath)
           }
         }
       } catch (Exception e) {
@@ -137,6 +138,19 @@ class McpConfigLoader {
     }
 
     return paths
+  }
+
+  static String sanitiseServerName(String name) {
+    if (name == null) return "unknown"
+    if (name.contains('_')) {
+      String replaced = name.replace('_', '-')
+      log.warn(
+        "MCP server name '{}' contains underscores (conflicts with tool name format " +
+        "mcp_<server>_<tool>). Renamed to '{}'.", name, replaced
+      )
+      return replaced
+    }
+    name
   }
 
   private static Path resolvePath(String pathString) {

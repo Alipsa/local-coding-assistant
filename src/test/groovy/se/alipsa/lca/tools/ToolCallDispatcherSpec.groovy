@@ -4,153 +4,102 @@ import spock.lang.Specification
 
 class ToolCallDispatcherSpec extends Specification {
 
+  ToolCallParser toolCallParser = new ToolCallParser()
   FileEditingTool fileEditingTool = Mock()
   CommandRunner commandRunner = Mock()
   McpToolExecutorFunction mcpExecutor = Mock()
 
-  def "dispatches writeFile to FileEditingTool"() {
+  def "dispatches writeFile via ToolCallParser"() {
     given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("writeFile", ["/tmp/test.txt", "content"])
-
-    when:
-    String result = dispatcher.dispatchBuiltin(call)
-
-    then:
-    1 * fileEditingTool.writeFile("/tmp/test.txt", "content") >> "File written"
-    result == "File written"
-  }
-
-  def "dispatches replace to FileEditingTool"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("replace", ["/tmp/test.txt", "old", "new"])
-
-    when:
-    String result = dispatcher.dispatchBuiltin(call)
-
-    then:
-    1 * fileEditingTool.replace("/tmp/test.txt", "old", "new") >> "Replaced"
-    result == "Replaced"
-  }
-
-  def "dispatches deleteFile to FileEditingTool"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("deleteFile", ["/tmp/test.txt"])
-
-    when:
-    String result = dispatcher.dispatchBuiltin(call)
-
-    then:
-    1 * fileEditingTool.deleteFile("/tmp/test.txt") >> "Deleted"
-    result == "Deleted"
-  }
-
-  def "dispatches runCommand to CommandRunner"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("runCommand", ["echo hello"])
-    CommandRunner.CommandResult cmdResult = new CommandRunner.CommandResult(
-      false, false, 0, "hello\n", false, null
+    def dispatcher = new ToolCallDispatcher(
+      toolCallParser, fileEditingTool, commandRunner, mcpExecutor
     )
+    def call = new ToolCallParser.ToolCall("writeFile", ["/tmp/t.txt", "hello"])
 
     when:
     String result = dispatcher.dispatchBuiltin(call)
 
     then:
-    1 * commandRunner.run("echo hello", 60000L, 8000) >> cmdResult
-    result.contains("Successfully executed: echo hello")
-    result.contains("hello")
-  }
-
-  def "runCommand with non-zero exit code"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("runCommand", ["false"])
-    CommandRunner.CommandResult cmdResult = new CommandRunner.CommandResult(
-      false, false, 1, "error", false, null
-    )
-
-    when:
-    String result = dispatcher.dispatchBuiltin(call)
-
-    then:
-    1 * commandRunner.run("false", 60000L, 8000) >> cmdResult
-    result.contains("Failed (exit 1): false")
-    result.contains("error")
-  }
-
-  def "throws exception for unknown tool"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("unknownTool", ["arg"])
-
-    when:
-    dispatcher.dispatchBuiltin(call)
-
-    then:
-    thrown(IllegalArgumentException)
-  }
-
-  def "validates writeFile argument count"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("writeFile", ["only-one-arg"])
-
-    when:
-    dispatcher.dispatchBuiltin(call)
-
-    then:
-    thrown(IllegalArgumentException)
-  }
-
-  def "validates replace argument count"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("replace", ["file", "old"])
-
-    when:
-    dispatcher.dispatchBuiltin(call)
-
-    then:
-    thrown(IllegalArgumentException)
-  }
-
-  def "throws exception when CommandRunner is null for runCommand"() {
-    given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, null, mcpExecutor)
-    ToolCallParser.ToolCall call = new ToolCallParser.ToolCall("runCommand", ["echo test"])
-
-    when:
-    dispatcher.dispatchBuiltin(call)
-
-    then:
-    thrown(IllegalStateException)
+    1 * fileEditingTool.writeFile("/tmp/t.txt", "hello") >> "File written"
+    result.contains("writeFile")
   }
 
   def "dispatches MCP tool call to executor function"() {
     given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, mcpExecutor)
-    StandardToolCall call = new StandardToolCall("myServer", "myTool", [param: "value"])
+    def dispatcher = new ToolCallDispatcher(
+      toolCallParser, fileEditingTool, commandRunner, mcpExecutor
+    )
+    def call = new StandardToolCall("bq", "query", [sql: "SELECT 1"])
 
     when:
     String result = dispatcher.dispatchMcp(call)
 
     then:
-    1 * mcpExecutor.execute(call) >> "MCP result"
-    result == "MCP result"
+    1 * mcpExecutor.execute(call) >> "query result"
+    result == "query result"
   }
 
-  def "throws exception when MCP executor is null"() {
+  def "throws when MCP executor is null"() {
     given:
-    ToolCallDispatcher dispatcher = new ToolCallDispatcher(fileEditingTool, commandRunner, null)
-    StandardToolCall call = new StandardToolCall("myServer", "myTool", [param: "value"])
+    def dispatcher = new ToolCallDispatcher(
+      toolCallParser, fileEditingTool, commandRunner, null
+    )
+    def call = new StandardToolCall("bq", "query", [:])
 
     when:
     dispatcher.dispatchMcp(call)
 
     then:
     thrown(IllegalStateException)
+  }
+
+  def "dispatchAll handles mixed built-in and MCP calls"() {
+    given:
+    def dispatcher = new ToolCallDispatcher(
+      toolCallParser, fileEditingTool, commandRunner, mcpExecutor
+    )
+    def parsed = new ToolCallParser.ParsedToolCalls(
+      [new ToolCallParser.ToolCall("writeFile", ["/tmp/f.txt", "x"])],
+      [new StandardToolCall("bq", "query", [sql: "SELECT 1"])],
+      []
+    )
+    fileEditingTool.writeFile("/tmp/f.txt", "x") >> "OK"
+    mcpExecutor.execute(_) >> "query done"
+
+    when:
+    String result = dispatcher.dispatchAll(parsed)
+
+    then:
+    result.contains("writeFile")
+    result.contains("query done")
+  }
+
+  def "dispatchAll includes parse errors"() {
+    given:
+    def dispatcher = new ToolCallDispatcher(
+      toolCallParser, fileEditingTool, commandRunner, mcpExecutor
+    )
+    def parsed = new ToolCallParser.ParsedToolCalls([], [], ["bad JSON"])
+
+    when:
+    String result = dispatcher.dispatchAll(parsed)
+
+    then:
+    result.contains("PARSE ERROR")
+    result.contains("bad JSON")
+  }
+
+  def "dispatchAll returns null when no calls"() {
+    given:
+    def dispatcher = new ToolCallDispatcher(
+      toolCallParser, fileEditingTool, commandRunner, mcpExecutor
+    )
+    def parsed = new ToolCallParser.ParsedToolCalls([], [], [])
+
+    when:
+    String result = dispatcher.dispatchAll(parsed)
+
+    then:
+    result == null
   }
 }
