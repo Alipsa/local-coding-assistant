@@ -48,6 +48,12 @@ class McpToolExecutor implements McpToolExecutorFunction {
         call.serverName, call.toolName, argKeys.join(', '))
       log.debug("Full arguments for {}.{}: {}", call.serverName, call.toolName, call.arguments)
 
+      // Log destructive tool classification for visibility
+      if (requiresConfirmation(call.toolName)) {
+        log.info("Tool {}.{} is classified as destructive — confirmation would be required in interactive mode",
+          call.serverName, call.toolName)
+      }
+
       // Call the tool
       Map<String, Object> args = call.arguments != null ? call.arguments : Map.of()
       McpSchema.CallToolResult result = registry.callTool(
@@ -108,6 +114,17 @@ class McpToolExecutor implements McpToolExecutorFunction {
    */
   boolean requiresConfirmation(String toolName) {
     return confirmDestructive && isDestructive(toolName)
+  }
+
+  /**
+   * Checks if a tool call requires confirmation before execution.
+   * Convenience wrapper for callers (e.g. the REPL layer) that have a StandardToolCall.
+   *
+   * @param call the tool call to check
+   * @return true if confirmation is required
+   */
+  boolean needsConfirmation(StandardToolCall call) {
+    return requiresConfirmation(call.toolName)
   }
 
   /**

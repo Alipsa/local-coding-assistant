@@ -186,4 +186,23 @@ class McpToolExecutorSpec extends Specification {
     executor.requiresConfirmation('create_user') == false
     executor.requiresConfirmation('list_users') == false
   }
+
+  def "needsConfirmation delegates to requiresConfirmation via StandardToolCall"() {
+    given:
+    executor = new McpToolExecutor(registry, true)
+    StandardToolCall destructiveCall = new StandardToolCall(
+      serverName: 'test-server',
+      toolName: 'delete_file',
+      arguments: [:]
+    )
+    StandardToolCall readOnlyCall = new StandardToolCall(
+      serverName: 'test-server',
+      toolName: 'list_files',
+      arguments: [:]
+    )
+
+    expect:
+    executor.needsConfirmation(destructiveCall)
+    !executor.needsConfirmation(readOnlyCall)
+  }
 }

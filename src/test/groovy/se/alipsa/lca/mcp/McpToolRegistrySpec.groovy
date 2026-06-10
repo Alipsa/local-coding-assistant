@@ -301,4 +301,52 @@ class McpToolRegistrySpec extends Specification {
     expect:
     !registry.isHealthy("non-existent")
   }
+
+  def "readResource uses URI-to-server mapping for direct lookup"() {
+    given:
+    McpSyncClient client = Mock(McpSyncClient)
+    McpSchema.Resource resource = new McpSchema.Resource("file:///data.csv", "data.csv", "A CSV file", null, null)
+    client.listTools() >> new McpSchema.ListToolsResult([], null)
+    client.listResources() >> new McpSchema.ListResourcesResult([resource], null)
+    client.listPrompts() >> new McpSchema.ListPromptsResult([], null)
+    registry.registerServer("fs-server", client)
+
+    McpSchema.ReadResourceResult expected = new McpSchema.ReadResourceResult([])
+    client.readResource(_ as McpSchema.ReadResourceRequest) >> expected
+
+    when:
+    McpSchema.ReadResourceResult result = registry.readResource("file:///data.csv")
+
+    then:
+    result == expected
+  }
+
+  def "readResource falls back to other servers when mapped server fails"() {
+    given:
+    McpSyncClient clientA = Mock(McpSyncClient)
+    McpSyncClient clientB = Mock(McpSyncClient)
+
+    McpSchema.Resource resource = new McpSchema.Resource("file:///data.csv", "data.csv", "A CSV", null, null)
+    clientA.listTools() >> new McpSchema.ListToolsResult([], null)
+    clientA.listResources() >> new McpSchema.ListResourcesResult([resource], null)
+    clientA.listPrompts() >> new McpSchema.ListPromptsResult([], null)
+
+    clientB.listTools() >> new McpSchema.ListToolsResult([], null)
+    clientB.listResources() >> new McpSchema.ListResourcesResult([], null)
+    clientB.listPrompts() >> new McpSchema.ListPromptsResult([], null)
+
+    registry.registerServer("server-a", clientA)
+    registry.registerServer("server-b", clientB)
+
+    // Mapped server (server-a) fails, fallback to server-b
+    clientA.readResource(_ as McpSchema.ReadResourceRequest) >> { throw new RuntimeException("fail") }
+    McpSchema.ReadResourceResult expected = new McpSchema.ReadResourceResult([])
+    clientB.readResource(_ as McpSchema.ReadResourceRequest) >> expected
+
+    when:
+    McpSchema.ReadResourceResult result = registry.readResource("file:///data.csv")
+
+    then:
+    result == expected
+  }
 }

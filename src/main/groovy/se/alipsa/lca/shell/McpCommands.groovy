@@ -138,22 +138,22 @@ class McpCommands {
   @SuppressWarnings('CatchException')
   private String executeCall(String args) {
     if (!args?.trim()) {
-      return "Usage: /mcp call <server.tool> {json-args}"
+      return "Usage: /mcp call <server_tool> {json-args}"
     }
 
-    // Split on first space to separate "server.tool" from "{json}"
+    // Split on first space to separate "server_tool" from "{json}"
     String trimmed = args.trim()
     int spaceIdx = trimmed.indexOf(' ')
     String serverToolPart = spaceIdx > 0 ? trimmed.substring(0, spaceIdx) : trimmed
     String jsonPart = spaceIdx > 0 ? trimmed.substring(spaceIdx + 1).trim() : ""
 
-    // Parse server.tool
-    String[] parts = serverToolPart.split("\\.", 2)
-    if (parts.length < 2) {
-      return "Invalid format. Expected: /mcp call <server>.<tool> {json-args}"
+    // Parse server_tool (first underscore separates server from tool name)
+    int sepIdx = serverToolPart.indexOf('_')
+    if (sepIdx < 0) {
+      return "Invalid format. Expected: /mcp call <server>_<tool> {json-args}"
     }
-    String serverName = parts[0]
-    String toolName = parts[1]
+    String serverName = serverToolPart.substring(0, sepIdx)
+    String toolName = serverToolPart.substring(sepIdx + 1)
 
     // Parse JSON args
     Map<String, Object> toolArgs = [:]
@@ -263,7 +263,7 @@ Available /mcp subcommands:
   stop <srv>  - Deactivate a server for this session
   autoselect  - Reset to AUTO mode
   tools [srv] - List available tools (optionally for a specific server)
-  call <s.t> {json} - Call a tool: /mcp call bq.query {"sql": "SELECT 1"}
+  call <s_t> {json} - Call a tool: /mcp call bq_query {"sql": "SELECT 1"}
   resources [srv]   - List available resources
   read <uri>        - Read a resource by URI
   prompts [srv]     - List available prompts

@@ -31,6 +31,7 @@ class McpToolRegistry {
   private final Map<String, List<McpSchema.Resource>> resourceCache = new ConcurrentHashMap<>()
   private final Map<String, List<McpSchema.Prompt>> promptCache = new ConcurrentHashMap<>()
   private final Map<String, ServerHealth> healthMap = new ConcurrentHashMap<>()
+  private final Map<String, String> resourceUriToServer = new ConcurrentHashMap<>()
 
   McpToolRegistry(McpSessionState sessionState) {
     this.sessionState = sessionState
@@ -61,8 +62,14 @@ class McpToolRegistry {
 
     try {
       McpSchema.ListResourcesResult resourcesResult = client.listResources()
-      resourceCache.put(name, resourcesResult.resources() ?: [])
-      log.debug("Loaded {} resources from server '{}'", resourcesResult.resources()?.size() ?: 0, name)
+      List<McpSchema.Resource> resources = resourcesResult.resources() ?: []
+      resourceCache.put(name, resources)
+      for (McpSchema.Resource resource : resources) {
+        if (resource.uri() != null) {
+          resourceUriToServer.put(resource.uri(), name)
+        }
+      }
+      log.debug("Loaded {} resources from server '{}'", resources.size(), name)
     } catch (Exception e) {
       log.debug("Server '{}' does not support resources: {}", name, e.message)
       resourceCache.put(name, [])
@@ -146,14 +153,30 @@ class McpToolRegistry {
   }
 
   /**
-   * Reads a resource by URI, trying each healthy server until one succeeds.
+   * Reads a resource by URI. Uses the URI-to-server mapping for O(1) lookup when available,
+   * falling back to trying each healthy server if the mapped server fails.
    *
    * @throws IllegalStateException if no server can read the resource
    */
   McpSchema.ReadResourceResult readResource(String uri) {
     McpSchema.ReadResourceRequest request = new McpSchema.ReadResourceRequest(uri)
+
+    // Try the mapped server first for O(1) lookup
+    String mappedServer = resourceUriToServer.get(uri)
+    if (mappedServer != null && isHealthy(mappedServer)) {
+      McpSyncClient client = clients.get(mappedServer)
+      if (client != null) {
+        try {
+          return client.readResource(request)
+        } catch (Exception e) {
+          log.debug("Mapped server '{}' could not read resource '{}': {}", mappedServer, uri, e.message)
+        }
+      }
+    }
+
+    // Fall back to trying all healthy servers
     for (Map.Entry<String, McpSyncClient> entry : clients.entrySet()) {
-      if (!isHealthy(entry.key)) {
+      if (entry.key == mappedServer || !isHealthy(entry.key)) {
         continue
       }
       try {

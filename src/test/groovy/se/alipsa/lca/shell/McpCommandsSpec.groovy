@@ -159,9 +159,9 @@ class McpCommandsSpec extends Specification {
     result.contains("Usage:")
   }
 
-  def "call rejects invalid format without dot"() {
+  def "call rejects invalid format without underscore"() {
     when:
-    String result = mcpCommands.execute("call", "nodot", "default")
+    String result = mcpCommands.execute("call", "nounderscore", "default")
 
     then:
     result.contains("Invalid format")
