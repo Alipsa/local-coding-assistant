@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.review.ReviewSeverity
+import se.alipsa.lca.shell.McpCommands
 import se.alipsa.lca.shell.ShellCommands
 
 import java.util.regex.Matcher
@@ -23,9 +24,11 @@ class CommandExecutor {
   private static final Pattern COMMAND_PATTERN = ~/^\/(\w+)\s*(.*)/
 
   private final ShellCommands shellCommands
+  private final McpCommands mcpCommands
 
-  CommandExecutor(ShellCommands shellCommands) {
+  CommandExecutor(ShellCommands shellCommands, McpCommands mcpCommands) {
     this.shellCommands = shellCommands
+    this.mcpCommands = mcpCommands
   }
 
   /**
@@ -80,6 +83,8 @@ class CommandExecutor {
         return executeTree(args)
       case "codesearch":
         return executeCodeSearch(args)
+      case "mcp":
+        return executeMcp(args)
       case "help":
         return shellCommands.help()
       case "health":
@@ -296,6 +301,15 @@ class CommandExecutor {
       parseInt(parsed.maxTokens) ?: 0,
       parseBoolean(parsed.'case-insensitive') ?: parseBoolean(parsed.i) ?: false
     )
+  }
+
+  private String executeMcp(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    List<String> words = parsed.words as List<String>
+    String subcommand = words?.isEmpty() ? "status" : words[0]
+    String subArgs = words?.size() > 1 ? words.subList(1, words.size()).join(" ") : ""
+    String session = parsed.session as String ?: "default"
+    mcpCommands.execute(subcommand, subArgs, session)
   }
 
   /**
