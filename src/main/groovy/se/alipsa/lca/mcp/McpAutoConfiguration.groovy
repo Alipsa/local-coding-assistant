@@ -23,24 +23,27 @@ class McpAutoConfiguration {
 
   private final McpToolRegistry registry
   private final List<McpSyncClient> clients
+  private final McpConfigLoader configLoader
 
-  @Value('${assistant.mcp.servers-config:}')
-  private String serversConfigOverride
-
-  McpAutoConfiguration(McpToolRegistry registry, List<McpSyncClient> clients) {
+  McpAutoConfiguration(
+    McpToolRegistry registry,
+    List<McpSyncClient> clients,
+    @Value('${assistant.mcp.servers-configuration:}') String serversConfigOverride
+  ) {
     this.registry = registry
     this.clients = clients
+    List<String> paths = McpConfigLoader.defaultConfigPaths(serversConfigOverride)
+    this.configLoader = new McpConfigLoader(paths, System.getProperty('java.io.tmpdir'))
   }
 
   @Bean
   McpConfigLoader mcpConfigLoader() {
-    return createConfigLoader()
+    return configLoader
   }
 
   @PostConstruct
   void registerClients() {
-    McpConfigLoader loader = createConfigLoader()
-    Map<String, McpConfigLoader.ServerConfig> discovered = loader.loadServers()
+    Map<String, McpConfigLoader.ServerConfig> discovered = configLoader.loadServers()
 
     if (!discovered.isEmpty()) {
       log.info('McpConfigLoader discovered {} server(s) in config files: {}',
@@ -72,12 +75,6 @@ class McpAutoConfiguration {
     }
 
     log.info('Registered {} MCP server(s).', registered)
-  }
-
-  private McpConfigLoader createConfigLoader() {
-    List<String> paths = McpConfigLoader.defaultConfigPaths(serversConfigOverride)
-    String tmpDir = System.getProperty('java.io.tmpdir')
-    return new McpConfigLoader(paths, tmpDir)
   }
 
   /**

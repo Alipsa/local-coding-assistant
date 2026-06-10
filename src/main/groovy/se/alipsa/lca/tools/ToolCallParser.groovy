@@ -44,7 +44,7 @@ class ToolCallParser {
 
   // MCP tool call patterns
   private static final Pattern MCP_TOOL_PATTERN = Pattern.compile(
-    /mcp_(\w+?)_(\w+)\(\s*(\{[\s\S]*?\})\s*\)/
+    /mcp_([a-zA-Z0-9-]+)_(\w+)\(\s*(\{[\s\S]*?\})\s*\)/
   )
 
   private static final Pattern MCP_READ_RESOURCE_PATTERN = Pattern.compile(

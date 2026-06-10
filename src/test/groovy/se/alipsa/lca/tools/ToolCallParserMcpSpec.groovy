@@ -234,4 +234,31 @@ mcp_good2_tool2({"other": "data"})'''
     result.errors.size() == 1
     result.errors[0].contains('mcp_bad_tool')
   }
+
+  def "parses multi-word tool name correctly"() {
+    given:
+    String response = 'mcp_bq_list_tables({"dataset": "my_dataset"})'
+
+    when:
+    ToolCallParser.ParsedToolCalls result = parser.parseAllToolCalls(response)
+
+    then:
+    result.mcpCalls.size() == 1
+    result.mcpCalls[0].serverName == 'bq'
+    result.mcpCalls[0].toolName == 'list_tables'
+    result.mcpCalls[0].arguments.dataset == 'my_dataset'
+  }
+
+  def "parses hyphenated server name"() {
+    given:
+    String response = 'mcp_looker-admin_get_dashboard({"id": "123"})'
+
+    when:
+    ToolCallParser.ParsedToolCalls result = parser.parseAllToolCalls(response)
+
+    then:
+    result.mcpCalls.size() == 1
+    result.mcpCalls[0].serverName == 'looker-admin'
+    result.mcpCalls[0].toolName == 'get_dashboard'
+  }
 }

@@ -48,10 +48,9 @@ class McpToolExecutor implements McpToolExecutorFunction {
         call.serverName, call.toolName, argKeys.join(', '))
       log.debug("Full arguments for {}.{}: {}", call.serverName, call.toolName, call.arguments)
 
-      // Log destructive tool classification for visibility
       if (requiresConfirmation(call.toolName)) {
-        log.info("Tool {}.{} is classified as destructive — confirmation would be required in interactive mode",
-          call.serverName, call.toolName)
+        return "REFUSED: Tool '${call.serverName}.${call.toolName}' is classified as destructive " +
+          "and requires confirmation. Use /mcp call ${call.serverName}_${call.toolName} to invoke directly."
       }
 
       // Call the tool
@@ -125,6 +124,25 @@ class McpToolExecutor implements McpToolExecutorFunction {
    */
   boolean needsConfirmation(StandardToolCall call) {
     return requiresConfirmation(call.toolName)
+  }
+
+  String executeConfirmed(StandardToolCall call) {
+    try {
+      if (!registry.isHealthy(call.serverName)) {
+        return "Error: Server '${call.serverName}' is not healthy"
+      }
+      log.info("Executing confirmed MCP tool: server={}, tool={}",
+        call.serverName, call.toolName)
+      Map<String, Object> args = call.arguments != null ? call.arguments : Map.of()
+      McpSchema.CallToolResult result = registry.callTool(
+        call.serverName, call.toolName, args
+      )
+      return formatResult(call, result)
+    } catch (Exception e) {
+      log.error("Error executing tool {}.{}: {}",
+        call.serverName, call.toolName, e.message, e)
+      return "Error: ${e.message}"
+    }
   }
 
   /**

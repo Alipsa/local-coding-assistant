@@ -31,11 +31,18 @@ class ToolCallDispatcher {
     this.mcpExecutor = mcpExecutor
   }
 
+  private static final String TOOL_RESULT_BANNER = "\n\n=== Tool Execution Results ===\n"
+
   String dispatchBuiltin(ToolCallParser.ToolCall call) {
     String result = toolCallParser.executeToolCalls(
       [call], fileEditingTool, commandRunner
     )
-    result ?: "No result from ${call.toolName}"
+    if (result == null) {
+      return "No result from ${call.toolName}"
+    }
+    result.startsWith(TOOL_RESULT_BANNER)
+      ? result.substring(TOOL_RESULT_BANNER.length()).trim()
+      : result.trim()
   }
 
   String dispatchMcp(StandardToolCall call) {
