@@ -205,4 +205,33 @@ class McpToolExecutorSpec extends Specification {
     executor.needsConfirmation(destructiveCall)
     !executor.needsConfirmation(readOnlyCall)
   }
+
+  def "execute handles mcp_read_resource without health check"() {
+    given:
+    executor = new McpToolExecutor(registry, true)
+    def call = new StandardToolCall('_resource', 'read_resource', [uri: 'file:///tmp/data.json'])
+    // Note: registry.isHealthy('_resource') would return false, but should not be checked
+    registry.readResource('file:///tmp/data.json') >> new McpSchema.ReadResourceResult(
+      [new McpSchema.TextResourceContents('file:///tmp/data.json', 'text/plain', '{"key": "value"}')]
+    )
+
+    when:
+    String result = executor.execute(call)
+
+    then:
+    result != null
+    !result.contains('not healthy')
+  }
+
+  def "execute returns error for mcp_read_resource without URI"() {
+    given:
+    executor = new McpToolExecutor(registry, true)
+    def call = new StandardToolCall('_resource', 'read_resource', [:])
+
+    when:
+    String result = executor.execute(call)
+
+    then:
+    result.contains('requires a URI')
+  }
 }
