@@ -114,7 +114,7 @@ deleteFile("/tmp/old.txt")'''
     result.errors.isEmpty()
   }
 
-  def "parses mcp_read_resource as built-in ToolCall"() {
+  def "parses mcp_read_resource as StandardToolCall"() {
     given:
     String response = 'mcp_read_resource("file:///tmp/data.json")'
 
@@ -122,8 +122,10 @@ deleteFile("/tmp/old.txt")'''
     ToolCallParser.ParsedToolCalls result = parser.parseAllToolCalls(response)
 
     then:
-    result.builtinCalls.any { it.toolName == 'mcp_read_resource' && it.arguments == ['file:///tmp/data.json'] }
-    result.mcpCalls.isEmpty()
+    result.mcpCalls.size() == 1
+    result.mcpCalls[0].serverName == '_resource'
+    result.mcpCalls[0].toolName == 'read_resource'
+    result.mcpCalls[0].arguments.uri == 'file:///tmp/data.json'
     result.errors.isEmpty()
   }
 
@@ -135,7 +137,8 @@ deleteFile("/tmp/old.txt")'''
     ToolCallParser.ParsedToolCalls result = parser.parseAllToolCalls(response)
 
     then:
-    result.builtinCalls.any { it.toolName == 'mcp_read_resource' && it.arguments == ['https://example.com/resource'] }
+    result.mcpCalls.size() == 1
+    result.mcpCalls[0].arguments.uri == 'https://example.com/resource'
     result.errors.isEmpty()
   }
 

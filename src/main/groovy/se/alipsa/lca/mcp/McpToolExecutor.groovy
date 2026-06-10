@@ -48,6 +48,16 @@ class McpToolExecutor implements McpToolExecutorFunction {
         call.serverName, call.toolName, argKeys.join(', '))
       log.debug("Full arguments for {}.{}: {}", call.serverName, call.toolName, call.arguments)
 
+      // Handle mcp_read_resource virtual tool
+      if (call.serverName == '_resource' && call.toolName == 'read_resource') {
+        String uri = call.arguments?.get('uri') as String
+        if (!uri) {
+          return "Error: mcp_read_resource requires a URI argument"
+        }
+        McpSchema.ReadResourceResult resourceResult = registry.readResource(uri)
+        return resourceResult.contents()?.collect { it.toString() }?.join('\n') ?: '(empty)'
+      }
+
       if (requiresConfirmation(call.toolName)) {
         return "REFUSED: Tool '${call.serverName}.${call.toolName}' is classified as destructive " +
           "and requires confirmation. Use /mcp call ${call.serverName}_${call.toolName} to invoke directly."

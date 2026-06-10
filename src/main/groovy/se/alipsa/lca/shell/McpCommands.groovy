@@ -166,6 +166,8 @@ class McpCommands {
     }
 
     try {
+      log.info("Direct /mcp call: server={}, tool={}, arguments=[{}]",
+        serverName, toolName, toolArgs.keySet().join(', '))
       McpSchema.CallToolResult result = registry.callTool(serverName, toolName, toolArgs)
       return formatCallResult(result)
     } catch (Exception e) {

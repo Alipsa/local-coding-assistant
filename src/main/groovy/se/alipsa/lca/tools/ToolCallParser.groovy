@@ -82,11 +82,11 @@ class ToolCallParser {
     List<StandardToolCall> mcpCalls = []
     List<String> errors = []
 
-    // Extract mcp_read_resource calls as virtual built-in ToolCalls
+    // Extract mcp_read_resource calls as StandardToolCalls routed through MCP executor
     Matcher readMatcher = MCP_READ_RESOURCE_PATTERN.matcher(llmResponse)
     while (readMatcher.find()) {
       String uri = readMatcher.group(1)
-      builtinCalls.add(new ToolCall('mcp_read_resource', [uri]))
+      mcpCalls.add(new StandardToolCall('_resource', 'read_resource', [uri: uri]))
       log.debug('Detected mcp_read_resource call: {}', uri)
     }
 
