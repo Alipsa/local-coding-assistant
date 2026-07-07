@@ -33,19 +33,20 @@ RAM_GB=$((RAM_BYTES / 1073741824))
 
 if [[ $RAM_GB -ge 128 ]]; then
   GPU_WIRED_LIMIT=114688  # 112GB
-  SOURCE_MODEL="qwen3.6:27b-q6_K"
+  SOURCE_MODEL="qwen3.6:27b-mlx"
   CONTEXT_SIZE=131072     # 128K
-  OPENCODE_MODEL="qwen3.6-27b-128k"
+  OPENCODE_MODEL="qwen3.6-27b-mlx-128k"
 elif [[ $RAM_GB -ge 96 ]]; then
   GPU_WIRED_LIMIT=86016   # 84GB
-  SOURCE_MODEL="qwen3.6:27b"
+  SOURCE_MODEL="qwen3.6:27b-mlx"
   CONTEXT_SIZE=98304      # 96K
-  OPENCODE_MODEL="qwen3.6-27b-96k"
+  OPENCODE_MODEL="qwen3.6-27b-mlx-96k"
 elif [[ $RAM_GB -ge 64 ]]; then
   GPU_WIRED_LIMIT=55296   # 54GB
-  SOURCE_MODEL="glm-4.7-flash"
+  #SOURCE_MODEL="qwen3:14b" # Too stupid to be useful
+  SOURCE_MODEL="qwen3.6:27b-mlx"
   CONTEXT_SIZE=65536      # 64K
-  OPENCODE_MODEL="glm-4.7-flash-64k"
+  OPENCODE_MODEL="qwen3.6-27b-mlx-64k"
 elif [[ $RAM_GB -ge 48 ]]; then
   GPU_WIRED_LIMIT=40960   # 40GB
   SOURCE_MODEL="batiai/qwen3.6-35b:iq4"

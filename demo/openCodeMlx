@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+############################################################
+# Launch script to run OpenCode cli using mlx-lm to serve   #
+# a local model directly on Apple Silicon (no Ollama).      #
+# Author: Per Nyfelt                                        #
+############################################################
+set -e
+
+# --- User-tunable settings ---
+# Model to run - comment one out, uncomment the other to switch.
+# MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit}"
+MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
+
+# How much RAM (GB) to leave free for the OS/other apps; the rest is made
+# available to the GPU (iogpu.wired_limit_mb) for model weights + KV cache.
+OS_RESERVE_GB=10
+
+if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
+  echo "MLX requires an Apple Silicon Mac (macOS + arm64), cannot continue"
+  exit 1
+fi
+
+# Ensure opencode bin dir is on PATH (installer adds it to .zshrc but current shell may not have it)
+[[ -d "$HOME/.opencode/bin" ]] && export PATH="$HOME/.opencode/bin:$PATH"
+
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "opencode could not be found, installing..."
+  curl -fsSL https://opencode.ai/install | bash
+  export PATH="$HOME/.opencode/bin:$PATH"
+  if ! command -v opencode >/dev/null 2>&1; then
+    echo "opencode installation failed, cannot continue"
+    exit 1
+  fi
+  echo "opencode installed successfully"
+fi
+
+# Set appropriate GPU memory tuning based on the installed memory size
+RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+RAM_GB=$((RAM_BYTES / 1073741824))
+
+# Subtract OS_RESERVE_GB from available RAM for GPU limit (rounded down to nearest 1024MB)
+GPU_WIRED_LIMIT=$(( (RAM_GB - OS_RESERVE_GB) * 1024 ))
+
+# Ensure minimum 24GB (24576 MB) limit for smaller systems
+if [[ $GPU_WIRED_LIMIT -lt 24576 ]]; then
+  echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
+  exit 1
+fi
+
+echo "Detected ${RAM_GB}GB RAM -> GPU: $((GPU_WIRED_LIMIT/1024))GB"
+
+if [[ $RAM_GB -lt 64 ]]; then
+  echo "Warning: $MLX_MODEL may need ~45GB for weights + KV cache and may not fit"
+  echo "in ${RAM_GB}GB RAM. Override with a smaller or lower-bit model via the"
+  echo "MLX_MODEL environment variable if you hit an OOM."
+fi
+
+# The mac default is quite conservative and limits the GPU memory too much
+# increasing it greatly improved local llm performance
+current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
+if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
+  echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
+  sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
+fi
+
+# Set up a dedicated venv for mlx-lm so it doesn't pollute system/other project Python envs
+MLX_DIR="$HOME/.opencode_mlx"
+VENV_PATH="$MLX_DIR/venv"
+mkdir -p "$MLX_DIR"
+
+if [[ ! -d "$VENV_PATH" ]]; then
+  echo "Creating virtual environment for mlx-lm..."
+  python3 -m venv "$VENV_PATH"
+fi
+
+source "$VENV_PATH/bin/activate"
+
+if ! mlx_lm.server --help >/dev/null 2>&1; then
+  echo "mlx-lm not found in venv, installing..."
+  # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at import time
+  # (AttributeError: 'str' object has no attribute '__module__'); pin below it.
+  pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"
+fi
+
+# mlx-lm's own --model download path always goes through huggingface_hub, with no
+# ModelScope support via its own downloader in this flow, so a huggingface.co
+# reachability check isn't enough (the homepage can respond while large model-weight
+# transfers still get reset). Instead we download the model ourselves ahead of time,
+# trying Hugging Face first and falling back to ModelScope on failure (or vice versa
+# if MLXLM_USE_MODELSCOPE is already set true), then point mlx_lm.server at the
+# resulting local directory so it never touches the network on its own.
+if ! python3 -c "import modelscope" >/dev/null 2>&1; then
+  echo "Installing modelscope package (used as a model download fallback)..."
+  pip install modelscope
+fi
+
+# 8080 is commonly held by other local dev tooling (e.g. Rancher Desktop's Lima VM
+# SSH tunnel binds it permanently), which uvicorn only discovers *after* finishing
+# its lifespan startup (loading the whole model) and only then trying to bind the
+# socket - so a collision wastes the full load time before failing. Default to a
+# less commonly used port and fail fast below if it's still taken.
+MLX_PORT="${MLX_PORT:-8090}"
+
+if lsof -i ":$MLX_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Error: port $MLX_PORT is already in use by another process:"
+  lsof -i ":$MLX_PORT" -sTCP:LISTEN
+  echo "Set MLX_PORT to a free port and try again."
+  exit 1
+fi
+
+LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
+
+download_model() {
+  case "$1" in
+    modelscope)
+      echo "Downloading $MLX_MODEL from ModelScope to $LOCAL_MODEL_DIR..."
+      python3 -c "
+import sys
+try:
+    from modelscope import snapshot_download
+    snapshot_download(model_id='$MLX_MODEL', local_dir='$LOCAL_MODEL_DIR')
+except Exception as e:
+    print(f'ModelScope download failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+      ;;
+    huggingface)
+      echo "Downloading $MLX_MODEL from Hugging Face Hub to $LOCAL_MODEL_DIR..."
+      python3 -c "
+import sys
+try:
+    from huggingface_hub import snapshot_download
+    snapshot_download(repo_id='$MLX_MODEL', local_dir='$LOCAL_MODEL_DIR')
+except Exception as e:
+    print(f'Hugging Face download failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+      ;;
+  esac
+}
+
+if [[ ! -d "$LOCAL_MODEL_DIR" || -z "$(ls -A "$LOCAL_MODEL_DIR" 2>/dev/null)" ]]; then
+  case "${MLXLM_USE_MODELSCOPE:-False}" in
+    [Tt][Rr][Uu][Ee]) PRIMARY=modelscope; FALLBACK=huggingface ;;
+    *) PRIMARY=huggingface; FALLBACK=modelscope ;;
+  esac
+
+  if ! download_model "$PRIMARY"; then
+    echo "Download via $PRIMARY failed, trying $FALLBACK..."
+    rm -rf "$LOCAL_MODEL_DIR"
+    if ! download_model "$FALLBACK"; then
+      echo "Error: failed to download $MLX_MODEL from both Hugging Face and ModelScope."
+      exit 1
+    fi
+  fi
+fi
+
+echo "Starting mlx_lm.server with model $MLX_MODEL on port $MLX_PORT..."
+mlx_lm.server \
+  --model "$LOCAL_MODEL_DIR" \
+  --host 127.0.0.1 \
+  --port "$MLX_PORT" \
+  > "$MLX_DIR/server.log" 2>&1 &
+SERVER_PID=$!
+
+cleanup() {
+  if kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "Stopping mlx_lm.server (pid $SERVER_PID)..."
+    kill "$SERVER_PID" 2>/dev/null
+    wait "$SERVER_PID" 2>/dev/null
+  fi
+}
+trap cleanup EXIT INT TERM
+
+echo "Waiting for mlx_lm.server to come up (first run may download the model, this can take several minutes)..."
+READY=0
+for i in $(seq 1 180); do
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "mlx_lm.server exited unexpectedly, last log lines:"
+    tail -n 40 "$MLX_DIR/server.log"
+    exit 1
+  fi
+  if curl -s -o /dev/null "http://127.0.0.1:$MLX_PORT/v1/models"; then
+    READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [[ $READY -ne 1 ]]; then
+  echo "Timed out waiting for mlx_lm.server to start, last log lines:"
+  tail -n 40 "$MLX_DIR/server.log"
+  exit 1
+fi
+
+echo "mlx_lm.server is up."
+
+LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
+## No subagents
+Do NOT spawn sub-agents or delegate to other agents. Work directly in the main conversation using read, edit, write, and bash tools. Subagents will loop and waste time on this model.
+## Small steps only
+When asked to implement a plan or feature:
+1. Read the plan file first
+2. Break it into individual file-level tasks (one file per step)
+3. Work through them one at a time
+4. Each step should be: read the relevant file, make the change, verify it compiles/passes
+## Be concrete
+- Never explore broadly. Ask the user which files to look at if unsure.
+- Never churn. If you do not know what to do next, ask the user immediately.
+- Never spend more than 5 tool calls exploring before starting to write code.
+## Keep responses extremely short
+- NEVER exceed 2000 tokens in a single response. If more work is needed, use multiple tool calls instead of writing long text.
+- Maximum 2 sentences of explanation between tool calls
+- No summaries, no restating the plan, no listing what you will do
+- Do NOT output the entire file content when editing - use the edit tool with only the changed section
+- Do NOT think out loud or explain your reasoning. Just act.
+## When stuck
+If you find yourself making more than 8 tool calls without producing a code change, STOP and tell the user what is blocking you. Do not keep searching."
+
+# Build config inline via OPENCODE_CONFIG_CONTENT
+# This avoids writing config files into the project directory
+export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
+{
+  "model": "mlx/${LOCAL_MODEL_DIR}",
+  "provider": {
+    "mlx": {
+      "options": {
+        "baseURL": "http://127.0.0.1:${MLX_PORT}/v1"
+      },
+      "models": {
+        "${LOCAL_MODEL_DIR}": {
+          "tools": true
+        }
+      }
+    }
+  },
+  "agent": {
+    "local": {
+      "description": "Local LLM agent with constrained behaviour",
+      "prompt": $(printf '%s' "$LOCAL_MODEL_PROMPT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
+      "tools": {
+        "read": true,
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    }
+  },
+  "default_agent": "local",
+  "snapshot": true,
+  "autoupdate": false,
+  "compaction": {
+    "auto": true
+  }
+}
+EOJSON
+)
+
+export OPENCODE_DISABLE_AUTOUPDATE=1
+
+opencode "$@"
