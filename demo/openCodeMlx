@@ -15,6 +15,15 @@ MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
 # available to the GPU (iogpu.wired_limit_mb) for model weights + KV cache.
 OS_RESERVE_GB=10
 
+# Tell opencode the model's real context/output token limits so its auto-compaction
+# (compaction.auto below) can summarize old conversation before a request gets big
+# enough to exceed available GPU memory. Custom/local providers don't get this from
+# models.dev automatically, so it must be declared here. Qwen3-Coder-Next has a 256k
+# native context; default to half of that to leave GPU headroom (a single oversized
+# message can still exceed this - compaction only trims prior turns, not the current one).
+MLX_CONTEXT_LIMIT="${MLX_CONTEXT_LIMIT:-128000}"
+MLX_OUTPUT_LIMIT="${MLX_OUTPUT_LIMIT:-16384}"
+
 if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
   echo "MLX requires an Apple Silicon Mac (macOS + arm64), cannot continue"
   exit 1
@@ -67,6 +76,15 @@ fi
 MLX_DIR="$HOME/.opencode_mlx"
 VENV_PATH="$MLX_DIR/venv"
 mkdir -p "$MLX_DIR"
+
+# We download models into our own local_dir below rather than the default HF cache, so
+# ~/.cache/huggingface/hub is never created. mlx_lm.server's GET /v1/models handler still
+# unconditionally scans it (huggingface_hub.scan_cache_dir), and raises CacheNotFound in an
+# uncaught exception when it's missing - which leaves that one HTTP connection hanging with
+# no response, ever, since the handler never gets to write one. opencode polls /v1/models as
+# a connectivity check, so hitting this mid-session silently freezes it (no error, no retry
+# message) instead of failing cleanly. An empty dir is enough to satisfy the scan.
+mkdir -p "$HOME/.cache/huggingface/hub"
 
 if [[ ! -d "$VENV_PATH" ]]; then
   echo "Creating virtual environment for mlx-lm..."
@@ -155,16 +173,66 @@ if [[ ! -d "$LOCAL_MODEL_DIR" || -z "$(ls -A "$LOCAL_MODEL_DIR" 2>/dev/null)" ]]
   fi
 fi
 
-echo "Starting mlx_lm.server with model $MLX_MODEL on port $MLX_PORT..."
-mlx_lm.server \
-  --model "$LOCAL_MODEL_DIR" \
-  --host 127.0.0.1 \
-  --port "$MLX_PORT" \
-  > "$MLX_DIR/server.log" 2>&1 &
-SERVER_PID=$!
+# Truncate once per script run; start_mlx_server appends so a crash's trace survives a restart.
+: > "$MLX_DIR/server.log"
+
+diagnose_server_crash() {
+  if grep -qE "Insufficient Memory|kIOGPUCommandBufferCallbackErrorOutOfMemory|OutOfMemory" "$MLX_DIR/server.log" 2>/dev/null; then
+    cat >&2 <<EOF
+
+mlx_lm.server ran out of GPU memory (Metal OOM) and crashed. This tends to
+happen on large prompts (e.g. reviewing a big PR diff) that grow the KV
+cache past the GPU memory budget this script configured
+(iogpu.wired_limit_mb = ${GPU_WIRED_LIMIT}). Options:
+  - Use a smaller/lower-bit model: MLX_MODEL=... $0
+  - Lower MLX_CONTEXT_LIMIT so opencode compacts history sooner
+  - Give the GPU more headroom by lowering OS_RESERVE_GB in this script
+    (leaves less for the OS/other apps - test carefully)
+  - Avoid feeding it very large diffs/context in a single turn
+EOF
+  else
+    echo "" >&2
+    echo "mlx_lm.server (pid $SERVER_PID) crashed unexpectedly." >&2
+  fi
+  echo "Last log lines:" >&2
+  tail -n 40 "$MLX_DIR/server.log" >&2
+}
+
+start_mlx_server() {
+  echo "Starting mlx_lm.server with model $MLX_MODEL on port $MLX_PORT..."
+  mlx_lm.server \
+    --model "$LOCAL_MODEL_DIR" \
+    --host 127.0.0.1 \
+    --port "$MLX_PORT" \
+    >> "$MLX_DIR/server.log" 2>&1 &
+  SERVER_PID=$!
+
+  echo "Waiting for mlx_lm.server to come up (first run may download the model, this can take several minutes)..."
+  local ready=0
+  for _ in $(seq 1 180); do
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+      diagnose_server_crash
+      return 1
+    fi
+    if curl -s -o /dev/null "http://127.0.0.1:$MLX_PORT/v1/models"; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [[ $ready -ne 1 ]]; then
+    echo "Timed out waiting for mlx_lm.server to start, last log lines:" >&2
+    tail -n 40 "$MLX_DIR/server.log" >&2
+    return 1
+  fi
+
+  echo "mlx_lm.server is up."
+  return 0
+}
 
 cleanup() {
-  if kill -0 "$SERVER_PID" 2>/dev/null; then
+  if kill -0 "${SERVER_PID:-}" 2>/dev/null; then
     echo "Stopping mlx_lm.server (pid $SERVER_PID)..."
     kill "$SERVER_PID" 2>/dev/null
     wait "$SERVER_PID" 2>/dev/null
@@ -172,28 +240,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Waiting for mlx_lm.server to come up (first run may download the model, this can take several minutes)..."
-READY=0
-for i in $(seq 1 180); do
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "mlx_lm.server exited unexpectedly, last log lines:"
-    tail -n 40 "$MLX_DIR/server.log"
-    exit 1
-  fi
-  if curl -s -o /dev/null "http://127.0.0.1:$MLX_PORT/v1/models"; then
-    READY=1
-    break
-  fi
-  sleep 1
-done
-
-if [[ $READY -ne 1 ]]; then
-  echo "Timed out waiting for mlx_lm.server to start, last log lines:"
-  tail -n 40 "$MLX_DIR/server.log"
+if ! start_mlx_server; then
   exit 1
 fi
-
-echo "mlx_lm.server is up."
 
 LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
 ## No subagents
@@ -229,7 +278,11 @@ export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
       },
       "models": {
         "${LOCAL_MODEL_DIR}": {
-          "tools": true
+          "tool_call": true,
+          "limit": {
+            "context": ${MLX_CONTEXT_LIMIT},
+            "output": ${MLX_OUTPUT_LIMIT}
+          }
         }
       }
     }
@@ -258,4 +311,7 @@ EOJSON
 
 export OPENCODE_DISABLE_AUTOUPDATE=1
 
-opencode "$@"
+# --pure: opencode tries to auto-install an @opencode-ai/plugin package on startup, which
+# 403s against a corporate npm registry. Harmless/fast in testing so far, but we don't
+# configure any plugins, so disabling them costs nothing.
+opencode --pure "$@"
