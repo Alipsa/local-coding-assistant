@@ -17,3 +17,6 @@ embabel-agent-api/src/main/resources/mcp/**
 !.aider.conf.yml
 !.aider.queries.json
 **/venv/
+
+# macOS
+**/.DS_Store
