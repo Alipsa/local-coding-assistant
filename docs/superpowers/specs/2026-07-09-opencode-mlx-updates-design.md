@@ -79,13 +79,22 @@ we saw in the 2-minute hang described above. The wrapper must:
 3. Give it a short grace period (e.g. 2-3s), then escalate to SIGKILL on the
    group (`kill -KILL -$pid`) if it hasn't exited.
 
-Suggested budgets: ~20s for `opencode upgrade` and `pip install --upgrade`
-(metadata-only checks), longer (e.g. ~90s) for the model re-sync since a
-real content change may need to transfer data, not just check a hash. Exact
-values, and the wrapper's implementation, are an implementation-plan detail,
-not fixed here — but the TERM-then-KILL-on-process-group escalation is a
-hard requirement, not optional polish, since without it "bounded timeout"
-may not actually bound anything for a hung child process.
+Suggested budgets: ~20s for `opencode upgrade` and `pip install --upgrade`,
+longer (e.g. ~90s) for the model re-sync since a real content change may
+need to transfer data, not just check a hash. Exact values, and the
+wrapper's implementation, are an implementation-plan detail, not fixed here
+— but the TERM-then-KILL-on-process-group escalation is a hard requirement,
+not optional polish, since without it "bounded timeout" may not actually
+bound anything for a hung child process.
+
+Note the ~20s pip budget is tuned for the common "nothing to upgrade"
+case, where pip just checks the index and exits. When an upgrade *is*
+available — `transformers` isn't tiny — a real download+install on a normal
+connection could plausibly exceed 20s, tripping the timeout and
+warn-and-skipping a perfectly healthy upgrade (indistinguishable here from
+a genuine network failure; the fallback behavior is the same and safe
+either way). If this turns out to happen routinely in practice, loosen the
+pip budget rather than the process-group-kill logic.
 
 ## Separate, debatable decision: model download order default
 
