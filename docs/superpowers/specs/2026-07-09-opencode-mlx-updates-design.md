@@ -65,24 +65,52 @@ resolved in under a second — the library's own retry/timeout behavior is not
 something we can rely on to fail quickly.
 
 Since macOS ships BSD tools (no GNU `coreutils timeout` by default), the
-implementation needs a small portable timeout wrapper — background the
-command, race it against a `sleep N` watchdog, kill on timeout — applied to
-each of the three update calls. Suggested budgets: ~20s for `opencode
-upgrade` and `pip install --upgrade` (metadata-only checks), longer (e.g.
-~90s) for the model re-sync since a real content change may need to transfer
-data, not just check a hash. Exact values are an implementation-plan detail,
-not fixed here.
+implementation needs a small portable timeout wrapper. A plain
+background-command + `sleep N` watchdog + single `kill` is not sufficient:
+`pip install` and the `python3 -c "...snapshot_download..."` calls can spawn
+subprocesses, and a process blocked in a C-level blocking socket read can
+ignore a bare SIGTERM until the syscall returns — which may be exactly what
+we saw in the 2-minute hang described above. The wrapper must:
 
-## Model download order default
+1. Run the command in its own process group (e.g. via `set -m` job control
+   so a backgrounded command becomes its own process-group leader).
+2. On timeout, send SIGTERM to the whole group (`kill -TERM -$pid`), not
+   just the direct child PID.
+3. Give it a short grace period (e.g. 2-3s), then escalate to SIGKILL on the
+   group (`kill -KILL -$pid`) if it hasn't exited.
+
+Suggested budgets: ~20s for `opencode upgrade` and `pip install --upgrade`
+(metadata-only checks), longer (e.g. ~90s) for the model re-sync since a
+real content change may need to transfer data, not just check a hash. Exact
+values, and the wrapper's implementation, are an implementation-plan detail,
+not fixed here — but the TERM-then-KILL-on-process-group escalation is a
+hard requirement, not optional polish, since without it "bounded timeout"
+may not actually bound anything for a hung child process.
+
+## Separate, debatable decision: model download order default
+
+This is called out separately from the rest of this spec because it's
+driven by one environment's constraint (HF being blocked here, presumably a
+corporate proxy), not by the update-checking feature itself, and it changes
+a *shared* default rather than this environment's behavior. It should be
+reviewable/revertable independently of the update-checking work above.
 
 The script currently defaults to `PRIMARY=huggingface, FALLBACK=modelscope`
 unless `MLXLM_USE_MODELSCOPE=true`. Because the update check now runs the
 primary→fallback sequence on *every* launch (not just the first), an
 unreachable primary source turns into recurring per-run latency instead of
-a one-time cost. In this environment HF is blocked outright, so this
-change flips the script's default to `PRIMARY=modelscope, FALLBACK=huggingface`
+a one-time cost — for this author's environment specifically. This change
+flips the script's default to `PRIMARY=modelscope, FALLBACK=huggingface`
 (`MLXLM_USE_MODELSCOPE` still overrides it, e.g. set it to `false` on a
 machine where HF is reachable and preferred).
+
+Risk: ModelScope may not mirror every `mlx-community` quantization as
+promptly or completely as HF does, so on a machine with working HF access
+this default could regress the common case (slower/missing model
+availability) in exchange for saving latency in one blocked environment. If
+this trade-off turns out to be wrong in practice, revert just this section's
+change (swap `PRIMARY`/`FALLBACK` back) — it's independent of everything
+else in this spec.
 
 ## Incremental re-sync: what was verified
 
@@ -107,6 +135,27 @@ installed libraries' source rather than assumed:
   incremental skip doesn't perform as expected for a given model repo, the
   timeout still caps the damage to one slow run rather than an indefinite
   hang, and the run falls through to the existing local copy.
+
+## Accepted risk: a successful upgrade isn't a verified-safe upgrade
+
+Error handling above only covers `pip install --upgrade` *failing*. It does
+not cover the command succeeding but landing a new `mlx-lm`/`transformers`
+combination that's functionally broken in a way pip can't detect at install
+time — e.g. `mlx_lm.server` fails to start, or crashes in a new way
+`diagnose_server_crash` doesn't recognize (it only pattern-matches known OOM
+signatures, not arbitrary regressions from a library upgrade).
+
+Before this change, once installed, the script always ran a known-good
+pinned combination indefinitely. After this change, every launch carries a
+small but real chance of a self-inflicted regression that the warn-and-continue
+logic will not catch, because pip reported success — the failure would
+surface later, as a normal (non-OOM) server crash with no indication it was
+caused by that run's upgrade. This is accepted as a reasonable trade-off for
+staying current, not mitigated by this change (e.g. no automatic
+rollback-on-first-launch-failure is implemented). If this proves too
+disruptive in practice, a follow-up could snapshot the previously-working
+`pip freeze` output and offer to reinstall it on repeated post-upgrade
+crashes — out of scope here.
 
 ## Error handling summary
 
