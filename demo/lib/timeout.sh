@@ -26,6 +26,7 @@ run_with_timeout() {
   local cmd_pid=$!
   set +m
 
+  set -m
   (
     sleep "$timeout_s"
     if kill -0 "$cmd_pid" 2>/dev/null; then
@@ -36,11 +37,12 @@ run_with_timeout() {
     fi
   ) &
   local watchdog_pid=$!
+  set +m
 
   local status=0
   wait "$cmd_pid" 2>/dev/null || status=$?
 
-  kill "$watchdog_pid" 2>/dev/null
+  kill -- "-$watchdog_pid" 2>/dev/null
   wait "$watchdog_pid" 2>/dev/null
 
   if [[ -f "$killed_flag" ]]; then

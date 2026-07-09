@@ -26,6 +26,17 @@ elapsed=$(( $(date +%s) - start ))
 check "fast command returns its own exit code" "7" "$status"
 check "fast command does not wait for the timeout" "1" "$([[ $elapsed -le 2 ]] && echo 1 || echo 0)"
 
+# Test 1b: verify no lingering sleep process from watchdog leak (process group kill fix).
+# Capture process count before and after a fast-exit invocation with a timeout;
+# if the watchdog's sleep child is killed properly, no extra processes should remain.
+pre_count=$(pgrep -c sleep 2>/dev/null || echo 0)
+run_with_timeout 10 2 -- bash -c 'exit 0' >/dev/null 2>&1
+# Give any leaked processes a moment to be sure they're not in a race condition
+sleep 0.5
+post_count=$(pgrep -c sleep 2>/dev/null || echo 0)
+leaked=$((post_count - pre_count))
+check "no lingering watchdog sleep on fast-exit path" "0" "$leaked"
+
 # Test 2: command exceeds the timeout but responds to SIGTERM promptly.
 start=$(date +%s)
 run_with_timeout 1 2 -- sleep 10
