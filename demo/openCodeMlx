@@ -107,8 +107,13 @@ ensure_opencode_current() {
   fi
 
   echo "Checking for opencode updates..."
-  if ! run_with_timeout 90 5 -- opencode upgrade; then
-    echo "Warning: opencode upgrade failed or timed out, continuing with existing version." >&2
+  # Run in the foreground, not through run_with_timeout: backgrounding
+  # opencode (even a "plain" subcommand like upgrade, which renders its own
+  # spinner UI) has previously broken its terminal input/rendering handling
+  # when run from a real TTY -- the same failure mode that ruled out
+  # backgrounding the main opencode TUI itself elsewhere in this script.
+  if ! opencode upgrade; then
+    echo "Warning: opencode upgrade failed, continuing with existing version." >&2
   fi
   return 0
 }
