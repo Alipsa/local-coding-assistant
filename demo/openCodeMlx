@@ -29,18 +29,13 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
+source "$(dirname "${BASH_SOURCE[0]}")/lib/updates.sh"
+
 # Ensure opencode bin dir is on PATH (installer adds it to .zshrc but current shell may not have it)
 [[ -d "$HOME/.opencode/bin" ]] && export PATH="$HOME/.opencode/bin:$PATH"
 
-if ! command -v opencode >/dev/null 2>&1; then
-  echo "opencode could not be found, installing..."
-  curl -fsSL https://opencode.ai/install | bash
-  export PATH="$HOME/.opencode/bin:$PATH"
-  if ! command -v opencode >/dev/null 2>&1; then
-    echo "opencode installation failed, cannot continue"
-    exit 1
-  fi
-  echo "opencode installed successfully"
+if ! ensure_opencode_current; then
+  exit 1
 fi
 
 # Set appropriate GPU memory tuning based on the installed memory size
@@ -93,11 +88,8 @@ fi
 
 source "$VENV_PATH/bin/activate"
 
-if ! mlx_lm.server --help >/dev/null 2>&1; then
-  echo "mlx-lm not found in venv, installing..."
-  # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at import time
-  # (AttributeError: 'str' object has no attribute '__module__'); pin below it.
-  pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"
+if ! ensure_mlx_lm_current; then
+  exit 1
 fi
 
 # mlx-lm's own --model download path always goes through huggingface_hub, with no
@@ -128,49 +120,13 @@ fi
 
 LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
 
-download_model() {
-  case "$1" in
-    modelscope)
-      echo "Downloading $MLX_MODEL from ModelScope to $LOCAL_MODEL_DIR..."
-      python3 -c "
-import sys
-try:
-    from modelscope import snapshot_download
-    snapshot_download(model_id='$MLX_MODEL', local_dir='$LOCAL_MODEL_DIR')
-except Exception as e:
-    print(f'ModelScope download failed: {e}', file=sys.stderr)
-    sys.exit(1)
-"
-      ;;
-    huggingface)
-      echo "Downloading $MLX_MODEL from Hugging Face Hub to $LOCAL_MODEL_DIR..."
-      python3 -c "
-import sys
-try:
-    from huggingface_hub import snapshot_download
-    snapshot_download(repo_id='$MLX_MODEL', local_dir='$LOCAL_MODEL_DIR')
-except Exception as e:
-    print(f'Hugging Face download failed: {e}', file=sys.stderr)
-    sys.exit(1)
-"
-      ;;
-  esac
-}
+case "${MLXLM_USE_MODELSCOPE:-False}" in
+  [Tt][Rr][Uu][Ee]) PRIMARY=modelscope; FALLBACK=huggingface ;;
+  *) PRIMARY=huggingface; FALLBACK=modelscope ;;
+esac
 
-if [[ ! -d "$LOCAL_MODEL_DIR" || -z "$(ls -A "$LOCAL_MODEL_DIR" 2>/dev/null)" ]]; then
-  case "${MLXLM_USE_MODELSCOPE:-False}" in
-    [Tt][Rr][Uu][Ee]) PRIMARY=modelscope; FALLBACK=huggingface ;;
-    *) PRIMARY=huggingface; FALLBACK=modelscope ;;
-  esac
-
-  if ! download_model "$PRIMARY"; then
-    echo "Download via $PRIMARY failed, trying $FALLBACK..."
-    rm -rf "$LOCAL_MODEL_DIR"
-    if ! download_model "$FALLBACK"; then
-      echo "Error: failed to download $MLX_MODEL from both Hugging Face and ModelScope."
-      exit 1
-    fi
-  fi
+if ! sync_model "$MLX_MODEL" "$LOCAL_MODEL_DIR" "$PRIMARY" "$FALLBACK"; then
+  exit 1
 fi
 
 # Truncate once per script run; start_mlx_server appends so a crash's trace survives a restart.
