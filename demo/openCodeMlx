@@ -107,7 +107,7 @@ ensure_opencode_current() {
   fi
 
   echo "Checking for opencode updates..."
-  if ! run_with_timeout 20 3 -- opencode upgrade; then
+  if ! run_with_timeout 90 5 -- opencode upgrade; then
     echo "Warning: opencode upgrade failed or timed out, continuing with existing version." >&2
   fi
   return 0
@@ -124,7 +124,7 @@ ensure_mlx_lm_current() {
     echo "mlx-lm not found in venv, installing..."
     # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at
     # import time; pin below it.
-    if ! run_with_timeout 20 3 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+    if ! run_with_timeout 90 5 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
       echo "Error: mlx-lm installation failed, cannot continue" >&2
       return 1
     fi
@@ -142,7 +142,7 @@ ensure_mlx_lm_current() {
   # won't necessarily match diagnose_server_crash's known OOM signatures,
   # and there's no rollback-on-regression — this is an accepted risk of
   # always-upgrade behavior (see docs/superpowers/specs/2026-07-09-opencode-mlx-updates-design.md).
-  if ! run_with_timeout 20 3 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+  if ! run_with_timeout 90 5 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
     echo "Warning: mlx-lm update check failed or timed out, continuing with existing installation." >&2
   fi
   return 0
