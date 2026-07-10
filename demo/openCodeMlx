@@ -10,6 +10,12 @@
 # MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit}"
 MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
 
+# Small/fast model used for lightweight background tasks (e.g. session title
+# generation) so those don't wait on the full-size model. Served by its own
+# second mlx_lm.server instance (see MLX_SMALL_PORT below) so opencode's
+# small_model role never needs Ollama.
+MLX_SMALL_MODEL="${MLX_SMALL_MODEL:-mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit}"
+
 # How much RAM (GB) to leave free for the OS/other apps; the rest is made
 # available to the GPU (iogpu.wired_limit_mb) for model weights + KV cache.
 OS_RESERVE_GB=10
@@ -22,59 +28,6 @@ OS_RESERVE_GB=10
 # message can still exceed this - compaction only trims prior turns, not the current one).
 MLX_CONTEXT_LIMIT="${MLX_CONTEXT_LIMIT:-128000}"
 MLX_OUTPUT_LIMIT="${MLX_OUTPUT_LIMIT:-16384}"
-
-# run_with_timeout <timeout_s> <grace_s> [--] <cmd> [args...]
-#
-# Runs <cmd> with a hard wall-clock budget. If it's still running after
-# <timeout_s> seconds, sends SIGTERM to its whole process group; if it's
-# still alive <grace_s> seconds after that, sends SIGKILL. Returns <cmd>'s
-# real exit code if it finished on its own, or 124 if it had to be killed
-# (matching GNU coreutils `timeout`'s convention).
-#
-# Requires bash job control (`set -m`) so the backgrounded command becomes
-# its own process-group leader — a bare `kill` on the direct child PID is
-# not enough: pip/python subprocesses can spawn children of their own, and
-# a process blocked in a C-level blocking syscall can ignore a lone SIGTERM
-# until that syscall returns.
-run_with_timeout() {
-  local timeout_s="$1" grace_s="$2"
-  shift 2
-  [[ "${1:-}" == "--" ]] && shift
-
-  local killed_flag
-  killed_flag=$(mktemp)
-  rm -f "$killed_flag"
-
-  set -m
-  "$@" &
-  local cmd_pid=$!
-  set +m
-
-  set -m
-  (
-    sleep "$timeout_s"
-    if kill -0 "$cmd_pid" 2>/dev/null; then
-      : > "$killed_flag"
-      kill -TERM "-$cmd_pid" 2>/dev/null
-      sleep "$grace_s"
-      kill -KILL "-$cmd_pid" 2>/dev/null
-    fi
-  ) &
-  local watchdog_pid=$!
-  set +m
-
-  local status=0
-  wait "$cmd_pid" 2>/dev/null || status=$?
-
-  kill -- "-$watchdog_pid" 2>/dev/null
-  wait "$watchdog_pid" 2>/dev/null
-
-  if [[ -f "$killed_flag" ]]; then
-    rm -f "$killed_flag"
-    return 124
-  fi
-  return "$status"
-}
 
 # _install_opencode_via_curl: runs the official installer. Broken out as its
 # own function (rather than inlined) so tests can override it directly as a
@@ -107,10 +60,10 @@ ensure_opencode_current() {
   fi
 
   echo "Checking for opencode updates..."
-  # Run in the foreground, not through run_with_timeout: backgrounding
-  # opencode (even a "plain" subcommand like upgrade, which renders its own
-  # spinner UI) has previously broken its terminal input/rendering handling
-  # when run from a real TTY -- the same failure mode that ruled out
+  # Run in the foreground, not backgrounded: opencode (even a "plain"
+  # subcommand like upgrade, which renders its own spinner UI) has
+  # previously broken its terminal input/rendering handling when
+  # backgrounded from a real TTY -- the same failure mode that rules out
   # backgrounding the main opencode TUI itself elsewhere in this script.
   if ! opencode upgrade; then
     echo "Warning: opencode upgrade failed, continuing with existing version." >&2
@@ -129,7 +82,7 @@ ensure_mlx_lm_current() {
     echo "mlx-lm not found in venv, installing..."
     # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at
     # import time; pin below it.
-    if ! run_with_timeout 90 5 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+    if ! pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
       echo "Error: mlx-lm installation failed, cannot continue" >&2
       return 1
     fi
@@ -144,11 +97,11 @@ ensure_mlx_lm_current() {
   # A successful upgrade here is not proof mlx_lm.server still works: pip
   # exiting 0 only means the new package versions installed cleanly, not
   # that they're compatible with each other. A post-upgrade server crash
-  # won't necessarily match diagnose_server_crash's known OOM signatures,
+  # won't necessarily match diagnose_server_crash_instance's known OOM signatures,
   # and there's no rollback-on-regression — this is an accepted risk of
   # always-upgrade behavior (see docs/superpowers/specs/2026-07-09-opencode-mlx-updates-design.md).
-  if ! run_with_timeout 90 5 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
-    echo "Warning: mlx-lm update check failed or timed out, continuing with existing installation." >&2
+  if ! pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+    echo "Warning: mlx-lm update check failed, continuing with existing installation." >&2
   fi
   return 0
 }
@@ -187,8 +140,8 @@ except Exception as e:
 _download_via() {
   local source="$1" model_id="$2" local_dir="$3"
   case "$source" in
-    modelscope) run_with_timeout 90 5 -- _download_via_modelscope "$model_id" "$local_dir" ;;
-    huggingface) run_with_timeout 90 5 -- _download_via_huggingface "$model_id" "$local_dir" ;;
+    modelscope) _download_via_modelscope "$model_id" "$local_dir" ;;
+    huggingface) _download_via_huggingface "$model_id" "$local_dir" ;;
     *) echo "Unknown download source: $source" >&2; return 1 ;;
   esac
 }
@@ -212,7 +165,7 @@ sync_model() {
     fi
     echo "Checking $model_id for updates..."
   else
-    echo "Model $model_id not found locally, downloading..."
+    echo "Model $model_id not found locally, downloading (Ctrl+C to abort if this takes too long)..."
   fi
 
   if _download_via "$primary" "$model_id" "$local_dir"; then
@@ -333,11 +286,19 @@ main() {
   # less commonly used port and fail fast below if it's still taken.
   if [[ "$subcommand" != "update" ]]; then
     MLX_PORT="${MLX_PORT:-8090}"
+    MLX_SMALL_PORT="${MLX_SMALL_PORT:-8091}"
 
     if lsof -i ":$MLX_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
       echo "Error: port $MLX_PORT is already in use by another process:"
       lsof -i ":$MLX_PORT" -sTCP:LISTEN
       echo "Set MLX_PORT to a free port and try again."
+      exit 1
+    fi
+
+    if lsof -i ":$MLX_SMALL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "Error: port $MLX_SMALL_PORT is already in use by another process:"
+      lsof -i ":$MLX_SMALL_PORT" -sTCP:LISTEN
+      echo "Set MLX_SMALL_PORT to a free port and try again."
       exit 1
     fi
   fi
@@ -357,23 +318,32 @@ main() {
     exit 1
   fi
 
+  LOCAL_SMALL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_SMALL_MODEL" | tr '/' '--')"
+
+  if ! sync_model "$MLX_SMALL_MODEL" "$LOCAL_SMALL_MODEL_DIR" "$PRIMARY" "$FALLBACK" "$ensure_mode"; then
+    exit 1
+  fi
+
   if [[ "$subcommand" == "update" ]]; then
     echo "Update check complete."
     return 0
   fi
 
-  # Truncate once per script run; start_mlx_server appends so a crash's trace survives a restart.
+  # Truncate once per script run; start_mlx_server_instance appends so a crash's
+  # trace survives a restart of just that process.
   : > "$MLX_DIR/server.log"
+  : > "$MLX_DIR/small_server.log"
 
-  diagnose_server_crash() {
-    if grep -qE "Insufficient Memory|kIOGPUCommandBufferCallbackErrorOutOfMemory|OutOfMemory" "$MLX_DIR/server.log" 2>/dev/null; then
+  diagnose_server_crash_instance() {
+    local label="$1" log_file="$2" pid="$3" model_id="$4" model_env_var="$5"
+    if grep -qE "Insufficient Memory|kIOGPUCommandBufferCallbackErrorOutOfMemory|OutOfMemory" "$log_file" 2>/dev/null; then
       cat >&2 <<EOF
 
-mlx_lm.server ran out of GPU memory (Metal OOM) and crashed. This tends to
+$label ran out of GPU memory (Metal OOM) and crashed. This tends to
 happen on large prompts (e.g. reviewing a big PR diff) that grow the KV
 cache past the GPU memory budget this script configured
 (iogpu.wired_limit_mb = ${GPU_WIRED_LIMIT}). Options:
-  - Use a smaller/lower-bit model: MLX_MODEL=... $0
+  - Use a smaller/lower-bit model: ${model_env_var}=... $0
   - Lower MLX_CONTEXT_LIMIT so opencode compacts history sooner
   - Give the GPU more headroom by lowering OS_RESERVE_GB in this script
     (leaves less for the OS/other apps - test carefully)
@@ -381,55 +351,58 @@ cache past the GPU memory budget this script configured
 EOF
     else
       echo "" >&2
-      echo "mlx_lm.server (pid $SERVER_PID) crashed unexpectedly." >&2
+      echo "$label (pid $pid, model $model_id) crashed unexpectedly." >&2
     fi
     echo "Last log lines:" >&2
-    tail -n 40 "$MLX_DIR/server.log" >&2
+    tail -n 40 "$log_file" >&2
   }
 
-  start_mlx_server() {
-    echo "Starting mlx_lm.server with model $MLX_MODEL on port $MLX_PORT..."
-    mlx_lm.server \
-      --model "$LOCAL_MODEL_DIR" \
-      --host 127.0.0.1 \
-      --port "$MLX_PORT" \
-      >> "$MLX_DIR/server.log" 2>&1 &
-    SERVER_PID=$!
+  start_mlx_server_instance() {
+    local label="$1" model_dir="$2" port="$3" log_file="$4" pid_var_name="$5" model_id="$6" model_env_var="$7"
 
-    echo "Waiting for mlx_lm.server to come up (first run may download the model, this can take several minutes)..."
-    local ready=0
-    for _ in $(seq 1 180); do
-      if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        diagnose_server_crash
+    echo "Starting $label with model $model_id on port $port..."
+    mlx_lm.server \
+      --model "$model_dir" \
+      --host 127.0.0.1 \
+      --port "$port" \
+      >> "$log_file" 2>&1 &
+    printf -v "$pid_var_name" '%s' "$!"
+
+    echo "Waiting for $label to come up (first run may need to load a large model into memory, this can take a while - Ctrl+C to abort)..."
+    while true; do
+      if ! kill -0 "${!pid_var_name}" 2>/dev/null; then
+        diagnose_server_crash_instance "$label" "$log_file" "${!pid_var_name}" "$model_id" "$model_env_var"
         return 1
       fi
-      if curl -s -o /dev/null "http://127.0.0.1:$MLX_PORT/v1/models"; then
-        ready=1
+      if curl -s -o /dev/null "http://127.0.0.1:$port/v1/models"; then
         break
       fi
       sleep 1
     done
 
-    if [[ $ready -ne 1 ]]; then
-      echo "Timed out waiting for mlx_lm.server to start, last log lines:" >&2
-      tail -n 40 "$MLX_DIR/server.log" >&2
-      return 1
-    fi
-
-    echo "mlx_lm.server is up."
+    echo "$label is up."
     return 0
   }
 
   cleanup() {
     if kill -0 "${SERVER_PID:-}" 2>/dev/null; then
-      echo "Stopping mlx_lm.server (pid $SERVER_PID)..."
+      echo "Stopping mlx_lm.server (main) (pid $SERVER_PID)..."
       kill "$SERVER_PID" 2>/dev/null
       wait "$SERVER_PID" 2>/dev/null
+    fi
+    if kill -0 "${SMALL_SERVER_PID:-}" 2>/dev/null; then
+      echo "Stopping mlx_lm.server (small) (pid $SMALL_SERVER_PID)..."
+      kill "$SMALL_SERVER_PID" 2>/dev/null
+      wait "$SMALL_SERVER_PID" 2>/dev/null
     fi
   }
   trap cleanup EXIT INT TERM
 
-  if ! start_mlx_server; then
+  if ! start_mlx_server_instance "mlx_lm.server (main)" "$LOCAL_MODEL_DIR" "$MLX_PORT" "$MLX_DIR/server.log" "SERVER_PID" "$MLX_MODEL" "MLX_MODEL"; then
+    exit 1
+  fi
+
+  if ! start_mlx_server_instance "mlx_lm.server (small)" "$LOCAL_SMALL_MODEL_DIR" "$MLX_SMALL_PORT" "$MLX_DIR/small_server.log" "SMALL_SERVER_PID" "$MLX_SMALL_MODEL" "MLX_SMALL_MODEL"; then
     exit 1
   fi
 
@@ -474,8 +447,19 @@ If you find yourself making more than 8 tool calls without producing a code chan
           }
         }
       }
+    },
+    "mlx_small": {
+      "options": {
+        "baseURL": "http://127.0.0.1:${MLX_SMALL_PORT}/v1"
+      },
+      "models": {
+        "${LOCAL_SMALL_MODEL_DIR}": {
+          "tool_call": true
+        }
+      }
     }
   },
+  "small_model": "mlx_small/${LOCAL_SMALL_MODEL_DIR}",
   "agent": {
     "local": {
       "description": "Local LLM agent with constrained behaviour",
