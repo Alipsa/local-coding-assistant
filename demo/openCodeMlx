@@ -29,6 +29,12 @@ OS_RESERVE_GB=10
 MLX_CONTEXT_LIMIT="${MLX_CONTEXT_LIMIT:-128000}"
 MLX_OUTPUT_LIMIT="${MLX_OUTPUT_LIMIT:-16384}"
 
+# Same rationale as above, for the small model. Qwen2.5-Coder-1.5B-Instruct's
+# native context is 32k; default output well below that since it's only used
+# for short background tasks like title generation, not long completions.
+MLX_SMALL_CONTEXT_LIMIT="${MLX_SMALL_CONTEXT_LIMIT:-32000}"
+MLX_SMALL_OUTPUT_LIMIT="${MLX_SMALL_OUTPUT_LIMIT:-4096}"
+
 # _install_opencode_via_curl: runs the official installer. Broken out as its
 # own function (rather than inlined) so tests can override it directly as a
 # bash function instead of PATH-stubbing curl/bash — some sandboxed shells
@@ -454,7 +460,11 @@ If you find yourself making more than 8 tool calls without producing a code chan
       },
       "models": {
         "${LOCAL_SMALL_MODEL_DIR}": {
-          "tool_call": true
+          "tool_call": true,
+          "limit": {
+            "context": ${MLX_SMALL_CONTEXT_LIMIT},
+            "output": ${MLX_SMALL_OUTPUT_LIMIT}
+          }
         }
       }
     }
