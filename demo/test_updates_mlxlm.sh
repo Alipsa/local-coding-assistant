@@ -7,8 +7,8 @@ source ./openCodeMlx
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 # Stub dirs are prepended to a real system PATH, not used exclusively:
-# run_with_timeout itself shells out to real mktemp/sleep/kill, which an
-# exclusive stub-only PATH would hide too.
+# ensure_mlx_lm_current itself shells out to other real commands (e.g.
+# command -v), which an exclusive stub-only PATH would hide too.
 REAL_PATH="/usr/bin:/bin:/usr/local/bin"
 
 # Scenario A: mlx_lm.server missing, pip install stub succeeds -> returns 0.

@@ -58,7 +58,7 @@ status=$?
 check "main update exits 0" "0" "$status"
 check "main update prints the completion message" "1" "$(echo "$output" | grep -c '^Update check complete\.$')"
 check "main update attempted the opencode upgrade (update mode, not install-only)" "1" "$(grep -c '^opencode upgrade$' "$log")"
-check "main update attempted the model sync" "1" "$(grep -c '^download-called$' "$log")"
+check "main update attempted the model sync for both main and small models" "2" "$(grep -c '^download-called$' "$log")"
 check "main update never invoked sudo (GPU/RAM tuning block was skipped)" "0" "$(grep -c '^sudo ' "$log")"
 check "main update did not print GPU-tuning output (block was skipped, not just harmless)" "0" "$(echo "$output" | grep -c 'Detected.*RAM')"
 
