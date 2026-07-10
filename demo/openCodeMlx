@@ -89,6 +89,7 @@ _install_opencode_via_curl() {
 # already is. Returns 0 if opencode is available afterwards, 1 only if it
 # was never available and installing it failed.
 ensure_opencode_current() {
+  local mode="${1:-update}"
   if ! command -v opencode >/dev/null 2>&1; then
     echo "opencode could not be found, installing..."
     _install_opencode_via_curl || true
@@ -98,6 +99,10 @@ ensure_opencode_current() {
       return 1
     fi
     echo "opencode installed successfully"
+    return 0
+  fi
+
+  if [[ "$mode" == "install-only" ]]; then
     return 0
   fi
 
@@ -114,6 +119,7 @@ ensure_opencode_current() {
 # available afterwards, 1 only if it was never available and the install
 # attempt failed.
 ensure_mlx_lm_current() {
+  local mode="${1:-update}"
   if ! mlx_lm.server --help >/dev/null 2>&1; then
     echo "mlx-lm not found in venv, installing..."
     # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at
@@ -122,6 +128,10 @@ ensure_mlx_lm_current() {
       echo "Error: mlx-lm installation failed, cannot continue" >&2
       return 1
     fi
+    return 0
+  fi
+
+  if [[ "$mode" == "install-only" ]]; then
     return 0
   fi
 
@@ -185,16 +195,19 @@ _download_via() {
 # it already has content, both sources failing only warns and keeps the
 # existing copy.
 sync_model() {
-  local model_id="$1" local_dir="$2" primary="$3" fallback="$4"
+  local model_id="$1" local_dir="$2" primary="$3" fallback="$4" mode="${5:-update}"
   local already_present=0
   if [[ -d "$local_dir" && -n "$(ls -A "$local_dir" 2>/dev/null)" ]]; then
     already_present=1
   fi
 
-  if [[ $already_present -eq 0 ]]; then
-    echo "Model $model_id not found locally, downloading..."
-  else
+  if [[ $already_present -eq 1 ]]; then
+    if [[ "$mode" == "install-only" ]]; then
+      return 0
+    fi
     echo "Checking $model_id for updates..."
+  else
+    echo "Model $model_id not found locally, downloading..."
   fi
 
   if _download_via "$primary" "$model_id" "$local_dir"; then
@@ -222,6 +235,12 @@ sync_model() {
 main() {
   set -e
 
+  local subcommand="${1:-}"
+  local ensure_mode="install-only"
+  if [[ "$subcommand" == "update" ]]; then
+    ensure_mode="update"
+  fi
+
   if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
     echo "MLX requires an Apple Silicon Mac (macOS + arm64), cannot continue"
     exit 1
@@ -230,10 +249,11 @@ main() {
   # Ensure opencode bin dir is on PATH (installer adds it to .zshrc but current shell may not have it)
   [[ -d "$HOME/.opencode/bin" ]] && export PATH="$HOME/.opencode/bin:$PATH"
 
-  if ! ensure_opencode_current; then
+  if ! ensure_opencode_current "$ensure_mode"; then
     exit 1
   fi
 
+  if [[ "$subcommand" != "update" ]]; then
   # Set appropriate GPU memory tuning based on the installed memory size
   RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
   RAM_GB=$((RAM_BYTES / 1073741824))
@@ -262,6 +282,7 @@ main() {
     echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
     sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
   fi
+  fi
 
   # Set up a dedicated venv for mlx-lm so it doesn't pollute system/other project Python envs
   MLX_DIR="$HOME/.opencode_mlx"
@@ -284,7 +305,7 @@ main() {
 
   source "$VENV_PATH/bin/activate"
 
-  if ! ensure_mlx_lm_current; then
+  if ! ensure_mlx_lm_current "$ensure_mode"; then
     exit 1
   fi
 
@@ -305,13 +326,15 @@ main() {
   # its lifespan startup (loading the whole model) and only then trying to bind the
   # socket - so a collision wastes the full load time before failing. Default to a
   # less commonly used port and fail fast below if it's still taken.
-  MLX_PORT="${MLX_PORT:-8090}"
+  if [[ "$subcommand" != "update" ]]; then
+    MLX_PORT="${MLX_PORT:-8090}"
 
-  if lsof -i ":$MLX_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Error: port $MLX_PORT is already in use by another process:"
-    lsof -i ":$MLX_PORT" -sTCP:LISTEN
-    echo "Set MLX_PORT to a free port and try again."
-    exit 1
+    if lsof -i ":$MLX_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "Error: port $MLX_PORT is already in use by another process:"
+      lsof -i ":$MLX_PORT" -sTCP:LISTEN
+      echo "Set MLX_PORT to a free port and try again."
+      exit 1
+    fi
   fi
 
   LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
@@ -325,8 +348,13 @@ main() {
     *) PRIMARY=modelscope; FALLBACK=huggingface ;;
   esac
 
-  if ! sync_model "$MLX_MODEL" "$LOCAL_MODEL_DIR" "$PRIMARY" "$FALLBACK"; then
+  if ! sync_model "$MLX_MODEL" "$LOCAL_MODEL_DIR" "$PRIMARY" "$FALLBACK" "$ensure_mode"; then
     exit 1
+  fi
+
+  if [[ "$subcommand" == "update" ]]; then
+    echo "Update check complete."
+    return 0
   fi
 
   # Truncate once per script run; start_mlx_server appends so a crash's trace survives a restart.

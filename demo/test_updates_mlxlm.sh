@@ -52,4 +52,16 @@ make_stub "$bin_d" pip 0 "$log_d"
 check "already-installed + pip update succeeds -> returns 0" "0" "$?"
 check "already-installed -> pip is still invoked (update not skipped)" "1" "$(grep -c '^pip ' "$log_d")"
 
+# Scenario E: mlx_lm.server present, called in install-only mode -> pip
+# upgrade must NOT be attempted.
+bin_e="$work/e"; mkdir -p "$bin_e"
+log_e="$work/e.log"
+make_stub "$bin_e" mlx_lm.server 0 "$log_e"
+make_stub "$bin_e" pip 1 "$log_e"
+(
+  PATH="$bin_e:$REAL_PATH" ensure_mlx_lm_current install-only >/dev/null 2>&1
+)
+check "already-installed + install-only mode -> returns 0" "0" "$?"
+check "already-installed + install-only mode -> pip was NOT invoked" "0" "$(grep -c '^pip ' "$log_e")"
+
 report

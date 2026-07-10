@@ -93,6 +93,18 @@ make_stub "$bin_d" opencode 1 "$log_d"
 )
 check "already-installed + upgrade fails -> still returns 0 (warn and continue)" "0" "$?"
 
+# Scenario F: opencode already on PATH, called in install-only mode -> upgrade
+# must NOT be attempted (the stub is set to fail loudly if invoked, proving
+# the skip is real rather than a coincidental success).
+bin_f="$work/f"; mkdir -p "$bin_f"
+log_f="$work/f.log"; : > "$log_f"
+make_stub "$bin_f" opencode 1 "$log_f"
+(
+  PATH="$bin_f:$PATH" ensure_opencode_current install-only >/dev/null 2>&1
+)
+check "already-installed + install-only mode -> returns 0" "0" "$?"
+check "already-installed + install-only mode -> upgrade was NOT invoked" "0" "$(grep -c '^opencode upgrade$' "$log_f")"
+
 # Scenario E: opencode not on PATH, install fails (returns 1), ensure_opencode_current
 # is called under `set -e`. Verify that the function's return 1 is reached (not aborted
 # by set -e when _install_opencode_via_curl exits with status 1). The function should

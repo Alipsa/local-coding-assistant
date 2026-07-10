@@ -46,4 +46,13 @@ sync_model "some/model" "$dir_e" huggingface modelscope >/dev/null 2>&1
 check "already-present + both fail -> returns 0 (warn, keep existing copy)" "0" "$?"
 check "already-present + both fail -> existing file untouched" "1" "$([[ -f "$dir_e/weights.bin" ]] && echo 1 || echo 0)"
 
+# Scenario F: dir already present, called in install-only mode -> no download
+# attempt at all (primary override fails loudly if invoked).
+dir_f="$work/f"; mkdir -p "$dir_f"; touch "$dir_f/weights.bin"
+_download_via_huggingface() { echo "SHOULD NOT BE CALLED" >&2; return 1; }
+_download_via_modelscope() { echo "SHOULD NOT BE CALLED" >&2; return 1; }
+sync_model "some/model" "$dir_f" huggingface modelscope install-only >/dev/null 2>&1
+check "already-present + install-only mode -> returns 0" "0" "$?"
+check "already-present + install-only mode -> existing file untouched" "1" "$([[ -f "$dir_f/weights.bin" ]] && echo 1 || echo 0)"
+
 report
