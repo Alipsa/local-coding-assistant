@@ -20,7 +20,7 @@ _install_opencode_via_curl() {
 ensure_opencode_current() {
   if ! command -v opencode >/dev/null 2>&1; then
     echo "opencode could not be found, installing..."
-    _install_opencode_via_curl
+    _install_opencode_via_curl || true
     export PATH="$HOME/.opencode/bin:$PATH"
     if ! command -v opencode >/dev/null 2>&1; then
       echo "opencode installation failed, cannot continue" >&2

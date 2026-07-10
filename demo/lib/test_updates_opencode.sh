@@ -4,6 +4,39 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./test_helpers.sh
 source ./updates.sh
 
+# Test helper for Scenario E: verify set -e doesn't abort on failed install
+test_set_e_with_failed_install() {
+  local test_home
+  local output
+  test_home=$(mktemp -d)
+  trap "rm -rf '$test_home'" RETURN
+
+  # Create a script that runs the test. This allows us to capture output properly.
+  local test_script
+  test_script=$(mktemp)
+  trap "rm -f '$test_script'" RETURN
+
+  cat > "$test_script" <<'TESTEOF'
+set -e
+source ./test_helpers.sh
+source ./updates.sh
+_install_opencode_via_curl() { return 1; }
+PATH="/usr/bin:/bin:/usr/local/bin" HOME="$1" ensure_opencode_current 2>&1
+TESTEOF
+
+  # Run it; with the bug (bare call), set -e aborts before printing error.
+  # With the fix (|| true), the function completes and prints the error.
+  output=$(bash "$test_script" "$test_home" 2>&1)
+  local exit_code=$?
+
+  # The fixed version: exit code 1 and message printed (reached error path)
+  # The buggy version: exit code 1 but message NOT printed (aborted by set -e)
+  if echo "$output" | grep -q "opencode installation failed"; then
+    return 0
+  fi
+  return 1
+}
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -59,5 +92,12 @@ make_stub "$bin_d" opencode 1 "$log_d"
   PATH="$bin_d:$PATH" ensure_opencode_current >/dev/null 2>&1
 )
 check "already-installed + upgrade fails -> still returns 0 (warn and continue)" "0" "$?"
+
+# Scenario E: opencode not on PATH, install fails (returns 1), ensure_opencode_current
+# is called under `set -e`. Verify that the function's return 1 is reached (not aborted
+# by set -e when _install_opencode_via_curl exits with status 1). The function should
+# return 1 to the outer subshell (not die uncontrolled).
+test_set_e_with_failed_install
+check "install fails under set -e -> function returns 1 (not aborted by set -e)" "0" "$?"
 
 report
