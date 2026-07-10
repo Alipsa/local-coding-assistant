@@ -55,6 +55,12 @@ ensure_mlx_lm_current() {
   fi
 
   echo "Checking for mlx-lm updates..."
+  # A successful upgrade here is not proof mlx_lm.server still works: pip
+  # exiting 0 only means the new package versions installed cleanly, not
+  # that they're compatible with each other. A post-upgrade server crash
+  # won't necessarily match diagnose_server_crash's known OOM signatures,
+  # and there's no rollback-on-regression — this is an accepted risk of
+  # always-upgrade behavior (see docs/superpowers/specs/2026-07-09-opencode-mlx-updates-design.md).
   if ! run_with_timeout 20 3 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
     echo "Warning: mlx-lm update check failed or timed out, continuing with existing installation." >&2
   fi
