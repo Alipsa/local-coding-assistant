@@ -36,3 +36,27 @@ ensure_opencode_current() {
   fi
   return 0
 }
+
+# ensure_mlx_lm_current: installs mlx-lm (+ pinned transformers) into the
+# already-activated venv if missing, or upgrades it (best-effort,
+# warn-on-failure) if it's already present. Returns 0 if mlx-lm is
+# available afterwards, 1 only if it was never available and the install
+# attempt failed.
+ensure_mlx_lm_current() {
+  if ! mlx_lm.server --help >/dev/null 2>&1; then
+    echo "mlx-lm not found in venv, installing..."
+    # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at
+    # import time; pin below it.
+    if ! run_with_timeout 20 3 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+      echo "Error: mlx-lm installation failed, cannot continue" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  echo "Checking for mlx-lm updates..."
+  if ! run_with_timeout 20 3 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+    echo "Warning: mlx-lm update check failed or timed out, continuing with existing installation." >&2
+  fi
+  return 0
+}
