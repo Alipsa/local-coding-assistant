@@ -60,3 +60,84 @@ ensure_mlx_lm_current() {
   fi
   return 0
 }
+
+# _download_via_huggingface <model_id> <local_dir>
+_download_via_huggingface() {
+  local model_id="$1" local_dir="$2"
+  echo "Downloading $model_id from Hugging Face Hub to $local_dir..."
+  python3 -c "
+import sys
+try:
+    from huggingface_hub import snapshot_download
+    snapshot_download(repo_id='$model_id', local_dir='$local_dir')
+except Exception as e:
+    print(f'Hugging Face download failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+}
+
+# _download_via_modelscope <model_id> <local_dir>
+_download_via_modelscope() {
+  local model_id="$1" local_dir="$2"
+  echo "Downloading $model_id from ModelScope to $local_dir..."
+  python3 -c "
+import sys
+try:
+    from modelscope import snapshot_download
+    snapshot_download(model_id='$model_id', local_dir='$local_dir')
+except Exception as e:
+    print(f'ModelScope download failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+}
+
+# _download_via <huggingface|modelscope> <model_id> <local_dir>
+_download_via() {
+  local source="$1" model_id="$2" local_dir="$3"
+  case "$source" in
+    modelscope) run_with_timeout 90 5 -- _download_via_modelscope "$model_id" "$local_dir" ;;
+    huggingface) run_with_timeout 90 5 -- _download_via_huggingface "$model_id" "$local_dir" ;;
+    *) echo "Unknown download source: $source" >&2; return 1 ;;
+  esac
+}
+
+# sync_model <model_id> <local_dir> <primary> <fallback>
+# Ensures <local_dir> holds a current copy of <model_id>, trying <primary>
+# then <fallback> (each huggingface|modelscope). If <local_dir> doesn't
+# exist/is empty yet (first run), both sources failing is a hard error. If
+# it already has content, both sources failing only warns and keeps the
+# existing copy.
+sync_model() {
+  local model_id="$1" local_dir="$2" primary="$3" fallback="$4"
+  local already_present=0
+  if [[ -d "$local_dir" && -n "$(ls -A "$local_dir" 2>/dev/null)" ]]; then
+    already_present=1
+  fi
+
+  if [[ $already_present -eq 0 ]]; then
+    echo "Model $model_id not found locally, downloading..."
+  else
+    echo "Checking $model_id for updates..."
+  fi
+
+  if _download_via "$primary" "$model_id" "$local_dir"; then
+    return 0
+  fi
+
+  echo "Download via $primary failed, trying $fallback..." >&2
+  if [[ $already_present -eq 0 ]]; then
+    rm -rf "$local_dir"
+  fi
+
+  if _download_via "$fallback" "$model_id" "$local_dir"; then
+    return 0
+  fi
+
+  if [[ $already_present -eq 0 ]]; then
+    echo "Error: failed to download $model_id from both Hugging Face and ModelScope." >&2
+    return 1
+  fi
+
+  echo "Warning: update check failed for both sources, continuing with existing local copy of $model_id." >&2
+  return 0
+}
