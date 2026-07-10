@@ -254,34 +254,34 @@ main() {
   fi
 
   if [[ "$subcommand" != "update" ]]; then
-  # Set appropriate GPU memory tuning based on the installed memory size
-  RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
-  RAM_GB=$((RAM_BYTES / 1073741824))
+    # Set appropriate GPU memory tuning based on the installed memory size
+    RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+    RAM_GB=$((RAM_BYTES / 1073741824))
 
-  # Subtract OS_RESERVE_GB from available RAM for GPU limit (rounded down to nearest 1024MB)
-  GPU_WIRED_LIMIT=$(( (RAM_GB - OS_RESERVE_GB) * 1024 ))
+    # Subtract OS_RESERVE_GB from available RAM for GPU limit (rounded down to nearest 1024MB)
+    GPU_WIRED_LIMIT=$(( (RAM_GB - OS_RESERVE_GB) * 1024 ))
 
-  # Ensure minimum 24GB (24576 MB) limit for smaller systems
-  if [[ $GPU_WIRED_LIMIT -lt 24576 ]]; then
-    echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
-    exit 1
-  fi
+    # Ensure minimum 24GB (24576 MB) limit for smaller systems
+    if [[ $GPU_WIRED_LIMIT -lt 24576 ]]; then
+      echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
+      exit 1
+    fi
 
-  echo "Detected ${RAM_GB}GB RAM -> GPU: $((GPU_WIRED_LIMIT/1024))GB"
+    echo "Detected ${RAM_GB}GB RAM -> GPU: $((GPU_WIRED_LIMIT/1024))GB"
 
-  if [[ $RAM_GB -lt 64 ]]; then
-    echo "Warning: $MLX_MODEL may need ~45GB for weights + KV cache and may not fit"
-    echo "in ${RAM_GB}GB RAM. Override with a smaller/lower-bit model via the"
-    echo "MLX_MODEL environment variable if you hit an OOM."
-  fi
+    if [[ $RAM_GB -lt 64 ]]; then
+      echo "Warning: $MLX_MODEL may need ~45GB for weights + KV cache and may not fit"
+      echo "in ${RAM_GB}GB RAM. Override with a smaller/lower-bit model via the"
+      echo "MLX_MODEL environment variable if you hit an OOM."
+    fi
 
-  # The mac default is quite conservative and limits the GPU memory too much
-  # increasing it greatly improved local llm performance
-  current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
-  if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
-    echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
-    sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
-  fi
+    # The mac default is quite conservative and limits the GPU memory too much
+    # increasing it greatly improved local llm performance
+    current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
+    if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
+      echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
+      sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
+    fi
   fi
 
   # Set up a dedicated venv for mlx-lm so it doesn't pollute system/other project Python envs
