@@ -6,6 +6,10 @@
 ##########################################################
 set -e
 
+# Small/fast model used for lightweight background tasks (e.g. session title generation)
+# so those don't wait on the full-size model. Served by the same ollama daemon.
+SMALL_MODEL="${SMALL_MODEL:-qwen2.5:1.5b}"
+
 if ! command -v ollama >/dev/null 2>&1; then
   echo "ollama could not be found, cannot continue"
   echo "install Ollama and try again"
@@ -133,6 +137,7 @@ EOF
 
 checkAndInstall $SOURCE_MODEL
 update_and_rebuild $SOURCE_MODEL $OPENCODE_MODEL $CONTEXT_SIZE
+checkAndInstall $SMALL_MODEL
 
 LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
 ## No subagents
@@ -170,11 +175,15 @@ export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
       },
       "models": {
         "${OPENCODE_MODEL}:latest": {
-          "tools": true
+          "tool_call": true
+        },
+        "${SMALL_MODEL}": {
+          "tool_call": true
         }
       }
     }
   },
+  "small_model": "ollama/${SMALL_MODEL}",
   "agent": {
     "local": {
       "description": "Local LLM agent with constrained behaviour",
@@ -199,4 +208,7 @@ EOJSON
 
 export OPENCODE_DISABLE_AUTOUPDATE=1
 
-opencode "$@"
+# --pure: opencode tries to auto-install an @opencode-ai/plugin package on startup, which
+# 403s against a corporate npm registry and can hang retrying/falling back rather than
+# failing fast. We don't configure any plugins, so disabling them costs nothing.
+opencode --pure "$@"

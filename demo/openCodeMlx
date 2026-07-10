@@ -4,7 +4,6 @@
 # a local model directly on Apple Silicon (no Ollama).      #
 # Author: Per Nyfelt                                        #
 ############################################################
-set -e
 
 # --- User-tunable settings ---
 # Model to run - comment one out, uncomment the other to switch.
@@ -15,187 +14,426 @@ MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
 # available to the GPU (iogpu.wired_limit_mb) for model weights + KV cache.
 OS_RESERVE_GB=10
 
-if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
-  echo "MLX requires an Apple Silicon Mac (macOS + arm64), cannot continue"
-  exit 1
-fi
+# Tell opencode the model's real context/output token limits so its auto-compaction
+# (compaction.auto below) can summarize old conversation before a request gets big
+# enough to exceed available GPU memory. Custom/local providers don't get this from
+# models.dev automatically, so it must be declared here. Qwen3-Coder-Next has a 256k
+# native context; default to half of that to leave GPU headroom (a single oversized
+# message can still exceed this - compaction only trims prior turns, not the current one).
+MLX_CONTEXT_LIMIT="${MLX_CONTEXT_LIMIT:-128000}"
+MLX_OUTPUT_LIMIT="${MLX_OUTPUT_LIMIT:-16384}"
 
-# Ensure opencode bin dir is on PATH (installer adds it to .zshrc but current shell may not have it)
-[[ -d "$HOME/.opencode/bin" ]] && export PATH="$HOME/.opencode/bin:$PATH"
+# run_with_timeout <timeout_s> <grace_s> [--] <cmd> [args...]
+#
+# Runs <cmd> with a hard wall-clock budget. If it's still running after
+# <timeout_s> seconds, sends SIGTERM to its whole process group; if it's
+# still alive <grace_s> seconds after that, sends SIGKILL. Returns <cmd>'s
+# real exit code if it finished on its own, or 124 if it had to be killed
+# (matching GNU coreutils `timeout`'s convention).
+#
+# Requires bash job control (`set -m`) so the backgrounded command becomes
+# its own process-group leader — a bare `kill` on the direct child PID is
+# not enough: pip/python subprocesses can spawn children of their own, and
+# a process blocked in a C-level blocking syscall can ignore a lone SIGTERM
+# until that syscall returns.
+run_with_timeout() {
+  local timeout_s="$1" grace_s="$2"
+  shift 2
+  [[ "${1:-}" == "--" ]] && shift
 
-if ! command -v opencode >/dev/null 2>&1; then
-  echo "opencode could not be found, installing..."
-  curl -fsSL https://opencode.ai/install | bash
-  export PATH="$HOME/.opencode/bin:$PATH"
-  if ! command -v opencode >/dev/null 2>&1; then
-    echo "opencode installation failed, cannot continue"
-    exit 1
+  local killed_flag
+  killed_flag=$(mktemp)
+  rm -f "$killed_flag"
+
+  set -m
+  "$@" &
+  local cmd_pid=$!
+  set +m
+
+  set -m
+  (
+    sleep "$timeout_s"
+    if kill -0 "$cmd_pid" 2>/dev/null; then
+      : > "$killed_flag"
+      kill -TERM "-$cmd_pid" 2>/dev/null
+      sleep "$grace_s"
+      kill -KILL "-$cmd_pid" 2>/dev/null
+    fi
+  ) &
+  local watchdog_pid=$!
+  set +m
+
+  local status=0
+  wait "$cmd_pid" 2>/dev/null || status=$?
+
+  kill -- "-$watchdog_pid" 2>/dev/null
+  wait "$watchdog_pid" 2>/dev/null
+
+  if [[ -f "$killed_flag" ]]; then
+    rm -f "$killed_flag"
+    return 124
   fi
-  echo "opencode installed successfully"
-fi
+  return "$status"
+}
 
-# Set appropriate GPU memory tuning based on the installed memory size
-RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
-RAM_GB=$((RAM_BYTES / 1073741824))
+# _install_opencode_via_curl: runs the official installer. Broken out as its
+# own function (rather than inlined) so tests can override it directly as a
+# bash function instead of PATH-stubbing curl/bash — some sandboxed shells
+# intercept those two names by identity regardless of PATH shadowing.
+_install_opencode_via_curl() {
+  curl -fsSL https://opencode.ai/install | bash
+}
 
-# Subtract OS_RESERVE_GB from available RAM for GPU limit (rounded down to nearest 1024MB)
-GPU_WIRED_LIMIT=$(( (RAM_GB - OS_RESERVE_GB) * 1024 ))
+# ensure_opencode_current: installs opencode via the official installer if
+# it's not on PATH, or upgrades it (best-effort, warn-on-failure) if it
+# already is. Returns 0 if opencode is available afterwards, 1 only if it
+# was never available and installing it failed.
+ensure_opencode_current() {
+  local mode="${1:-update}"
+  if ! command -v opencode >/dev/null 2>&1; then
+    echo "opencode could not be found, installing..."
+    _install_opencode_via_curl || true
+    export PATH="$HOME/.opencode/bin:$PATH"
+    if ! command -v opencode >/dev/null 2>&1; then
+      echo "opencode installation failed, cannot continue" >&2
+      return 1
+    fi
+    echo "opencode installed successfully"
+    return 0
+  fi
 
-# Ensure minimum 24GB (24576 MB) limit for smaller systems
-if [[ $GPU_WIRED_LIMIT -lt 24576 ]]; then
-  echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
-  exit 1
-fi
+  if [[ "$mode" == "install-only" ]]; then
+    return 0
+  fi
 
-echo "Detected ${RAM_GB}GB RAM -> GPU: $((GPU_WIRED_LIMIT/1024))GB"
+  echo "Checking for opencode updates..."
+  # Run in the foreground, not through run_with_timeout: backgrounding
+  # opencode (even a "plain" subcommand like upgrade, which renders its own
+  # spinner UI) has previously broken its terminal input/rendering handling
+  # when run from a real TTY -- the same failure mode that ruled out
+  # backgrounding the main opencode TUI itself elsewhere in this script.
+  if ! opencode upgrade; then
+    echo "Warning: opencode upgrade failed, continuing with existing version." >&2
+  fi
+  return 0
+}
 
-if [[ $RAM_GB -lt 64 ]]; then
-  echo "Warning: $MLX_MODEL may need ~45GB for weights + KV cache and may not fit"
-  echo "in ${RAM_GB}GB RAM. Override with a smaller or lower-bit model via the"
-  echo "MLX_MODEL environment variable if you hit an OOM."
-fi
+# ensure_mlx_lm_current: installs mlx-lm (+ pinned transformers) into the
+# already-activated venv if missing, or upgrades it (best-effort,
+# warn-on-failure) if it's already present. Returns 0 if mlx-lm is
+# available afterwards, 1 only if it was never available and the install
+# attempt failed.
+ensure_mlx_lm_current() {
+  local mode="${1:-update}"
+  if ! mlx_lm.server --help >/dev/null 2>&1; then
+    echo "mlx-lm not found in venv, installing..."
+    # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at
+    # import time; pin below it.
+    if ! run_with_timeout 90 5 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+      echo "Error: mlx-lm installation failed, cannot continue" >&2
+      return 1
+    fi
+    return 0
+  fi
 
-# The mac default is quite conservative and limits the GPU memory too much
-# increasing it greatly improved local llm performance
-current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
-if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
-  echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
-  sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
-fi
+  if [[ "$mode" == "install-only" ]]; then
+    return 0
+  fi
 
-# Set up a dedicated venv for mlx-lm so it doesn't pollute system/other project Python envs
-MLX_DIR="$HOME/.opencode_mlx"
-VENV_PATH="$MLX_DIR/venv"
-mkdir -p "$MLX_DIR"
+  echo "Checking for mlx-lm updates..."
+  # A successful upgrade here is not proof mlx_lm.server still works: pip
+  # exiting 0 only means the new package versions installed cleanly, not
+  # that they're compatible with each other. A post-upgrade server crash
+  # won't necessarily match diagnose_server_crash's known OOM signatures,
+  # and there's no rollback-on-regression — this is an accepted risk of
+  # always-upgrade behavior (see docs/superpowers/specs/2026-07-09-opencode-mlx-updates-design.md).
+  if ! run_with_timeout 90 5 -- pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"; then
+    echo "Warning: mlx-lm update check failed or timed out, continuing with existing installation." >&2
+  fi
+  return 0
+}
 
-if [[ ! -d "$VENV_PATH" ]]; then
-  echo "Creating virtual environment for mlx-lm..."
-  python3 -m venv "$VENV_PATH"
-fi
-
-source "$VENV_PATH/bin/activate"
-
-if ! mlx_lm.server --help >/dev/null 2>&1; then
-  echo "mlx-lm not found in venv, installing..."
-  # transformers>=5.13 breaks mlx-lm's AutoTokenizer.register call at import time
-  # (AttributeError: 'str' object has no attribute '__module__'); pin below it.
-  pip install --upgrade pip mlx-lm "transformers>=5.7,<5.13"
-fi
-
-# mlx-lm's own --model download path always goes through huggingface_hub, with no
-# ModelScope support via its own downloader in this flow, so a huggingface.co
-# reachability check isn't enough (the homepage can respond while large model-weight
-# transfers still get reset). Instead we download the model ourselves ahead of time,
-# trying Hugging Face first and falling back to ModelScope on failure (or vice versa
-# if MLXLM_USE_MODELSCOPE is already set true), then point mlx_lm.server at the
-# resulting local directory so it never touches the network on its own.
-if ! python3 -c "import modelscope" >/dev/null 2>&1; then
-  echo "Installing modelscope package (used as a model download fallback)..."
-  pip install modelscope
-fi
-
-# 8080 is commonly held by other local dev tooling (e.g. Rancher Desktop's Lima VM
-# SSH tunnel binds it permanently), which uvicorn only discovers *after* finishing
-# its lifespan startup (loading the whole model) and only then trying to bind the
-# socket - so a collision wastes the full load time before failing. Default to a
-# less commonly used port and fail fast below if it's still taken.
-MLX_PORT="${MLX_PORT:-8090}"
-
-if lsof -i ":$MLX_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Error: port $MLX_PORT is already in use by another process:"
-  lsof -i ":$MLX_PORT" -sTCP:LISTEN
-  echo "Set MLX_PORT to a free port and try again."
-  exit 1
-fi
-
-LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
-
-download_model() {
-  case "$1" in
-    modelscope)
-      echo "Downloading $MLX_MODEL from ModelScope to $LOCAL_MODEL_DIR..."
-      python3 -c "
-import sys
-try:
-    from modelscope import snapshot_download
-    snapshot_download(model_id='$MLX_MODEL', local_dir='$LOCAL_MODEL_DIR')
-except Exception as e:
-    print(f'ModelScope download failed: {e}', file=sys.stderr)
-    sys.exit(1)
-"
-      ;;
-    huggingface)
-      echo "Downloading $MLX_MODEL from Hugging Face Hub to $LOCAL_MODEL_DIR..."
-      python3 -c "
+# _download_via_huggingface <model_id> <local_dir>
+_download_via_huggingface() {
+  local model_id="$1" local_dir="$2"
+  echo "Downloading $model_id from Hugging Face Hub to $local_dir..."
+  python3 -c "
 import sys
 try:
     from huggingface_hub import snapshot_download
-    snapshot_download(repo_id='$MLX_MODEL', local_dir='$LOCAL_MODEL_DIR')
+    snapshot_download(repo_id='$model_id', local_dir='$local_dir')
 except Exception as e:
     print(f'Hugging Face download failed: {e}', file=sys.stderr)
     sys.exit(1)
 "
-      ;;
+}
+
+# _download_via_modelscope <model_id> <local_dir>
+_download_via_modelscope() {
+  local model_id="$1" local_dir="$2"
+  echo "Downloading $model_id from ModelScope to $local_dir..."
+  python3 -c "
+import sys
+try:
+    from modelscope import snapshot_download
+    snapshot_download(model_id='$model_id', local_dir='$local_dir')
+except Exception as e:
+    print(f'ModelScope download failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+}
+
+# _download_via <huggingface|modelscope> <model_id> <local_dir>
+_download_via() {
+  local source="$1" model_id="$2" local_dir="$3"
+  case "$source" in
+    modelscope) run_with_timeout 90 5 -- _download_via_modelscope "$model_id" "$local_dir" ;;
+    huggingface) run_with_timeout 90 5 -- _download_via_huggingface "$model_id" "$local_dir" ;;
+    *) echo "Unknown download source: $source" >&2; return 1 ;;
   esac
 }
 
-if [[ ! -d "$LOCAL_MODEL_DIR" || -z "$(ls -A "$LOCAL_MODEL_DIR" 2>/dev/null)" ]]; then
-  case "${MLXLM_USE_MODELSCOPE:-False}" in
-    [Tt][Rr][Uu][Ee]) PRIMARY=modelscope; FALLBACK=huggingface ;;
-    *) PRIMARY=huggingface; FALLBACK=modelscope ;;
-  esac
+# sync_model <model_id> <local_dir> <primary> <fallback>
+# Ensures <local_dir> holds a current copy of <model_id>, trying <primary>
+# then <fallback> (each huggingface|modelscope). If <local_dir> doesn't
+# exist/is empty yet (first run), both sources failing is a hard error. If
+# it already has content, both sources failing only warns and keeps the
+# existing copy.
+sync_model() {
+  local model_id="$1" local_dir="$2" primary="$3" fallback="$4" mode="${5:-update}"
+  local already_present=0
+  if [[ -d "$local_dir" && -n "$(ls -A "$local_dir" 2>/dev/null)" ]]; then
+    already_present=1
+  fi
 
-  if ! download_model "$PRIMARY"; then
-    echo "Download via $PRIMARY failed, trying $FALLBACK..."
-    rm -rf "$LOCAL_MODEL_DIR"
-    if ! download_model "$FALLBACK"; then
-      echo "Error: failed to download $MLX_MODEL from both Hugging Face and ModelScope."
+  if [[ $already_present -eq 1 ]]; then
+    if [[ "$mode" == "install-only" ]]; then
+      return 0
+    fi
+    echo "Checking $model_id for updates..."
+  else
+    echo "Model $model_id not found locally, downloading..."
+  fi
+
+  if _download_via "$primary" "$model_id" "$local_dir"; then
+    return 0
+  fi
+
+  echo "Download via $primary failed, trying $fallback..." >&2
+  if [[ $already_present -eq 0 ]]; then
+    rm -rf "$local_dir"
+  fi
+
+  if _download_via "$fallback" "$model_id" "$local_dir"; then
+    return 0
+  fi
+
+  if [[ $already_present -eq 0 ]]; then
+    echo "Error: failed to download $model_id from both Hugging Face and ModelScope." >&2
+    return 1
+  fi
+
+  echo "Warning: update check failed for both sources, continuing with existing local copy of $model_id." >&2
+  return 0
+}
+
+main() {
+  set -e
+
+  local subcommand="${1:-}"
+  local ensure_mode="install-only"
+  if [[ "$subcommand" == "update" ]]; then
+    ensure_mode="update"
+  fi
+
+  if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
+    echo "MLX requires an Apple Silicon Mac (macOS + arm64), cannot continue"
+    exit 1
+  fi
+
+  # Ensure opencode bin dir is on PATH (installer adds it to .zshrc but current shell may not have it)
+  [[ -d "$HOME/.opencode/bin" ]] && export PATH="$HOME/.opencode/bin:$PATH"
+
+  if ! ensure_opencode_current "$ensure_mode"; then
+    exit 1
+  fi
+
+  if [[ "$subcommand" != "update" ]]; then
+    # Set appropriate GPU memory tuning based on the installed memory size
+    RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+    RAM_GB=$((RAM_BYTES / 1073741824))
+
+    # Subtract OS_RESERVE_GB from available RAM for GPU limit (rounded down to nearest 1024MB)
+    GPU_WIRED_LIMIT=$(( (RAM_GB - OS_RESERVE_GB) * 1024 ))
+
+    # Ensure minimum 24GB (24576 MB) limit for smaller systems
+    if [[ $GPU_WIRED_LIMIT -lt 24576 ]]; then
+      echo "Error: ${RAM_GB}GB RAM detected. Minimum 32GB required."
+      exit 1
+    fi
+
+    echo "Detected ${RAM_GB}GB RAM -> GPU: $((GPU_WIRED_LIMIT/1024))GB"
+
+    if [[ $RAM_GB -lt 64 ]]; then
+      echo "Warning: $MLX_MODEL may need ~45GB for weights + KV cache and may not fit"
+      echo "in ${RAM_GB}GB RAM. Override with a smaller/lower-bit model via the"
+      echo "MLX_MODEL environment variable if you hit an OOM."
+    fi
+
+    # The mac default is quite conservative and limits the GPU memory too much
+    # increasing it greatly improved local llm performance
+    current_limit=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "unknown")
+    if [[ "$current_limit" != "$GPU_WIRED_LIMIT" ]]; then
+      echo "GPU limit (iogpu.wired_limit_mb) is $current_limit, setting to $GPU_WIRED_LIMIT (requires sudo)..."
+      sudo sysctl iogpu.wired_limit_mb=$GPU_WIRED_LIMIT
+    fi
+  fi
+
+  # Set up a dedicated venv for mlx-lm so it doesn't pollute system/other project Python envs
+  MLX_DIR="$HOME/.opencode_mlx"
+  VENV_PATH="$MLX_DIR/venv"
+  mkdir -p "$MLX_DIR"
+
+  # We download models into our own local_dir below rather than the default HF cache, so
+  # ~/.cache/huggingface/hub is never created. mlx_lm.server's GET /v1/models handler still
+  # unconditionally scans it (huggingface_hub.scan_cache_dir), and raises CacheNotFound in an
+  # uncaught exception when it's missing - which leaves that one HTTP connection hanging with
+  # no response, ever, since the handler never gets to write one. opencode polls /v1/models as
+  # a connectivity check, so hitting this mid-session silently freezes it (no error, no retry
+  # message) instead of failing cleanly. An empty dir is enough to satisfy the scan.
+  mkdir -p "$HOME/.cache/huggingface/hub"
+
+  if [[ ! -d "$VENV_PATH" ]]; then
+    echo "Creating virtual environment for mlx-lm..."
+    python3 -m venv "$VENV_PATH"
+  fi
+
+  source "$VENV_PATH/bin/activate"
+
+  if ! ensure_mlx_lm_current "$ensure_mode"; then
+    exit 1
+  fi
+
+  # mlx-lm's own --model download path always goes through huggingface_hub, with no
+  # ModelScope support via its own downloader in this flow, so a huggingface.co
+  # reachability check isn't enough (the homepage can respond while large model-weight
+  # transfers still get reset). Instead we download the model ourselves ahead of time,
+  # trying Hugging Face first and falling back to ModelScope on failure (or vice versa
+  # if MLXLM_USE_MODELSCOPE is already set true), then point mlx_lm.server at the
+  # resulting local directory so it never touches the network on its own.
+  if ! python3 -c "import modelscope" >/dev/null 2>&1; then
+    echo "Installing modelscope package (used as a model download fallback)..."
+    pip install modelscope
+  fi
+
+  # 8080 is commonly held by other local dev tooling (e.g. Rancher Desktop's Lima VM
+  # SSH tunnel binds it permanently), which uvicorn only discovers *after* finishing
+  # its lifespan startup (loading the whole model) and only then trying to bind the
+  # socket - so a collision wastes the full load time before failing. Default to a
+  # less commonly used port and fail fast below if it's still taken.
+  if [[ "$subcommand" != "update" ]]; then
+    MLX_PORT="${MLX_PORT:-8090}"
+
+    if lsof -i ":$MLX_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "Error: port $MLX_PORT is already in use by another process:"
+      lsof -i ":$MLX_PORT" -sTCP:LISTEN
+      echo "Set MLX_PORT to a free port and try again."
       exit 1
     fi
   fi
-fi
 
-echo "Starting mlx_lm.server with model $MLX_MODEL on port $MLX_PORT..."
-mlx_lm.server \
-  --model "$LOCAL_MODEL_DIR" \
-  --host 127.0.0.1 \
-  --port "$MLX_PORT" \
-  > "$MLX_DIR/server.log" 2>&1 &
-SERVER_PID=$!
+  LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
 
-cleanup() {
-  if kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "Stopping mlx_lm.server (pid $SERVER_PID)..."
-    kill "$SERVER_PID" 2>/dev/null
-    wait "$SERVER_PID" 2>/dev/null
-  fi
-}
-trap cleanup EXIT INT TERM
+  # Defaults to ModelScope-first: HF is blocked in this author's environment,
+  # and under always-on update checks a blocked primary now costs latency on
+  # every launch, not just the first. Set MLXLM_USE_MODELSCOPE=false on a
+  # machine where HF is reachable and preferred.
+  case "${MLXLM_USE_MODELSCOPE:-True}" in
+    [Ff][Aa][Ll][Ss][Ee]) PRIMARY=huggingface; FALLBACK=modelscope ;;
+    *) PRIMARY=modelscope; FALLBACK=huggingface ;;
+  esac
 
-echo "Waiting for mlx_lm.server to come up (first run may download the model, this can take several minutes)..."
-READY=0
-for i in $(seq 1 180); do
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "mlx_lm.server exited unexpectedly, last log lines:"
-    tail -n 40 "$MLX_DIR/server.log"
+  if ! sync_model "$MLX_MODEL" "$LOCAL_MODEL_DIR" "$PRIMARY" "$FALLBACK" "$ensure_mode"; then
     exit 1
   fi
-  if curl -s -o /dev/null "http://127.0.0.1:$MLX_PORT/v1/models"; then
-    READY=1
-    break
+
+  if [[ "$subcommand" == "update" ]]; then
+    echo "Update check complete."
+    return 0
   fi
-  sleep 1
-done
 
-if [[ $READY -ne 1 ]]; then
-  echo "Timed out waiting for mlx_lm.server to start, last log lines:"
-  tail -n 40 "$MLX_DIR/server.log"
-  exit 1
-fi
+  # Truncate once per script run; start_mlx_server appends so a crash's trace survives a restart.
+  : > "$MLX_DIR/server.log"
 
-echo "mlx_lm.server is up."
+  diagnose_server_crash() {
+    if grep -qE "Insufficient Memory|kIOGPUCommandBufferCallbackErrorOutOfMemory|OutOfMemory" "$MLX_DIR/server.log" 2>/dev/null; then
+      cat >&2 <<EOF
 
-LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
+mlx_lm.server ran out of GPU memory (Metal OOM) and crashed. This tends to
+happen on large prompts (e.g. reviewing a big PR diff) that grow the KV
+cache past the GPU memory budget this script configured
+(iogpu.wired_limit_mb = ${GPU_WIRED_LIMIT}). Options:
+  - Use a smaller/lower-bit model: MLX_MODEL=... $0
+  - Lower MLX_CONTEXT_LIMIT so opencode compacts history sooner
+  - Give the GPU more headroom by lowering OS_RESERVE_GB in this script
+    (leaves less for the OS/other apps - test carefully)
+  - Avoid feeding it very large diffs/context in a single turn
+EOF
+    else
+      echo "" >&2
+      echo "mlx_lm.server (pid $SERVER_PID) crashed unexpectedly." >&2
+    fi
+    echo "Last log lines:" >&2
+    tail -n 40 "$MLX_DIR/server.log" >&2
+  }
+
+  start_mlx_server() {
+    echo "Starting mlx_lm.server with model $MLX_MODEL on port $MLX_PORT..."
+    mlx_lm.server \
+      --model "$LOCAL_MODEL_DIR" \
+      --host 127.0.0.1 \
+      --port "$MLX_PORT" \
+      >> "$MLX_DIR/server.log" 2>&1 &
+    SERVER_PID=$!
+
+    echo "Waiting for mlx_lm.server to come up (first run may download the model, this can take several minutes)..."
+    local ready=0
+    for _ in $(seq 1 180); do
+      if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+        diagnose_server_crash
+        return 1
+      fi
+      if curl -s -o /dev/null "http://127.0.0.1:$MLX_PORT/v1/models"; then
+        ready=1
+        break
+      fi
+      sleep 1
+    done
+
+    if [[ $ready -ne 1 ]]; then
+      echo "Timed out waiting for mlx_lm.server to start, last log lines:" >&2
+      tail -n 40 "$MLX_DIR/server.log" >&2
+      return 1
+    fi
+
+    echo "mlx_lm.server is up."
+    return 0
+  }
+
+  cleanup() {
+    if kill -0 "${SERVER_PID:-}" 2>/dev/null; then
+      echo "Stopping mlx_lm.server (pid $SERVER_PID)..."
+      kill "$SERVER_PID" 2>/dev/null
+      wait "$SERVER_PID" 2>/dev/null
+    fi
+  }
+  trap cleanup EXIT INT TERM
+
+  if ! start_mlx_server; then
+    exit 1
+  fi
+
+  LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
 ## No subagents
 Do NOT spawn sub-agents or delegate to other agents. Work directly in the main conversation using read, edit, write, and bash tools. Subagents will loop and waste time on this model.
 ## Small steps only
@@ -217,9 +455,9 @@ When asked to implement a plan or feature:
 ## When stuck
 If you find yourself making more than 8 tool calls without producing a code change, STOP and tell the user what is blocking you. Do not keep searching."
 
-# Build config inline via OPENCODE_CONFIG_CONTENT
-# This avoids writing config files into the project directory
-export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
+  # Build config inline via OPENCODE_CONFIG_CONTENT
+  # This avoids writing config files into the project directory
+  export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
 {
   "model": "mlx/${LOCAL_MODEL_DIR}",
   "provider": {
@@ -229,7 +467,11 @@ export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
       },
       "models": {
         "${LOCAL_MODEL_DIR}": {
-          "tools": true
+          "tool_call": true,
+          "limit": {
+            "context": ${MLX_CONTEXT_LIMIT},
+            "output": ${MLX_OUTPUT_LIMIT}
+          }
         }
       }
     }
@@ -256,6 +498,14 @@ export OPENCODE_CONFIG_CONTENT=$(cat <<EOJSON
 EOJSON
 )
 
-export OPENCODE_DISABLE_AUTOUPDATE=1
+  export OPENCODE_DISABLE_AUTOUPDATE=1
 
-opencode "$@"
+  # --pure: opencode tries to auto-install an @opencode-ai/plugin package on startup, which
+  # 403s against a corporate npm registry. Harmless/fast in testing so far, but we don't
+  # configure any plugins, so disabling them costs nothing.
+  opencode --pure "$@"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
