@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for demo/lib/test_*.sh scripts.
+# Shared helpers for demo/test_*.sh scripts.
 
 pass=0
 fail=0

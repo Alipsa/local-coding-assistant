@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests for run_with_timeout. Run directly: bash demo/lib/test_timeout.sh
+# Tests for run_with_timeout. Run directly: bash demo/test_timeout.sh
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")"
-source ./timeout.sh
+source ./openCodeMlx
 
 pass=0
 fail=0

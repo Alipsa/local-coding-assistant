@@ -2,7 +2,7 @@
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./test_helpers.sh
-source ./updates.sh
+source ./openCodeMlx
 
 # Test helper for Scenario E: verify set -e doesn't abort on failed install
 test_set_e_with_failed_install() {
@@ -19,7 +19,7 @@ test_set_e_with_failed_install() {
   cat > "$test_script" <<'TESTEOF'
 set -e
 source ./test_helpers.sh
-source ./updates.sh
+source ./openCodeMlx
 _install_opencode_via_curl() { return 1; }
 PATH="/usr/bin:/bin:/usr/local/bin" HOME="$1" ensure_opencode_current 2>&1
 TESTEOF

@@ -2,7 +2,7 @@
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./test_helpers.sh
-source ./updates.sh
+source ./openCodeMlx
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
