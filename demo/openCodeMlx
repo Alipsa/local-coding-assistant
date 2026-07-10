@@ -120,9 +120,13 @@ fi
 
 LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
 
-case "${MLXLM_USE_MODELSCOPE:-False}" in
-  [Tt][Rr][Uu][Ee]) PRIMARY=modelscope; FALLBACK=huggingface ;;
-  *) PRIMARY=huggingface; FALLBACK=modelscope ;;
+# Defaults to ModelScope-first: HF is blocked in this author's environment,
+# and under always-on update checks a blocked primary now costs latency on
+# every launch, not just the first. Set MLXLM_USE_MODELSCOPE=false on a
+# machine where HF is reachable and preferred.
+case "${MLXLM_USE_MODELSCOPE:-True}" in
+  [Ff][Aa][Ll][Ss][Ee]) PRIMARY=huggingface; FALLBACK=modelscope ;;
+  *) PRIMARY=modelscope; FALLBACK=huggingface ;;
 esac
 
 if ! sync_model "$MLX_MODEL" "$LOCAL_MODEL_DIR" "$PRIMARY" "$FALLBACK"; then
