@@ -417,18 +417,45 @@ EOF
   }
 
   cleanup() {
-    if kill -0 "${SERVER_PID:-}" 2>/dev/null; then
-      echo "Stopping mlx_lm.server (main) (pid $SERVER_PID)..."
-      kill "$SERVER_PID" 2>/dev/null
-      wait "$SERVER_PID" 2>/dev/null
-    fi
-    if kill -0 "${SMALL_SERVER_PID:-}" 2>/dev/null; then
-      echo "Stopping mlx_lm.server (small) (pid $SMALL_SERVER_PID)..."
-      kill "$SMALL_SERVER_PID" 2>/dev/null
-      wait "$SMALL_SERVER_PID" 2>/dev/null
-    fi
+    # Signal both servers immediately, before any blocking wait. Previously
+    # this waited (unbounded) on the main server before even attempting the
+    # small one - if the main server was slow to release its much larger
+    # wired GPU allocation and the user got impatient and force-closed the
+    # terminal, the small server's kill was never sent at all, leaving it
+    # orphaned (reparented to launchd) and holding MLX_SMALL_PORT for the
+    # next run. Firing both signals up front means that even if this
+    # function is itself interrupted, both processes have already been sent
+    # a terminating signal.
+    [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null
+    [[ -n "${SMALL_SERVER_PID:-}" ]] && kill "$SMALL_SERVER_PID" 2>/dev/null
+
+    # wait_or_kill <label> <pid>: waits up to 10s for a SIGTERM'd process to
+    # exit, escalating to SIGKILL if it hasn't. Guards against a stuck
+    # process (or one that ignores SIGTERM) still causing an orphan.
+    wait_or_kill() {
+      local label="$1" pid="$2"
+      [[ -z "$pid" ]] && return 0
+      kill -0 "$pid" 2>/dev/null || return 0
+      echo "Stopping $label (pid $pid)..."
+      local waited=0
+      while kill -0 "$pid" 2>/dev/null && [[ $waited -lt 10 ]]; do
+        sleep 1
+        waited=$((waited + 1))
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "$label (pid $pid) still running after 10s, sending SIGKILL..." >&2
+        kill -9 "$pid" 2>/dev/null
+      fi
+      wait "$pid" 2>/dev/null
+    }
+    wait_or_kill "mlx_lm.server (main)" "${SERVER_PID:-}"
+    wait_or_kill "mlx_lm.server (small)" "${SMALL_SERVER_PID:-}"
   }
-  trap cleanup EXIT INT TERM
+  # HUP included: closing the terminal window/tab while opencode is running
+  # sends SIGHUP, which isn't trapped by default and previously killed this
+  # script without ever running cleanup - the exact path that orphaned a
+  # server process last time.
+  trap cleanup EXIT INT TERM HUP
 
   if ! start_mlx_server_instance "mlx_lm.server (main)" "$LOCAL_MODEL_DIR" "$MLX_PORT" "$MLX_DIR/server.log" "SERVER_PID" "$MLX_MODEL" "MLX_MODEL" "$MLX_PREFILL_STEP_SIZE" "$MLX_PROMPT_CACHE_BYTES"; then
     exit 1
