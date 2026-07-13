@@ -435,7 +435,11 @@ EOF
     wait_or_kill() {
       local label="$1" pid="$2"
       [[ -z "$pid" ]] && return 0
-      kill -0 "$pid" 2>/dev/null || return 0
+      if ! kill -0 "$pid" 2>/dev/null; then
+        echo "$label (pid $pid) already exited."
+        wait "$pid" 2>/dev/null
+        return 0
+      fi
       echo "Stopping $label (pid $pid)..."
       local waited=0
       while kill -0 "$pid" 2>/dev/null && [[ $waited -lt 10 ]]; do
