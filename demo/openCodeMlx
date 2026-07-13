@@ -426,8 +426,8 @@ EOF
     # next run. Firing both signals up front means that even if this
     # function is itself interrupted, both processes have already been sent
     # a terminating signal.
-    [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null
     [[ -n "${SMALL_SERVER_PID:-}" ]] && kill "$SMALL_SERVER_PID" 2>/dev/null
+    [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null
 
     # wait_or_kill <label> <pid>: waits up to 10s for a SIGTERM'd process to
     # exit, escalating to SIGKILL if it hasn't. Guards against a stuck
@@ -448,8 +448,8 @@ EOF
       fi
       wait "$pid" 2>/dev/null
     }
-    wait_or_kill "mlx_lm.server (main)" "${SERVER_PID:-}"
     wait_or_kill "mlx_lm.server (small)" "${SMALL_SERVER_PID:-}"
+    wait_or_kill "mlx_lm.server (main)" "${SERVER_PID:-}"
   }
   # HUP included: closing the terminal window/tab while opencode is running
   # sends SIGHUP, which isn't trapped by default and previously killed this
