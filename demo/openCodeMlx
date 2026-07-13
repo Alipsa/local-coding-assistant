@@ -429,15 +429,19 @@ EOF
     [[ -n "${SMALL_SERVER_PID:-}" ]] && kill "$SMALL_SERVER_PID" 2>/dev/null
     [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null
 
-    # wait_or_kill <label> <pid>: waits up to 10s for a SIGTERM'd process to
-    # exit, escalating to SIGKILL if it hasn't. Guards against a stuck
-    # process (or one that ignores SIGTERM) still causing an orphan.
-    wait_or_kill() {
+    # stop_and_report <label> <pid>: polls up to 10s for a SIGTERM'd process
+    # to exit, escalating to SIGKILL if it hasn't. Run in parallel for both
+    # servers below rather than one after the other - sequentially, a slow
+    # or stuck small server could occupy the full 10s before main was even
+    # checked, and if the script got killed during that wait (e.g. a second
+    # impatient Ctrl+C) main's line never printed at all, even though it
+    # had already exited from the signal above. Running both at once means
+    # each reports independently and isn't gated behind the other.
+    stop_and_report() {
       local label="$1" pid="$2"
       [[ -z "$pid" ]] && return 0
       if ! kill -0 "$pid" 2>/dev/null; then
         echo "$label (pid $pid) already exited."
-        wait "$pid" 2>/dev/null
         return 0
       fi
       echo "Stopping $label (pid $pid)..."
@@ -450,10 +454,16 @@ EOF
         echo "$label (pid $pid) still running after 10s, sending SIGKILL..." >&2
         kill -9 "$pid" 2>/dev/null
       fi
-      wait "$pid" 2>/dev/null
     }
-    wait_or_kill "mlx_lm.server (small)" "${SMALL_SERVER_PID:-}"
-    wait_or_kill "mlx_lm.server (main)" "${SERVER_PID:-}"
+    stop_and_report "mlx_lm.server (small)" "${SMALL_SERVER_PID:-}" &
+    stop_and_report "mlx_lm.server (main)" "${SERVER_PID:-}" &
+    wait
+
+    # Reap here, in this shell (the servers' actual parent) - by now each
+    # has either already exited or just been SIGKILLed above, so this
+    # returns immediately rather than blocking.
+    [[ -n "${SMALL_SERVER_PID:-}" ]] && wait "$SMALL_SERVER_PID" 2>/dev/null
+    [[ -n "${SERVER_PID:-}" ]] && wait "$SERVER_PID" 2>/dev/null
   }
   # HUP included: closing the terminal window/tab while opencode is running
   # sends SIGHUP, which isn't trapped by default and previously killed this
