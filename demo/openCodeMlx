@@ -7,8 +7,8 @@
 
 # --- User-tunable settings ---
 # Model to run - comment one out, uncomment the other to switch.
-# MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit}"
-MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
+MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit}"
+#MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
 
 # Small/fast model used for lightweight background tasks (e.g. session title
 # generation) so those don't wait on the full-size model. Served by its own
@@ -480,6 +480,10 @@ EOF
   fi
 
   LOCAL_MODEL_PROMPT="You are running on a local LLM with limited capacity. Follow these rules strictly:
+## Ground in shown content only
+- Base every factual claim about code (a bug, a missing import, an undefined name, incorrect logic, a behavior change) only on file contents, diffs, or tool output actually shown in this conversation.
+- Do not draw on anything you recall about this repository, a similarly named project, or a similar package from training data - even if the name looks familiar, assume you have not seen its real current contents unless it was shown here in this conversation.
+- Before asserting that an issue exists, quote the exact line(s) from the tool output or file read that support the claim. If you cannot quote a specific line backing the claim, do not make the claim - say you could not confirm it instead.
 ## No subagents
 Do NOT spawn sub-agents or delegate to other agents. Work directly in the main conversation using read, edit, write, and bash tools. Subagents will loop and waste time on this model.
 ## Small steps only
