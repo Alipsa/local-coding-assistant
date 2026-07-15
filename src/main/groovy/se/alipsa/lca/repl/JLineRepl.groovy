@@ -6,7 +6,6 @@ import org.jline.reader.Highlighter
 import org.jline.reader.LineReader
 import org.jline.reader.LineReaderBuilder
 import org.jline.reader.UserInterruptException
-import org.jline.reader.impl.DefaultParser
 import org.jline.terminal.Terminal
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStringBuilder
@@ -15,9 +14,11 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.intent.IntentCommandRouter
 import se.alipsa.lca.intent.IntentRoutingOutcome
 import se.alipsa.lca.intent.IntentRoutingPlan
+import se.alipsa.lca.shell.CommandInputNormaliser
 
 import java.nio.file.Paths
 import java.util.regex.Pattern
@@ -34,6 +35,7 @@ class JLineRepl {
 
   private final IntentCommandRouter intentRouter
   private final CommandExecutor commandExecutor
+  private final CommandInputNormaliser commandInputNormaliser
   private final Terminal terminal
   private final LineReader lineReader
   private final String prompt
@@ -44,6 +46,7 @@ class JLineRepl {
   JLineRepl(
     IntentCommandRouter intentRouter,
     CommandExecutor commandExecutor,
+    CommandInputNormaliser commandInputNormaliser,
     Terminal terminal,
     @Value('${lca.repl.prompt:lca> }') String prompt,
     @Value('${lca.repl.history-file:#{null}}') String historyFile,
@@ -51,13 +54,14 @@ class JLineRepl {
   ) {
     this.intentRouter = intentRouter
     this.commandExecutor = commandExecutor
+    this.commandInputNormaliser = commandInputNormaliser
     this.terminal = terminal
     this.prompt = prompt
     this.secondOpinionThreshold = secondOpinionThreshold
     this.userInputStyle = AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN + AttributedStyle.BRIGHT)
 
     // Create line reader with history and editing
-    def parser = new DefaultParser()
+    def parser = new FencedPasteParser()
     parser.setEofOnUnclosedQuote(true)
     parser.setEofOnEscapedNewLine(true)
 
@@ -69,6 +73,7 @@ class JLineRepl {
       .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
       .variable(LineReader.HISTORY_SIZE, 500)
       .variable(LineReader.BELL_STYLE, "none")
+      .variable(LineReader.SECONDARY_PROMPT_PATTERN, "paste... ")
 
     if (historyFile != null && !historyFile.trim().isEmpty()) {
       def historyPath = Paths.get(historyFile.trim())
@@ -101,24 +106,7 @@ class JLineRepl {
       try {
         String line = lineReader.readLine(prompt)
         log.debug("Read line from terminal: '{}'", line)
-        if (line == null || line.trim().isEmpty()) {
-          continue
-        }
-
-        String trimmed = line.trim()
-        log.debug("Trimmed input: '{}' (length: {})", trimmed, trimmed.length())
-
-        // Handle built-in commands that don't need routing
-        log.debug("About to call handleBuiltInCommand with: '{}'", trimmed)
-        if (handleBuiltInCommand(trimmed)) {
-          log.debug("Built-in command handler returned true - continuing loop")
-          continue
-        }
-        log.debug("Built-in handler returned false - routing through intent router")
-
-        // Route through IntentRouterAgent
-        processInput(trimmed)
-
+        handleInput(line)
       } catch (UserInterruptException e) {
         // Ctrl+C pressed
         log.debug("User interrupt")
@@ -134,6 +122,47 @@ class JLineRepl {
     }
 
     shutdown()
+  }
+
+  /**
+   * Handle one completed line already read from the terminal: built-in
+   * commands, closed fenced multi-line blocks, auto-detected bracketed
+   * paste candidates, and otherwise ordinary intent-routed input.
+   * Package-private so it can be exercised directly in tests without
+   * driving a real readLine() call.
+   */
+  void handleInput(String raw) {
+    if (raw == null || raw.trim().isEmpty()) {
+      return
+    }
+    String trimmed = raw.trim()
+
+    if (handleBuiltInCommand(trimmed)) {
+      return
+    }
+
+    String fencedContent = FencedPasteMarkers.extractContent(raw)
+    if (fencedContent != null) {
+      dispatchPaste(fencedContent)
+      return
+    }
+
+    if (commandInputNormaliser.isPasteCandidate(raw)) {
+      dispatchPaste(raw)
+      return
+    }
+
+    processInput(trimmed)
+  }
+
+  private void dispatchPaste(String content) {
+    if (content.trim().isEmpty()) {
+      return
+    }
+    String result = commandExecutor.executePasteContent(content, true, "default", PersonaMode.CODER)
+    if (result != null && !result.trim().isEmpty()) {
+      terminal.writer().println(result)
+    }
   }
 
   /**
