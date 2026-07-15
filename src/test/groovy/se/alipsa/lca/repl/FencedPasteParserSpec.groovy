@@ -54,6 +54,17 @@ class FencedPasteParserSpec extends Specification {
     result.line() == line
   }
 
+  def "a bare single-line ^^^ opener (no newline yet) is not treated as already closed"() {
+    given:
+    String line = "^^^"
+
+    when:
+    parser.parse(line, line.length(), Parser.ParseContext.ACCEPT_LINE)
+
+    then:
+    thrown(EOFError)
+  }
+
   def "a mismatched closer does not close the block"() {
     given:
     String line = "/paste\n^^^"
