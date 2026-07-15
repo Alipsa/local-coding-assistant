@@ -37,7 +37,7 @@ class FencedPasteMarkers {
 
   static boolean isClosed(String buffer) {
     String opener = openerOf(buffer)
-    opener != null && lastLineOf(buffer).trim() == CLOSERS.get(opener)
+    opener != null && buffer.contains('\n') && lastLineOf(buffer).trim() == CLOSERS.get(opener)
   }
 
   static String extractContent(String buffer) {

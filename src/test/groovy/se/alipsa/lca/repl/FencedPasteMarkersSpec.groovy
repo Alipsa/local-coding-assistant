@@ -33,6 +33,15 @@ class FencedPasteMarkersSpec extends Specification {
     FencedPasteMarkers.isClosed("^^^\n/end") == false
   }
 
+  def "isClosed does not treat a bare single-line ^^^ opener as already closed"() {
+    expect:
+    FencedPasteMarkers.isClosed("^^^") == false
+    FencedPasteMarkers.extractContent("^^^") == null
+    FencedPasteMarkers.isClosed("^^^\nfoo\n^^^") == true
+    FencedPasteMarkers.isClosed("^^^\n^^^") == true
+    FencedPasteMarkers.extractContent("^^^\n^^^") == ""
+  }
+
   def "extractContent strips marker lines and preserves inner blank lines"() {
     expect:
     FencedPasteMarkers.extractContent("/paste\nline one\n\nline two\n/end") == "line one\n\nline two"
