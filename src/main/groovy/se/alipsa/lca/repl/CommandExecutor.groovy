@@ -21,7 +21,7 @@ import java.util.regex.Pattern
 class CommandExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CommandExecutor)
-  private static final Pattern COMMAND_PATTERN = ~/^\/(\w+)\s*(.*)/
+  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/(\w+)\s*([\s\S]*)/)
 
   private final ShellCommands shellCommands
   private final McpCommands mcpCommands
