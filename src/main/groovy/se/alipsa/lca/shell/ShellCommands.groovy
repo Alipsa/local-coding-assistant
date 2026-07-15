@@ -262,7 +262,13 @@ Do not execute any commands.
       "- local-only: true|false",
       "- web-search: htmlunit|jsoup|disabled|default"
     ].join("\n")
-    formatSection("Help", "Commands:\n${commandLines}\n\nConfig options (/config):\n${configLines}")
+    String multilineLines = [
+      "- Paste multi-line text directly; it is sent as a single message.",
+      "- Or wrap it explicitly with /paste ... /end, or ^^^ ... ^^^ " +
+        "(pick whichever marker does not itself appear in the pasted content)."
+    ].join("\n")
+    formatSection("Help",
+      "Commands:\n${commandLines}\n\nConfig options (/config):\n${configLines}\n\nMulti-line input:\n${multilineLines}")
   }
 
   ShellCommands(
