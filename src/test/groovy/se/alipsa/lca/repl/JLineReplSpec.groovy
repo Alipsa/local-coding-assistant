@@ -1,0 +1,76 @@
+package se.alipsa.lca.repl
+
+import org.jline.terminal.Terminal
+import org.jline.terminal.TerminalBuilder
+import se.alipsa.lca.agent.PersonaMode
+import se.alipsa.lca.intent.IntentCommandRouter
+import se.alipsa.lca.intent.IntentRoutingOutcome
+import se.alipsa.lca.intent.IntentRoutingPlan
+import se.alipsa.lca.shell.CommandInputNormaliser
+import se.alipsa.lca.shell.ShellSettings
+import spock.lang.Specification
+
+class JLineReplSpec extends Specification {
+
+  IntentCommandRouter intentRouter = Mock()
+  CommandExecutor commandExecutor = Mock()
+  CommandInputNormaliser normaliser = new CommandInputNormaliser(new ShellSettings(true))
+  Terminal terminal = TerminalBuilder.builder()
+    .streams(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream())
+    .system(false)
+    .dumb(true)
+    .build()
+
+  JLineRepl repl = new JLineRepl(intentRouter, commandExecutor, normaliser, terminal, "lca> ", null, 0.6d)
+
+  def cleanup() {
+    terminal.close()
+  }
+
+  def "a fenced /paste block dispatches directly, bypassing intent routing"() {
+    when:
+    repl.handleInput("/paste\nline one\nline two\n/end")
+
+    then:
+    1 * commandExecutor.executePasteContent("line one\nline two", true, "default", PersonaMode.CODER) >> "sent"
+    0 * intentRouter.routeDetails(_)
+  }
+
+  def "a fenced ^^^ block dispatches directly"() {
+    when:
+    repl.handleInput("^^^\nfoo\nbar\n^^^")
+
+    then:
+    1 * commandExecutor.executePasteContent("foo\nbar", true, "default", PersonaMode.CODER) >> "sent"
+    0 * intentRouter.routeDetails(_)
+  }
+
+  def "an empty fenced block is a no-op"() {
+    when:
+    repl.handleInput("/paste\n/end")
+
+    then:
+    0 * commandExecutor.executePasteContent(_, _, _, _)
+    0 * intentRouter.routeDetails(_)
+  }
+
+  def "raw multi-line text with no leading slash auto-dispatches as a paste candidate"() {
+    when:
+    repl.handleInput("first line\nsecond line")
+
+    then:
+    1 * commandExecutor.executePasteContent("first line\nsecond line", true, "default", PersonaMode.CODER) >> "sent"
+    0 * intentRouter.routeDetails(_)
+  }
+
+  def "single-line input still routes through the intent classifier as before"() {
+    given:
+    def plan = new IntentRoutingPlan(commands: [], confidence: 1.0d, explanation: null)
+
+    when:
+    repl.handleInput("what does this project do")
+
+    then:
+    1 * intentRouter.routeDetails("what does this project do") >> new IntentRoutingOutcome(plan: plan, result: null)
+  }
+}

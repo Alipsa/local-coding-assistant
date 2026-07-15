@@ -1705,6 +1705,9 @@ class ShellCommandsSpec extends Specification {
     output.contains("Config options (/config):")
     output.contains("- intent: enabled|disabled|default")
     output.contains("- web-search: htmlunit|jsoup|disabled|default")
+    output.contains("Multi-line input:")
+    output.contains("/paste ... /end")
+    output.contains("^^^ ... ^^^")
     listed == sorted
     !output.contains("/clear")
     !output.contains("/history")

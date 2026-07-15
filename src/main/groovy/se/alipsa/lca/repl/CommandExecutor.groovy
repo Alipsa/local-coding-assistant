@@ -21,7 +21,7 @@ import java.util.regex.Pattern
 class CommandExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CommandExecutor)
-  private static final Pattern COMMAND_PATTERN = ~/^\/(\w+)\s*(.*)/
+  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/(\w+)\s*([\s\S]*)/)
 
   private final ShellCommands shellCommands
   private final McpCommands mcpCommands
@@ -97,6 +97,17 @@ class CommandExecutor {
       default:
         return "Unknown command: /${command}. Type /help for available commands."
     }
+  }
+
+  /**
+   * Dispatch already-known paste content directly to ShellCommands.paste,
+   * bypassing COMMAND_PATTERN/parseArgs entirely. Used by JLineRepl for
+   * both auto-detected bracketed-paste blobs and closed fenced blocks,
+   * neither of which should be round-tripped through a re-serialized
+   * command string.
+   */
+  String executePasteContent(String content, boolean send, String session, PersonaMode persona) {
+    shellCommands.paste(content, "/end", send, session, persona)
   }
 
   private String executeChat(String args) {
