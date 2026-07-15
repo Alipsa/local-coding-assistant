@@ -65,6 +65,18 @@ class FencedPasteParserSpec extends Specification {
     thrown(EOFError)
   }
 
+  def "an unterminated block reports the closer, not the opener, as missing"() {
+    given:
+    String line = "/paste"
+
+    when:
+    parser.parse(line, line.length(), Parser.ParseContext.ACCEPT_LINE)
+
+    then:
+    EOFError e = thrown(EOFError)
+    e.missing == "/end"
+  }
+
   def "a mismatched closer does not close the block"() {
     given:
     String line = "/paste\n^^^"

@@ -29,7 +29,7 @@ class FencedPasteParser extends DefaultParser {
       if (opener != null) {
         if (!FencedPasteMarkers.isClosed(line)) {
           String closer = FencedPasteMarkers.CLOSERS.get(opener)
-          throw new EOFError(-1, -1, "Paste block open, end with a line containing only '${closer}'", opener)
+          throw new EOFError(-1, -1, "Paste block open, end with a line containing only '${closer}'", closer)
         }
         return super.parse(line, cursor, Parser.ParseContext.COMPLETE)
       }
