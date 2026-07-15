@@ -33,4 +33,16 @@ class CommandExecutorSpec extends Specification {
     then:
     result == "Invalid command format. Expected: /command [args]"
   }
+
+  def "executePasteContent forwards directly to ShellCommands.paste without re-parsing"() {
+    given:
+    String content = "/review --code \"whatever\"\nmore lines that would break COMMAND_PATTERN reparsing"
+
+    when:
+    String result = executor.executePasteContent(content, true, "default", PersonaMode.CODER)
+
+    then:
+    1 * shellCommands.paste(content, "/end", true, "default", PersonaMode.CODER) >> "sent"
+    result == "sent"
+  }
 }

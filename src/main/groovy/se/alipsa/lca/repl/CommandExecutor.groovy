@@ -99,6 +99,17 @@ class CommandExecutor {
     }
   }
 
+  /**
+   * Dispatch already-known paste content directly to ShellCommands.paste,
+   * bypassing COMMAND_PATTERN/parseArgs entirely. Used by JLineRepl for
+   * both auto-detected bracketed-paste blobs and closed fenced blocks,
+   * neither of which should be round-tripped through a re-serialized
+   * command string.
+   */
+  String executePasteContent(String content, boolean send, String session, PersonaMode persona) {
+    shellCommands.paste(content, "/end", send, session, persona)
+  }
+
   private String executeChat(String args) {
     Map<String, Object> parsed = parseArgs(args)
     shellCommands.chat(
