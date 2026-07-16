@@ -5,9 +5,12 @@ import groovy.transform.CompileStatic
 import javax.swing.JEditorPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
+import javax.swing.Timer
 import javax.swing.text.html.HTMLEditorKit
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.event.ActionEvent
+import java.awt.event.ActionListener
 
 /**
  * Scrollable conversation transcript. Renders the whole conversation into a single
@@ -29,6 +32,9 @@ class ConversationView extends JPanel {
   private final JEditorPane pane = new JEditorPane()
   private final JScrollPane scrollPane
   private final StringBuilder body = new StringBuilder()
+  private final StringBuilder liveBlock = new StringBuilder()
+  private boolean blockOpen = false
+  private final Timer coalesceTimer
 
   ConversationView(MarkdownRenderer markdownRenderer) {
     this.markdownRenderer = markdownRenderer
@@ -40,6 +46,8 @@ class ConversationView extends JPanel {
     scrollPane = new JScrollPane(pane)
     scrollPane.getVerticalScrollBar().setUnitIncrement(16)
     add(scrollPane, BorderLayout.CENTER)
+    coalesceTimer = new Timer(60, { ActionEvent e -> render() } as ActionListener)
+    coalesceTimer.setRepeats(false)
     render()
   }
 
@@ -53,9 +61,39 @@ class ConversationView extends JPanel {
     render()
   }
 
+  /** Open a live, growing block rendered as a fenced code region. */
+  void beginBlock() {
+    liveBlock.setLength(0)
+    blockOpen = true
+    renderCoalesced()
+  }
+
+  /** Append one line to the open live block (opening one if needed). */
+  void appendBlock(String line) {
+    if (!blockOpen) {
+      beginBlock()
+    }
+    liveBlock.append(MarkdownRenderer.escapeHtml(line ?: "")).append("\n")
+    renderCoalesced()
+  }
+
+  /** Commit the live block to the transcript and flush immediately. */
+  void endBlock() {
+    if (blockOpen && liveBlock.length() > 0) {
+      body.append("<div class='msg-assistant'><div class='role'>lca</div><pre>")
+        .append(liveBlock).append("</pre></div>")
+    }
+    blockOpen = false
+    liveBlock.setLength(0)
+    coalesceTimer.stop()
+    render()
+  }
+
   /** Remove all messages from the transcript. */
   void clear() {
     body.setLength(0)
+    liveBlock.setLength(0)
+    blockOpen = false
     render()
   }
 
@@ -71,8 +109,25 @@ class ConversationView extends JPanel {
     "<div class='${cssClass}'><div class='role'>${role}</div>${innerHtml}</div>".toString()
   }
 
+  /** Coalesce bursts of appends into at most one render per timer window. */
+  private void renderCoalesced() {
+    if (!coalesceTimer.isRunning()) {
+      coalesceTimer.start()
+    }
+  }
+
+  /** The full HTML document for the current state (committed body + any open live block). */
+  String snapshotHtml() {
+    StringBuilder live = new StringBuilder()
+    if (blockOpen && liveBlock.length() > 0) {
+      live.append("<div class='msg-assistant'><div class='role'>lca</div><pre>")
+        .append(liveBlock).append("</pre></div>")
+    }
+    "<html><head><style>${markdownRenderer.css()}${EXTRA_CSS}</style></head><body>${body}${live}</body></html>".toString()
+  }
+
   private void render() {
-    String doc = "<html><head><style>${markdownRenderer.css()}${EXTRA_CSS}</style></head><body>${body}</body></html>"
+    String doc = snapshotHtml()
     pane.setText(doc)
     pane.setCaretPosition(pane.getDocument().getLength())
   }
