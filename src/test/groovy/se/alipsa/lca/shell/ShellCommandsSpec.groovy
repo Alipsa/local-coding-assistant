@@ -1838,6 +1838,26 @@ class ShellCommandsSpec extends Specification {
     !rendered.contains("## Findings\n\n- None")
   }
 
+  def "shellHeader renders the command with a prompt prefix"() {
+    expect:
+    ShellCommands.shellHeader("git status") == '$ git status'
+  }
+
+  def "shellFooter renders exit status and truncation"() {
+    given:
+    def ok = new se.alipsa.lca.tools.CommandRunner.CommandResult(
+      exitCode: 0, success: true, timedOut: false, truncated: false)
+    def failTrunc = new se.alipsa.lca.tools.CommandRunner.CommandResult(
+      exitCode: 2, success: false, timedOut: false, truncated: true)
+    def timedOut = new se.alipsa.lca.tools.CommandRunner.CommandResult(
+      exitCode: -1, success: false, timedOut: true, truncated: false)
+
+    expect:
+    ShellCommands.shellFooter(ok) == '[exit 0]'
+    ShellCommands.shellFooter(failTrunc) == '[exit 2 — failed] (output truncated)'
+    ShellCommands.shellFooter(timedOut) == '[exit timeout — failed]'
+  }
+
   private ShellCommands commitCommandsFor(GitTool repoGit) {
     new ShellCommands(
       agent,

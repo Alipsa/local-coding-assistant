@@ -1274,17 +1274,15 @@ Try:
     new ShellExecution(formatDirectShellResult(trimmed, result), formatCapturedShellResult(trimmed, result, captured.toString()))
   }
 
-  private static String formatCapturedShellResult(String command, CommandRunner.CommandResult result, String output) {
-    StringBuilder builder = new StringBuilder()
-    builder.append('$ ').append(command).append("\n")
+  static String shellHeader(String command) {
+    '$ ' + command
+  }
+
+  static String shellFooter(CommandRunner.CommandResult result) {
     if (result == null) {
-      return builder.append("(no result)").toString()
+      return "(no result)"
     }
-    String out = output != null ? output.stripTrailing() : ""
-    if (!out.isEmpty()) {
-      builder.append(out).append("\n")
-    }
-    builder.append("[exit ")
+    StringBuilder builder = new StringBuilder("[exit ")
     if (result.timedOut) {
       builder.append("timeout")
     } else {
@@ -1294,6 +1292,20 @@ Try:
     if (result.truncated) {
       builder.append(" (output truncated)")
     }
+    builder.toString()
+  }
+
+  private static String formatCapturedShellResult(String command, CommandRunner.CommandResult result, String output) {
+    StringBuilder builder = new StringBuilder()
+    builder.append(shellHeader(command)).append("\n")
+    if (result == null) {
+      return builder.append("(no result)").toString()
+    }
+    String out = output != null ? output.stripTrailing() : ""
+    if (!out.isEmpty()) {
+      builder.append(out).append("\n")
+    }
+    builder.append(shellFooter(result))
     builder.toString().stripTrailing()
   }
 
