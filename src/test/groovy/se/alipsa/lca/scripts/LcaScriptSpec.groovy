@@ -118,8 +118,8 @@ class LcaScriptSpec extends Specification {
     def log = Files.readString(ollamaLog)
     log.contains("pull qwen3.6:35b-a3b")
     log.contains("pull gpt-oss:20b")
-    log.contains("create qwen3.6-96k")
-    log.contains("create gpt-oss-96k")
+    log.contains("create qwen3.6-128k")
+    log.contains("create gpt-oss-64k")
     log.contains("create qwen3.6-review")
     Files.exists(javaLog)
 

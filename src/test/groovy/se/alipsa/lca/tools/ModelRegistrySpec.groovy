@@ -73,11 +73,11 @@ class ModelRegistrySpec extends Specification {
 
   def "contextLength reads model_info context_length"() {
     given:
-    String json = '{"model_info": {"qwen3.architecture": "qwen3", "qwen3.context_length": 98304}}'
+    String json = '{"model_info": {"qwen3.architecture": "qwen3", "qwen3.context_length": 131072}}'
     ModelRegistry registry = new ShowRegistry(200, json)
 
     expect:
-    registry.contextLength("qwen3.6-96k:latest") == 98304
+    registry.contextLength("qwen3.6-128k:latest") == 131072
   }
 
   def "contextLength returns null when not reported"() {

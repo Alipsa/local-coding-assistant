@@ -87,9 +87,9 @@ EOF
 checkAndInstall qwen3.6:35b-a3b
 checkAndInstall gpt-oss:20b
 
-# Create custom models with larger context
-createCustomModel qwen3.6:35b-a3b qwen3.6-96k 98304
-createCustomModel gpt-oss:20b gpt-oss-96k 98304
+# Create custom models with larger context (128k=131072, 64k=65536)
+createCustomModel qwen3.6:35b-a3b qwen3.6-128k 131072
+createCustomModel gpt-oss:20b gpt-oss-64k 65536
 
 # Create review model with thinking disabled and smaller context for faster response
 echo "Creating review model qwen3.6-review from qwen3.6:35b-a3b..."
