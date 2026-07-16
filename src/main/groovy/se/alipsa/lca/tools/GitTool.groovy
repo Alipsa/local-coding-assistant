@@ -23,8 +23,10 @@ class GitTool {
   private final Path fixedRoot
   // Not thread-safe; create separate instances per thread/session.
   private final Object repoCheckLock = new Object()
-  private Boolean cachedRepoStatus = null
-  private Path cachedRepoRoot = null
+  // volatile: this bean is a GUI-shared singleton read from the EDT and the turn worker, and the
+  // isGitRepo cache uses double-checked locking, which is only correct with volatile fields.
+  private volatile Boolean cachedRepoStatus = null
+  private volatile Path cachedRepoRoot = null
 
   GitTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -50,6 +52,9 @@ class GitTool {
     try {
       return root.toRealPath()
     } catch (IOException e) {
+      // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+      // non-canonical path but record it rather than failing silently.
+      log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
       return root
     }
   }
@@ -192,7 +197,7 @@ class GitTool {
 
   /**
    * Remote-tracking branch names, e.g. {@code ["origin/main", "origin/feature/x"]}, excluding
-   * the {@code origin/HEAD} pointer. Empty when not a repo.
+   * each remote's {@code <remote>/HEAD} pointer. Empty when not a repo.
    */
   List<String> listRemoteBranches() {
     branchList(List.of("branch", "-r", "--format=%(refname:short)")).findAll { !it.endsWith("/HEAD") }

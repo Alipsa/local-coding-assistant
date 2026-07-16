@@ -66,6 +66,9 @@ class CommandRunner {
     try {
       return root.toRealPath()
     } catch (IOException e) {
+      // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+      // non-canonical path but record it rather than failing silently.
+      log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
       return root
     }
   }

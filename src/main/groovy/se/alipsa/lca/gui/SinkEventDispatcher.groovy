@@ -26,6 +26,9 @@ class SinkEventDispatcher {
       case SinkEvent.Kind.MESSAGE:
         view.addAssistantMessage(event.text)
         break
+      default:
+        // A Kind was added without a handler here — fail loudly rather than silently no-op.
+        throw new IllegalArgumentException("Unhandled SinkEvent kind: ${event.kind}")
     }
   }
 }

@@ -36,4 +36,28 @@ class HeaderBarSpec extends Specification {
       "a\nb"                 // newline
     ]
   }
+
+  def "checkoutCommandFor checks out a local branch directly"() {
+    expect:
+    HeaderBar.checkoutCommandFor("feature-a", true) == '! git checkout "feature-a"'
+  }
+
+  def "checkoutCommandFor creates a tracking branch from the fully-qualified remote ref"() {
+    expect:
+    // The remote qualifier is kept so the checkout is unambiguous with multiple remotes.
+    HeaderBar.checkoutCommandFor("origin/feature-x", false) == '! git checkout --track "origin/feature-x"'
+  }
+
+  @Unroll
+  def "checkoutCommandFor refuses the unsafe name '#name' (returns null)"() {
+    expect:
+    HeaderBar.checkoutCommandFor(name, isLocal) == null
+
+    where:
+    name               | isLocal
+    'x$(touch pwned)'  | true
+    'x`touch pwned`'   | false
+    '--upload-pack=e'  | true
+    'a;b'              | false
+  }
 }

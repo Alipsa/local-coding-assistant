@@ -1,6 +1,8 @@
 package se.alipsa.lca.shell
 
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Component
@@ -22,6 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger
 @CompileStatic
 @ConditionalOnProperty(name = "lca.gui.enabled", havingValue = "true")
 class SwingConfirmationService implements ConfirmationService {
+
+  private static final Logger log = LoggerFactory.getLogger(SwingConfirmationService)
 
   @Override
   ConfirmationChoice confirm(String prompt) {
@@ -57,7 +61,10 @@ class SwingConfirmationService implements ConfirmationService {
       } else {
         SwingUtilities.invokeAndWait(task)
       }
-    } catch (Exception ignored) {
+    } catch (Exception e) {
+      // Fail closed (CLOSED_OPTION → NO), but record why so a real dialog/headless failure is
+      // distinguishable from a genuine user "No".
+      log.warn("Confirmation dialog failed to display; treating as declined", e)
       return JOptionPane.CLOSED_OPTION
     }
     holder.get()

@@ -61,8 +61,8 @@ class GuiTurnController {
         sink.note("Usage: ! <shell command>")
         return new TurnResult(true)
       }
-      sink.beginBlock()
       try {
+        sink.beginBlock()
         sink.append('$ ' + command)
         String footer = bangCommandHandler.handle(
           input, "default", true, budgetedForwarder(sink, MAX_VIEW_LINES, MAX_VIEW_CHARS))
@@ -73,6 +73,8 @@ class GuiTurnController {
         log.error("Error running shell command: {}", input, e)
         sink.append("Error: ${e.message}".toString())
       } finally {
+        // endBlock is idempotent, so it safely closes the block on every path — including one
+        // where beginBlock itself failed (the block is simply never opened).
         sink.endBlock()
       }
       return new TurnResult(true)

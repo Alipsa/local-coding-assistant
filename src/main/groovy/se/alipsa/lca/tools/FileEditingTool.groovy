@@ -60,6 +60,9 @@ class FileEditingTool {
     try {
       return root.toRealPath()
     } catch (IOException e) {
+      // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+      // non-canonical path but record it: the "inside project root" check below is weaker without it.
+      log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
       return root
     }
   }

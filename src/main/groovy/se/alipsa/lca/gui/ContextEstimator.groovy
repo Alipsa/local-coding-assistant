@@ -54,10 +54,14 @@ class ContextEstimator {
       return cachedWindow
     }
     Integer reported = modelRegistry.contextLength(model)
-    int window = (reported != null && reported > 0) ? reported : defaultContextWindow
-    cachedModel = model
-    cachedWindow = window
-    window
+    if (reported != null && reported > 0) {
+      cachedModel = model
+      cachedWindow = reported
+      return reported
+    }
+    // Ollama did not report a size (unreachable, or the model is not pulled yet). Use the fallback
+    // WITHOUT caching it, so a later refresh re-queries and picks up the real size once available.
+    defaultContextWindow
   }
 
   int usedPercent(String sessionId) {

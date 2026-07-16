@@ -1,5 +1,7 @@
 package se.alipsa.lca.shell
 
+import groovy.transform.CompileStatic
+
 /**
  * Abstraction over how the assistant asks the user to confirm an action.
  *
@@ -7,6 +9,7 @@ package se.alipsa.lca.shell
  * Swing GUI shows a modal dialog ({@code SwingConfirmationService}). Extracting this seam
  * keeps {@link ShellCommands} free of any assumption about {@code System.in}.
  */
+@CompileStatic
 interface ConfirmationService {
 
   /**

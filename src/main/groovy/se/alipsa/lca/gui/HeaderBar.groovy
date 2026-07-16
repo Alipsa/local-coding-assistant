@@ -130,7 +130,14 @@ class HeaderBar extends JPanel {
     if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
       File dir = chooser.getSelectedFile()
       if (dir != null) {
-        workspace.changeBaseDir(dir.absolutePath)
+        Workspace.ChangeResult result = workspace.changeBaseDir(dir.absolutePath)
+        if (!result.success) {
+          // Do not signal success: the tools still point at the previous directory.
+          if (onCommandOutput != null) {
+            onCommandOutput.accept("Could not change base dir: ${result.message}".toString())
+          }
+          return
+        }
         refresh()
         if (onBaseDirChanged != null) {
           onBaseDirChanged.run()
@@ -179,23 +186,34 @@ class HeaderBar extends JPanel {
       return
     }
     // Validate the exact ref handed to git: a remote selection keeps its "remote/" qualifier.
-    if (!isSafeBranchName(selected)) {
+    String command = checkoutCommandFor(selected, isLocal)
+    if (command == null) {
       if (onCommandOutput != null) {
         onCommandOutput.accept("Refusing to switch to branch with unsafe name: ${selected}".toString())
       }
       refresh()
       return
     }
-    // Local branch: check it out directly. Remote-only branch: create a tracking branch from the
-    // fully-qualified ref so the checkout is unambiguous even when several remotes share the name.
-    String command = isLocal
-      ? "! git checkout \"${selected}\"".toString()
-      : "! git checkout --track \"${selected}\"".toString()
     String output = bangCommandHandler.handle(command, "default", true)
     if (onCommandOutput != null && output != null && !output.trim().isEmpty()) {
       onCommandOutput.accept(output)
     }
     refresh()
+  }
+
+  /**
+   * The {@code ! git checkout ...} command for a branch selection, or {@code null} when the ref
+   * fails the {@link #isSafeBranchName} allowlist. A local branch is checked out directly; a
+   * remote-only branch creates a tracking branch from the fully-qualified ref, so the checkout is
+   * unambiguous even when several remotes share the same short name.
+   */
+  static String checkoutCommandFor(String selected, boolean isLocal) {
+    if (!isSafeBranchName(selected)) {
+      return null
+    }
+    isLocal
+      ? "! git checkout \"${selected}\"".toString()
+      : "! git checkout --track \"${selected}\"".toString()
   }
 
   final void refresh() {

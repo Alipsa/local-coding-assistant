@@ -1,4 +1,4 @@
-# Swing based alternative to the to the lca cli
+# Swing based alternative to the lca cli
 
 ## Rationale
 - a swing based gui will give us much better input control
@@ -57,6 +57,6 @@
 | Context: [░░░░░░░░░░] 8%   |   Autocompact: [███░░░░░░░] 36%   |   Main memory:  43 / 64 Gb   |   GPU memory: 18 / 52 Gb                              |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------
 
-- llm responses should be formatted in a similar style to OpenCode (use color, font and space to make the conversation clear)
+- llm responses should be formatted in a similar style to OpenCode (use colour, font and space to make the conversation clear)
 - use flatlaf for the look and feel
 - create a new launch command script called lcaGui to complement lca

@@ -118,19 +118,19 @@ class LcaMainFrame extends JFrame {
     }
 
     @Override
-    void note(String text) { publish(new SinkEvent(SinkEvent.Kind.NOTE, text)) }
+    void note(String text) { publish(SinkEvent.note(text)) }
 
     @Override
-    void beginBlock() { publish(new SinkEvent(SinkEvent.Kind.BLOCK_BEGIN, null)) }
+    void beginBlock() { publish(SinkEvent.blockBegin()) }
 
     @Override
-    void append(String line) { publish(new SinkEvent(SinkEvent.Kind.BLOCK_APPEND, line)) }
+    void append(String line) { publish(SinkEvent.blockAppend(line)) }
 
     @Override
-    void endBlock() { publish(new SinkEvent(SinkEvent.Kind.BLOCK_END, null)) }
+    void endBlock() { publish(SinkEvent.blockEnd()) }
 
     @Override
-    void message(String markdown) { publish(new SinkEvent(SinkEvent.Kind.MESSAGE, markdown)) }
+    void message(String markdown) { publish(SinkEvent.message(markdown)) }
 
     @Override
     protected void process(List<SinkEvent> chunks) {
