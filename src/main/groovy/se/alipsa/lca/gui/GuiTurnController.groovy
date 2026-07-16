@@ -61,12 +61,18 @@ class GuiTurnController {
         return new TurnResult(true)
       }
       sink.beginBlock()
-      sink.append('$ ' + command)
-      String footer = bangCommandHandler.handle(input, "default", true, budgetedForwarder(sink, MAX_VIEW_LINES))
-      if (footer != null && !footer.trim().isEmpty()) {
-        sink.append(footer)
+      try {
+        sink.append('$ ' + command)
+        String footer = bangCommandHandler.handle(input, "default", true, budgetedForwarder(sink, MAX_VIEW_LINES))
+        if (footer != null && !footer.trim().isEmpty()) {
+          sink.append(footer)
+        }
+      } catch (Exception e) {
+        log.error("Error running shell command: {}", input, e)
+        sink.append("Error: ${e.message}".toString())
+      } finally {
+        sink.endBlock()
       }
-      sink.endBlock()
       return new TurnResult(true)
     }
 

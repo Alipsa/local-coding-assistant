@@ -57,7 +57,8 @@ class GuiTurnControllerSpec extends Specification {
 
   def "multiple commands emit a routing note then one message each, in order"() {
     given:
-    router.routeDetails("both") >> new IntentRoutingOutcome(new IntentRoutingPlan(["/plan", "/review"], 0.9d, "x"), null)
+    router.routeDetails("both") >>
+      new IntentRoutingOutcome(new IntentRoutingPlan(["/plan", "/review"], 0.9d, "x"), null)
     executor.execute("/plan") >> "planned"
     executor.execute("/review") >> "reviewed"
 
@@ -72,7 +73,8 @@ class GuiTurnControllerSpec extends Specification {
     given:
     IntentRouterResult routerResult = new IntentRouterResult()
     routerResult.usedSecondOpinion = true
-    router.routeDetails("maybe") >> new IntentRoutingOutcome(new IntentRoutingPlan(["/chat"], 0.5d, "meh"), routerResult)
+    router.routeDetails("maybe") >>
+      new IntentRoutingOutcome(new IntentRoutingPlan(["/chat"], 0.5d, "meh"), routerResult)
     executor.execute("/chat") >> "answer"
 
     when:
@@ -124,6 +126,21 @@ class GuiTurnControllerSpec extends Specification {
 
     then:
     sink.events == ["note:Usage: ! <shell command>"]
+  }
+
+  def "a bang command that throws still closes the block and surfaces the error"() {
+    given:
+    bangCommandHandler.isBang("! boom") >> true
+    bangCommandHandler.strip("! boom") >> "boom"
+    bangCommandHandler.handle("! boom", "default", true, _ as Consumer) >> { throw new RuntimeException("kaboom") }
+
+    when:
+    controller.process("! boom", sink)
+
+    then:
+    sink.events.first() == "begin"
+    sink.events.last() == "end"
+    sink.events.any { it.contains("kaboom") }
   }
 
   def "an explicit slash command executes directly and emits its output as a message"() {
