@@ -66,6 +66,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Properties
 import java.util.Locale
+import java.util.function.Consumer
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Component("lcaShellCommands")
@@ -1234,17 +1235,32 @@ Try:
    * to the console. Used by the GUI, where stdout is not visible to the user.
    */
   String shellCommandCaptured(String command, String session) {
-    executeShell(command, session, false).captured
+    executeShell(command, session, false, null).captured
+  }
+
+  /**
+   * Same as {@link #shellCommandCaptured(String, String)} but forwards each output line to
+   * {@code lineConsumer} as it arrives, instead of returning the full captured body. Used by the
+   * GUI to stream output live; returns only the footer once the command completes.
+   */
+  String shellCommandCaptured(String command, String session, Consumer<String> lineConsumer) {
+    executeShell(command, session, false, lineConsumer).captured
   }
 
   private ShellExecution executeShell(String command, String session, boolean streamToConsole) {
+    executeShell(command, session, streamToConsole, null)
+  }
+
+  private ShellExecution executeShell(String command, String session, boolean streamToConsole,
+                                      Consumer<String> lineConsumer) {
     String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
     if (!decision.allowed) {
       String blocked = decision.message ?: "Command blocked by policy."
       return new ShellExecution(blocked, blocked)
     }
-    StringBuilder captured = new StringBuilder()
+    boolean streaming = lineConsumer != null
+    StringBuilder captured = streaming ? null : new StringBuilder()
     CommandRunner.OutputListener listener = { String stream, String line ->
       if (streamToConsole) {
         if ("ERR" == stream) {
@@ -1254,8 +1270,14 @@ Try:
           println(line)
         }
       }
-      synchronized (captured) {
-        captured.append(line).append(System.lineSeparator())
+      if (streaming) {
+        lineConsumer.accept(line)
+      } else {
+        synchronized (captured) {
+          if (captured.length() < DIRECT_SHELL_MAX_OUTPUT_CHARS) {
+            captured.append(line).append(System.lineSeparator())
+          }
+        }
       }
     } as CommandRunner.OutputListener
     CommandRunner.CommandResult result = commandRunner.runStreaming(
@@ -1271,7 +1293,17 @@ Try:
       "Exit ${result?.timedOut ? 'timeout' : result?.exitCode}; ${summary}"
     )
     appendShellCommandToConversation(session, trimmed, result)
-    new ShellExecution(formatDirectShellResult(trimmed, result), formatCapturedShellResult(trimmed, result, captured.toString()))
+    if (streaming) {
+      // The body has already been delivered line-by-line via lineConsumer; do not build the
+      // full-body captured/summary strings that nobody would read. Return just the footer so the
+      // caller can close the streamed block.
+      String footer = shellFooter(result)
+      return new ShellExecution(footer, footer)
+    }
+    new ShellExecution(
+      formatDirectShellResult(trimmed, result),
+      formatCapturedShellResult(trimmed, result, captured.toString())
+    )
   }
 
   static String shellHeader(String command) {
