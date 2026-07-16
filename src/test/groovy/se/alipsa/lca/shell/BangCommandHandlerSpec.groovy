@@ -59,4 +59,29 @@ class BangCommandHandlerSpec extends Specification {
     0 * shellCommands.shellCommandCaptured(_, _)
     out == ""
   }
+
+  def "strip returns the command after the bang"() {
+    expect:
+    handler.strip("!  git status ") == "git status"
+  }
+
+  def "the streaming overload passes the line consumer to shellCommandCaptured"() {
+    given:
+    def consumer = { String l -> } as java.util.function.Consumer
+
+    when:
+    handler.handle("! ls", "s1", true, consumer)
+
+    then:
+    1 * shellCommands.shellCommandCaptured("ls", "s1", consumer) >> "[exit 0]"
+  }
+
+  def "the streaming overload reports usage for a bare bang without calling the shell"() {
+    when:
+    String out = handler.handle("!   ", "s1", true, { String l -> } as java.util.function.Consumer)
+
+    then:
+    0 * shellCommands.shellCommandCaptured(_, _, _)
+    out == "Usage: ! <shell command>"
+  }
 }
