@@ -1,6 +1,7 @@
 package se.alipsa.lca.gui
 
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 
 import javax.swing.JEditorPane
 import javax.swing.JPanel
@@ -89,6 +90,13 @@ class ConversationView extends JPanel {
     render()
   }
 
+  /** Defensively commit and close any live block left open by a previous turn (idempotent). */
+  void closeAnyOpenBlock() {
+    if (blockOpen) {
+      endBlock()
+    }
+  }
+
   /** Remove all messages from the transcript. */
   void clear() {
     body.setLength(0)
@@ -117,13 +125,17 @@ class ConversationView extends JPanel {
   }
 
   /** The full HTML document for the current state (committed body + any open live block). */
+  @PackageScope
   String snapshotHtml() {
     StringBuilder live = new StringBuilder()
     if (blockOpen && liveBlock.length() > 0) {
       live.append("<div class='msg-assistant'><div class='role'>lca</div><pre>")
         .append(liveBlock).append("</pre></div>")
     }
-    "<html><head><style>${markdownRenderer.css()}${EXTRA_CSS}</style></head><body>${body}${live}</body></html>".toString()
+    StringBuilder doc = new StringBuilder("<html><head><style>")
+    doc.append(markdownRenderer.css()).append(EXTRA_CSS)
+    doc.append("</style></head><body>").append(body).append(live).append("</body></html>")
+    doc.toString()
   }
 
   private void render() {

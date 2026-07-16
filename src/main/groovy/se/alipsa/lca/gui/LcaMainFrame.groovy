@@ -91,6 +91,8 @@ class LcaMainFrame extends JFrame {
     if (text == null || text.trim().isEmpty()) {
       return
     }
+    // Close any block a previous turn left open (e.g. late shell output after its worker finished).
+    conversationView.closeAnyOpenBlock()
     conversationView.addUserMessage(text)
     inputArea.setText("")
     setBusy(true)
