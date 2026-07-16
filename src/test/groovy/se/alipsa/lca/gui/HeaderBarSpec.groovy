@@ -48,6 +48,29 @@ class HeaderBarSpec extends Specification {
     HeaderBar.checkoutCommandFor("origin/feature-x", false) == '! git checkout --track "origin/feature-x"'
   }
 
+  def "branchItemsFor lists the current branch first, then locals, then unique remotes"() {
+    expect:
+    HeaderBar.branchItemsFor("main", ["main", "feature-a"], ["origin/feature-a", "origin/feature-b"]) ==
+      ["main", "feature-a", "origin/feature-b"]
+  }
+
+  def "branchItemsFor keeps a remote whose short name is not a local branch"() {
+    expect:
+    HeaderBar.branchItemsFor("main", ["main"], ["origin/main", "origin/topic"]) ==
+      ["main", "origin/topic"]
+  }
+
+  def "branchItemsFor falls back to the current branch, or (none), when nothing else exists"() {
+    expect:
+    HeaderBar.branchItemsFor("detached", [], []) == ["detached"]
+    HeaderBar.branchItemsFor(null, [], []) == ["(none)"]
+  }
+
+  def "branchItemsFor without a current branch lists locals in order"() {
+    expect:
+    HeaderBar.branchItemsFor(null, ["a", "b"], []) == ["a", "b"]
+  }
+
   @Unroll
   def "checkoutCommandFor refuses the unsafe name '#name' (returns null)"() {
     expect:

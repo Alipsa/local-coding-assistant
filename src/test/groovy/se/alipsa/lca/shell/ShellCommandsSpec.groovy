@@ -628,9 +628,9 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
+      protected ConfirmationChoice confirmAction(String prompt) {
         confirmations++
-        ConfirmChoice.ALL
+        ConfirmationChoice.ALL
       }
     }
 
@@ -874,8 +874,8 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
-        ConfirmChoice.NO
+      protected ConfirmationChoice confirmAction(String prompt) {
+        ConfirmationChoice.NO
       }
     }
 
@@ -970,7 +970,7 @@ class ShellCommandsSpec extends Specification {
       30000,
       null
     ) {
-      ConfirmChoice exposeConfirmAction(String prompt) {
+      ConfirmationChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
       }
     }
@@ -981,7 +981,7 @@ class ShellCommandsSpec extends Specification {
     def result = staging.stage(["file.txt"], null, null, true)
 
     then:
-    choice == ShellCommands.ConfirmChoice.ALL
+    choice == ConfirmationChoice.ALL
     1 * repoGit.stageFiles(["file.txt"]) >> new GitTool.GitResult(true, true, 0, "ok", "")
     result.contains("Stage succeeded")
   }
@@ -1180,8 +1180,8 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
-        ConfirmChoice.YES
+      protected ConfirmationChoice confirmAction(String prompt) {
+        ConfirmationChoice.YES
       }
 
       @Override
@@ -1237,8 +1237,8 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
-        ConfirmChoice.YES
+      protected ConfirmationChoice confirmAction(String prompt) {
+        ConfirmationChoice.YES
       }
     }
 
@@ -1296,9 +1296,9 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
+      protected ConfirmationChoice confirmAction(String prompt) {
         prompts.add(prompt)
-        ConfirmChoice.YES
+        ConfirmationChoice.YES
       }
     }
 

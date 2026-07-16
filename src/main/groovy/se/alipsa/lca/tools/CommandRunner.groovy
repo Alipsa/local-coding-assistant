@@ -182,17 +182,30 @@ class CommandRunner {
       }
       writeFooter(logWriter, started, Instant.now(), exitCode, timedOut)
       boolean truncated = outCollector.truncated || errCollector.truncated
+      boolean readError = outCollector.readError || errCollector.readError
       return new CommandResult(
         !timedOut && exitCode == 0,
         timedOut,
         exitCode,
         visibleOutput.toString().stripTrailing(),
         truncated,
-        logPath
+        logPath,
+        readError
       )
     } catch (IOException e) {
+      // The process failed to start (e.g. missing interpreter, unreadable base dir) or its
+      // streams failed. On the streaming path nothing has been delivered yet, so surface the
+      // reason to the listener too — otherwise the caller only sees an unexplained failed exit.
       log.warn("Command execution failed: {}", sanitizedCommand, e)
-      return new CommandResult(false, timedOut, -1, e.message ?: e.class.simpleName, false, logPath)
+      String message = e.message ?: e.class.simpleName
+      if (listener != null) {
+        try {
+          listener.onLine("ERR", message)
+        } catch (Exception le) {
+          log.warn("Output listener failed while reporting a start failure: {}", le.getMessage())
+        }
+      }
+      return new CommandResult(false, timedOut, -1, message, false, logPath, true)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt()
       return new CommandResult(false, timedOut, -1, "Interrupted while running command", false, logPath)
@@ -307,8 +320,14 @@ class CommandRunner {
     boolean timedOut
     int exitCode
     String output
+    /** Output was cut short because it reached the character budget. */
     boolean truncated
     Path logPath
+    /**
+     * Output is incomplete because reading the process stream failed, not because of the budget.
+     * Last field so the generated telescoping constructors keep the shorter positional form valid.
+     */
+    boolean readError
   }
 
   @FunctionalInterface
@@ -337,6 +356,7 @@ class CommandRunner {
     private final AtomicInteger remainingLogCapacity
     private final OutputListener listener
     volatile boolean truncated = false
+    volatile boolean readError = false
 
     StreamCollector(
       InputStream stream,
@@ -381,8 +401,10 @@ class CommandRunner {
           appendVisible(formatted)
         }
       } catch (IOException e) {
+        // Reading the stream failed part-way. This is distinct from hitting the output budget:
+        // record it separately so the caller can report "read error" rather than "truncated".
         log.warn("Stream reading interrupted for label '{}': {}", label, e.getMessage())
-        truncated = true
+        readError = true
       }
     }
 

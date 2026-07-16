@@ -96,7 +96,50 @@ class CommandRunnerSpec extends Specification {
 
     then:
     result.truncated
+    !result.readError
     result.output.length() <= 5
+  }
+
+  def "runStreaming surfaces a process-start failure to the listener"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir) {
+      @Override
+      protected Process startProcess(String command) throws IOException {
+        throw new IOException("Cannot run program: boom")
+      }
+    }
+    List<String> lines = Collections.synchronizedList(new ArrayList<>())
+    CommandRunner.OutputListener listener = { String stream, String line ->
+      lines.add("${stream}:${line}")
+    } as CommandRunner.OutputListener
+
+    when:
+    CommandRunner.CommandResult result = runner.runStreaming("boom", 2000L, 200, listener)
+
+    then:
+    !result.success
+    result.readError
+    !result.truncated
+    result.output == "Cannot run program: boom"
+    lines.any { it == "ERR:Cannot run program: boom" }
+  }
+
+  def "runStreaming flags a read error distinctly from truncation"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir) {
+      @Override
+      protected Process startProcess(String command) {
+        new ReadFailProcess()
+      }
+    }
+
+    when:
+    CommandRunner.CommandResult result = runner.runStreaming(
+      "whatever", 2000L, 200, { String s, String l -> } as CommandRunner.OutputListener)
+
+    then:
+    result.readError
+    !result.truncated
   }
 
   def "run returns failure on empty command"() {
@@ -192,5 +235,40 @@ class CommandRunnerSpec extends Specification {
 
     @Override
     boolean isAlive() { !destroyCalled }
+  }
+
+  /** A completed process whose stdout stream throws on read, to exercise the read-error path. */
+  private static class ReadFailProcess extends Process {
+    @Override
+    OutputStream getOutputStream() { OutputStream.nullOutputStream() }
+
+    @Override
+    InputStream getInputStream() {
+      new InputStream() {
+        @Override
+        int read() throws IOException { throw new IOException("stdout broke") }
+      }
+    }
+
+    @Override
+    InputStream getErrorStream() { new ByteArrayInputStream(new byte[0]) }
+
+    @Override
+    int waitFor() { 0 }
+
+    @Override
+    boolean waitFor(long timeout, TimeUnit unit) { true }
+
+    @Override
+    int exitValue() { 0 }
+
+    @Override
+    void destroy() {}
+
+    @Override
+    Process destroyForcibly() { this }
+
+    @Override
+    boolean isAlive() { false }
   }
 }

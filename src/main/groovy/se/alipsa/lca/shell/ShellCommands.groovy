@@ -1041,11 +1041,11 @@ Try:
     }
     boolean shouldConfirm = confirm && !applyAllConfirmed
     if (shouldConfirm) {
-      ConfirmChoice choice = confirmAction("Apply patch with git apply${cached ? ' --cached' : ''}?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Apply patch with git apply${cached ? ' --cached' : ''}?")
+      if (choice == ConfirmationChoice.NO) {
         return "Git apply canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1075,11 +1075,11 @@ Try:
     boolean shouldConfirm = confirm && !applyAllConfirmed
     if (shouldConfirm) {
       String targetLabel = hunkMode ? "hunks from ${file}" : "${paths.size()} file(s)"
-      ConfirmChoice choice = confirmAction("Stage ${targetLabel}?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Stage ${targetLabel}?")
+      if (choice == ConfirmationChoice.NO) {
         return "Staging canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1153,11 +1153,11 @@ Try:
       return "Not a git repository."
     }
     if (confirm && !applyAllConfirmed) {
-      ConfirmChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
-      if (choice != ConfirmChoice.YES && choice != ConfirmChoice.ALL) {
+      ConfirmationChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
+      if (choice != ConfirmationChoice.YES && choice != ConfirmationChoice.ALL) {
         return "Push canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1327,6 +1327,8 @@ Try:
     builder.append(result.success ? "]" : " — failed]")
     if (result.truncated) {
       builder.append(" (output truncated)")
+    } else if (result.readError) {
+      builder.append(" (output incomplete — read error)")
     }
     builder.toString()
   }
@@ -1378,11 +1380,11 @@ Try:
       String prompt = agentRequested
         ? "> Agent wants to run: '${trimmed}'. Allow?"
         : "Run command '${trimmed}'?"
-      ConfirmChoice choice = confirmAction(prompt)
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction(prompt)
+      if (choice == ConfirmationChoice.NO) {
         return "Command canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1428,11 +1430,11 @@ Try:
       }
       printProgressDone("Edit preview")
       println(previewText)
-      ConfirmChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
+      if (choice == ConfirmationChoice.NO) {
         return formatSection("Edit Result", "Patch application canceled.")
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1474,11 +1476,11 @@ Try:
       }
       printProgressDone("Edit preview")
       println(previewText)
-      ConfirmChoice choice = confirmAction("Apply blocks to ${filePath}?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Apply blocks to ${filePath}?")
+      if (choice == ConfirmationChoice.NO) {
         return formatSection("Edit Result", "Block application canceled.")
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -2370,6 +2372,8 @@ ${rendered}
     builder.append(result.success ? " (success)" : " (failed)")
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(maxOutputChars).append(" characters.")
+    } else if (result.readError) {
+      builder.append("\nOutput incomplete: reading the command output failed.")
     }
     if (result.output != null && result.output.trim()) {
       builder.append("\nOutput:\n").append(result.output.trim())
@@ -2395,6 +2399,8 @@ ${rendered}
     builder.append(result.success ? " (success)" : " (failed)")
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
+    } else if (result.readError) {
+      builder.append("\nOutput incomplete: reading the command output failed.")
     }
     builder.append("\nOutput: streamed to console.")
     if (result.logPath != null) {
@@ -2443,6 +2449,8 @@ ${rendered}
     builder.append(result.success ? " (success)" : " (failed)")
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
+    } else if (result.readError) {
+      builder.append("\nOutput incomplete: reading the command output failed.")
     }
     String outputSummary = summarizeOutput(result.output, 20, DIRECT_SHELL_CONVERSATION_MAX_CHARS)
     builder.append("\nOutput:\n").append(outputSummary)
@@ -2747,24 +2755,16 @@ ${rendered}
   }
 
   @CompileStatic
-  protected ConfirmChoice confirmAction(String prompt) {
+  protected ConfirmationChoice confirmAction(String prompt) {
     if (batchMode) {
       if (assumeYes) {
-        return ConfirmChoice.ALL
+        return ConfirmationChoice.ALL
       }
       throw new IllegalStateException(
         "Confirmation required in batch mode. Re-run with --yes to auto-confirm."
       )
     }
-    ConfirmationChoice choice = resolveConfirmationService().confirm(prompt)
-    switch (choice) {
-      case ConfirmationChoice.ALL:
-        return ConfirmChoice.ALL
-      case ConfirmationChoice.YES:
-        return ConfirmChoice.YES
-      default:
-        return ConfirmChoice.NO
-    }
+    resolveConfirmationService().confirm(prompt)
   }
 
   private boolean promptDisableLocalOnly(String sessionId) {
@@ -2788,13 +2788,6 @@ ${rendered}
     if (assumeYes) {
       this.applyAllConfirmed = true
     }
-  }
-
-  @CompileStatic
-  protected static enum ConfirmChoice {
-    YES,
-    NO,
-    ALL
   }
 
   @Canonical

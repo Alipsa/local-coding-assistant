@@ -1,6 +1,8 @@
 package se.alipsa.lca.gui
 
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
@@ -16,6 +18,7 @@ import javax.swing.JComboBox
 import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.SwingWorker
 import javax.swing.event.PopupMenuEvent
 import javax.swing.event.PopupMenuListener
 import java.awt.Component
@@ -34,6 +37,7 @@ import java.util.function.Consumer
 @CompileStatic
 class HeaderBar extends JPanel {
 
+  private static final Logger log = LoggerFactory.getLogger(HeaderBar)
   private static final String NO_BRANCH = "(none)"
 
   /**
@@ -147,44 +151,73 @@ class HeaderBar extends JPanel {
   }
 
   private void populateBranches() {
-    populating = true
-    try {
-      String current = currentBranchOrNull()
-      List<String> locals = gitTool != null ? gitTool.listLocalBranches() : List.<String> of()
-      List<String> remotes = gitTool != null ? gitTool.listRemoteBranches() : List.<String> of()
-      localBranches.clear()
-      localBranches.addAll(locals)
-      LinkedHashSet<String> items = new LinkedHashSet<>()
-      if (current != null) {
-        items.add(current)
+    // Listing branches shells out to git; run it off the EDT so opening the combo never blocks
+    // the UI, then apply the result back on the EDT in done().
+    new SwingWorker<BranchData, Void>() {
+      @Override
+      protected BranchData doInBackground() {
+        collectBranchData()
       }
-      items.addAll(locals)
-      Set<String> localShortNames = new HashSet<>(locals)
-      for (String remote : remotes) {
-        if (!localShortNames.contains(stripRemote(remote))) {
-          items.add(remote)
+
+      @Override
+      protected void done() {
+        try {
+          applyBranchData(get())
+        } catch (Exception e) {
+          log.warn("Could not list branches: {}", e.message)
         }
       }
-      if (items.isEmpty()) {
-        items.add(current ?: NO_BRANCH)
-      }
+    }.execute()
+  }
+
+  private BranchData collectBranchData() {
+    String current = currentBranchOrNull()
+    List<String> locals = gitTool != null ? gitTool.listLocalBranches() : List.<String> of()
+    List<String> remotes = gitTool != null ? gitTool.listRemoteBranches() : List.<String> of()
+    new BranchData(current, locals, remotes)
+  }
+
+  private void applyBranchData(BranchData data) {
+    populating = true
+    try {
+      localBranches.clear()
+      localBranches.addAll(data.locals)
+      List<String> items = branchItemsFor(data.current, data.locals, data.remotes)
       branchCombo.setModel(new DefaultComboBoxModel<String>(items.toArray(new String[0])))
-      branchCombo.setSelectedItem(current ?: items.iterator().next())
+      branchCombo.setSelectedItem(data.current ?: items.get(0))
     } finally {
       populating = false
     }
+  }
+
+  /**
+   * The ordered combo items for a set of branches: the current branch first (if any), then the
+   * local branches, then remote branches whose short name is not already a local branch. Falls
+   * back to the current branch or {@link #NO_BRANCH} when nothing else is available.
+   */
+  static List<String> branchItemsFor(String current, List<String> locals, List<String> remotes) {
+    LinkedHashSet<String> items = new LinkedHashSet<>()
+    if (current != null) {
+      items.add(current)
+    }
+    items.addAll(locals)
+    Set<String> localShortNames = new HashSet<>(locals)
+    for (String remote : remotes) {
+      if (!localShortNames.contains(stripRemote(remote))) {
+        items.add(remote)
+      }
+    }
+    if (items.isEmpty()) {
+      items.add(current ?: NO_BRANCH)
+    }
+    new ArrayList<>(items)
   }
 
   private void switchBranch(String selected) {
     if (selected == null || selected == NO_BRANCH || bangCommandHandler == null) {
       return
     }
-    String current = currentBranchOrNull()
     boolean isLocal = localBranches.contains(selected)
-    String shortName = isLocal ? selected : stripRemote(selected)
-    if (shortName == null || shortName.isEmpty() || shortName == current) {
-      return
-    }
     // Validate the exact ref handed to git: a remote selection keeps its "remote/" qualifier.
     String command = checkoutCommandFor(selected, isLocal)
     if (command == null) {
@@ -194,11 +227,38 @@ class HeaderBar extends JPanel {
       refresh()
       return
     }
-    String output = bangCommandHandler.handle(command, "default", true)
-    if (onCommandOutput != null && output != null && !output.trim().isEmpty()) {
-      onCommandOutput.accept(output)
-    }
-    refresh()
+    // Reading the current branch and running the checkout both shell out to git; do them off the
+    // EDT and disable the combo meanwhile so the UI stays responsive and the switch is atomic.
+    branchCombo.setEnabled(false)
+    new SwingWorker<String, Void>() {
+      @Override
+      protected String doInBackground() {
+        String current = currentBranchOrNull()
+        String shortName = isLocal ? selected : stripRemote(selected)
+        if (shortName == null || shortName.isEmpty() || shortName == current) {
+          return null
+        }
+        bangCommandHandler.handle(command, "default", true)
+      }
+
+      @Override
+      protected void done() {
+        try {
+          String output = get()
+          if (onCommandOutput != null && output != null && !output.trim().isEmpty()) {
+            onCommandOutput.accept(output)
+          }
+        } catch (Exception e) {
+          log.warn("Branch switch failed: {}", e.message)
+          if (onCommandOutput != null) {
+            onCommandOutput.accept("Branch switch failed: ${e.message}".toString())
+          }
+        } finally {
+          branchCombo.setEnabled(true)
+          refresh()
+        }
+      }
+    }.execute()
   }
 
   /**
@@ -272,5 +332,19 @@ class HeaderBar extends JPanel {
 
   private static Component separator() {
     new JLabel("     |     ")
+  }
+
+  /** Immutable snapshot of branch state collected off the EDT and applied on it. */
+  @CompileStatic
+  private static class BranchData {
+    final String current
+    final List<String> locals
+    final List<String> remotes
+
+    BranchData(String current, List<String> locals, List<String> remotes) {
+      this.current = current
+      this.locals = locals != null ? locals : List.<String> of()
+      this.remotes = remotes != null ? remotes : List.<String> of()
+    }
   }
 }
