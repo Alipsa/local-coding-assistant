@@ -79,6 +79,20 @@ interleaved text stream and does **not** distinguish stdout from stderr. Console
 existing `System.err` routing; only the GUI consumer drops the distinction. This is a deliberate
 simplification, not an oversight.
 
+**In-memory buffer.** `executeShell` today accumulates its own unbounded `captured` StringBuilder
+inside the listener (`ShellCommands.groovy:1247-1259`) purely to build the string that
+`formatCapturedShellResult` returns — this is separate from both `DIRECT_SHELL_MAX_OUTPUT_CHARS`
+(which bounds only `CommandRunner`'s internal `visibleOutput`) and the view-side budget (which
+bounds only what reaches the sink), so it too can grow without limit on a verbose command.
+Resolution: on the streaming path (a `lineConsumer` is present) the sink is the sole consumer of
+line output, so `executeShell` does **not** accumulate `captured` at all — `GuiTurnController`
+discards `handle(...)`'s return value (display comes entirely from the sink). The return still
+carries the already-capped `result.output` for callers that log it, and history/conversation
+logging is unaffected (it uses the capped `result.output`). On the non-streaming captured path
+(no `lineConsumer`), `captured` is bounded by the same `DIRECT_SHELL_MAX_OUTPUT_CHARS` cap
+(stop-appending past the limit, mirroring `appendVisible`) so it can no longer grow unbounded
+there either.
+
 The REPL/console path is unchanged: it calls the no-consumer overloads and still streams to
 stdout via `streamToConsole`. History and conversation logging for the assistant are unchanged —
 still recorded once at the end of the command.
@@ -110,10 +124,11 @@ The visible improvement is that multi-command turns appear step-by-step.
 - **Concurrent producers.** `CommandRunner.runInternal` reads stdout and stderr on two separate
   threads (`CommandRunner.groovy:161-164`), each invoking the same listener, so `lineConsumer`
   (and therefore `sink.append`/`publish`) may be called **concurrently from two background
-  threads**. `publish()` is documented to tolerate concurrent calls, but the consumer's own state
-  (the truncation budget below) must be thread-safe (e.g. `AtomicInteger`). Per-stream line
-  ordering is preserved; **cross-stream (stdout vs stderr) interleaving order is unspecified** and
-  accepted.
+  threads**. Concurrent `publish()` calls are safe in practice — the JDK's `SwingWorker` funnels
+  them through a synchronized `AccumulativeRunnable.add()` — though this is an implementation
+  property, not an explicit Javadoc guarantee. The consumer's own state (the truncation budget
+  below) must still be thread-safe (e.g. `AtomicInteger`). Per-stream line ordering is preserved;
+  **cross-stream (stdout vs stderr) interleaving order is unspecified** and accepted.
 - **Consumer-side truncation budget.** The executor fires the listener for *every* line read
   (`CommandRunner.groovy:363`) *before* applying its visible cap (`appendVisible`, `:378`), so
   `DIRECT_SHELL_MAX_OUTPUT_CHARS` bounds only the returned string — it does **not** throttle the
@@ -135,8 +150,9 @@ The visible improvement is that multi-command turns appear step-by-step.
 ## Testing (Spock)
 
 - `ShellCommandsSpec` / `BangCommandHandlerSpec`: the per-line consumer receives each line
-  (per-stream order preserved); the captured return value is unchanged; the console (no-consumer)
-  path is untouched.
+  (per-stream order preserved); the captured return value is unchanged for normal-sized output;
+  the console (no-consumer) path still streams to stdout. Add a case asserting the no-consumer
+  `captured` buffer stops growing at `DIRECT_SHELL_MAX_OUTPUT_CHARS` for very verbose output.
 - **Concurrent streams:** a test where the command produces on **both stdout and stderr** — assert
   every line from each stream is delivered to the consumer (set membership + per-stream ordering),
   and explicitly assert nothing about cross-stream ordering. This is the case a single-stream
