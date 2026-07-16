@@ -31,6 +31,7 @@ class GuiTurnController {
   private static final Logger log = LoggerFactory.getLogger(GuiTurnController)
   private static final double SHOW_ROUTING_BELOW = 0.85d
   private static final int MAX_VIEW_LINES = 5000
+  private static final int MAX_VIEW_CHARS = 200_000
 
   private final IntentCommandRouter intentRouter
   private final CommandExecutor commandExecutor
@@ -63,7 +64,8 @@ class GuiTurnController {
       sink.beginBlock()
       try {
         sink.append('$ ' + command)
-        String footer = bangCommandHandler.handle(input, "default", true, budgetedForwarder(sink, MAX_VIEW_LINES))
+        String footer = bangCommandHandler.handle(
+          input, "default", true, budgetedForwarder(sink, MAX_VIEW_LINES, MAX_VIEW_CHARS))
         if (footer != null && !footer.trim().isEmpty()) {
           sink.append(footer)
         }
@@ -128,14 +130,28 @@ class GuiTurnController {
    * A thread-safe consumer that forwards up to {@code maxLines} lines to the sink, then emits a
    * single truncation marker. May be called concurrently from the stdout and stderr reader threads.
    */
-  static Consumer<String> budgetedForwarder(TurnSink sink, int maxLines) {
-    AtomicInteger count = new AtomicInteger()
+  static Consumer<String> budgetedForwarder(TurnSink sink, int maxLines, int maxChars) {
+    AtomicInteger lineCount = new AtomicInteger()
+    AtomicInteger charCount = new AtomicInteger()
     AtomicBoolean marked = new AtomicBoolean()
     return { String line ->
-      int n = count.incrementAndGet()
-      if (n <= maxLines) {
-        sink.append(line)
+      if (marked.get()) {
+        return
+      }
+      String text = line ?: ""
+      int lineN = lineCount.incrementAndGet()
+      int before = charCount.getAndAdd(text.length())
+      boolean overLines = lineN > maxLines
+      boolean overChars = before + text.length() > maxChars
+      if (!overLines && !overChars) {
+        sink.append(text)
       } else if (marked.compareAndSet(false, true)) {
+        // A line that only overruns the CHAR budget still contributes its prefix; a line-count
+        // overrun contributes nothing. Either way the marker is emitted exactly once.
+        int remaining = maxChars - before
+        if (!overLines && remaining > 0) {
+          sink.append(text.substring(0, Math.min(remaining, text.length())))
+        }
         sink.append("… output truncated in view …")
       }
     } as Consumer<String>

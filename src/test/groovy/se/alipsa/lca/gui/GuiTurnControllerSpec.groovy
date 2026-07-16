@@ -186,14 +186,39 @@ class GuiTurnControllerSpec extends Specification {
     input << ["clear", "cls", "/clear", "/cls"]
   }
 
-  def "budgetedForwarder forwards up to the budget then emits one truncation marker"() {
+  def "budgetedForwarder forwards up to the line budget then emits one truncation marker"() {
     given:
-    Consumer<String> fwd = GuiTurnController.budgetedForwarder(sink, 3)
+    Consumer<String> fwd = GuiTurnController.budgetedForwarder(sink, 3, 10_000)
 
     when:
     (1..6).each { fwd.accept("line-${it}".toString()) }
 
     then:
     sink.events == ["append:line-1", "append:line-2", "append:line-3", "append:… output truncated in view …"]
+  }
+
+  def "budgetedForwarder truncates a single over-long line to the char budget and marks once"() {
+    given:
+    Consumer<String> fwd = GuiTurnController.budgetedForwarder(sink, 5000, 10)
+
+    when:
+    fwd.accept("abcdefghijklmnopqrstuvwxyz")  // 26 chars, exceeds the 10-char budget on its own
+    fwd.accept("dropped")                     // already truncated -> ignored
+
+    then:
+    sink.events == ["append:abcdefghij", "append:… output truncated in view …"]
+  }
+
+  def "budgetedForwarder truncates mid-line when cumulative chars cross the budget"() {
+    given:
+    Consumer<String> fwd = GuiTurnController.budgetedForwarder(sink, 5000, 10)
+
+    when:
+    fwd.accept("aaaa")  // total 4
+    fwd.accept("bbbb")  // total 8
+    fwd.accept("cccc")  // would reach 12 -> only 2 chars fit
+
+    then:
+    sink.events == ["append:aaaa", "append:bbbb", "append:cc", "append:… output truncated in view …"]
   }
 }

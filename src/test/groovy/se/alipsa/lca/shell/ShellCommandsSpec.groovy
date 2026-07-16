@@ -1939,6 +1939,19 @@ class ShellCommandsSpec extends Specification {
     lines.indexOf("e1") < lines.indexOf("e2")
   }
 
+  @Requires({ os.macOs || os.linux })
+  def "non-streaming captured buffer is clamped mid-line to the char cap"() {
+    when:
+    // A single newline-free line far larger than the 8000-char cap; the old length-checked
+    // append would have forwarded the whole line, overshooting the cap ~2.5x.
+    String captured = shellCommands.shellCommandCaptured(
+      "awk 'BEGIN{for(i=0;i<20000;i++)printf \"A\"}'", "default")
+
+    then:
+    // header ("$ awk ...\n") + body (<= 8000) + footer ("[exit 0]"); comfortably under 2x the cap.
+    captured.length() <= 8000 + 200
+  }
+
   private ShellCommands commitCommandsFor(GitTool repoGit) {
     new ShellCommands(
       agent,

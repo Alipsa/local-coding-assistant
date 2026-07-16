@@ -173,18 +173,25 @@ class HeaderBar extends JPanel {
       return
     }
     String current = currentBranchOrNull()
-    String target = localBranches.contains(selected) ? selected : stripRemote(selected)
-    if (target == null || target.isEmpty() || target == current) {
+    boolean isLocal = localBranches.contains(selected)
+    String shortName = isLocal ? selected : stripRemote(selected)
+    if (shortName == null || shortName.isEmpty() || shortName == current) {
       return
     }
-    if (!isSafeBranchName(target)) {
+    // Validate the exact ref handed to git: a remote selection keeps its "remote/" qualifier.
+    if (!isSafeBranchName(selected)) {
       if (onCommandOutput != null) {
-        onCommandOutput.accept("Refusing to switch to branch with unsafe name: ${target}".toString())
+        onCommandOutput.accept("Refusing to switch to branch with unsafe name: ${selected}".toString())
       }
       refresh()
       return
     }
-    String output = bangCommandHandler.handle("! git checkout \"${target}\"".toString(), "default", true)
+    // Local branch: check it out directly. Remote-only branch: create a tracking branch from the
+    // fully-qualified ref so the checkout is unambiguous even when several remotes share the name.
+    String command = isLocal
+      ? "! git checkout \"${selected}\"".toString()
+      : "! git checkout --track \"${selected}\"".toString()
+    String output = bangCommandHandler.handle(command, "default", true)
     if (onCommandOutput != null && output != null && !output.trim().isEmpty()) {
       onCommandOutput.accept(output)
     }

@@ -1274,8 +1274,12 @@ Try:
         lineConsumer.accept(line)
       } else {
         synchronized (captured) {
-          if (captured.length() < DIRECT_SHELL_MAX_OUTPUT_CHARS) {
-            captured.append(line).append(System.lineSeparator())
+          int remaining = DIRECT_SHELL_MAX_OUTPUT_CHARS - captured.length()
+          if (remaining > 0) {
+            // Clamp precisely to the cap, truncating mid-line if this line would overrun it,
+            // mirroring CommandRunner.StreamCollector.appendVisible.
+            String chunk = line + System.lineSeparator()
+            captured.append(chunk, 0, Math.min(remaining, chunk.length()))
           }
         }
       }
