@@ -64,13 +64,18 @@ Thread an optional per-line `Consumer<String>` from the GUI down to the streamin
      `$ command` header from `formatCapturedShellResult` is only assembled *after* the process
      exits, so the header is emitted here up front rather than streamed from the executor).
   2. passes a `lineConsumer` that forwards each captured line into `sink.append(line)`.
-  3. after `executeShell` returns, emits the trailing status footer
+  3. `handle(...)`'s **return value on the streaming path is just the footer line**
      (`[exit N]` / `[exit timeout — failed]`, plus `(output truncated)` when the executor
-     truncated) as a final `sink.append(...)`, then `sink.endBlock()`.
-  To make the footer reusable line-by-line, `formatCapturedShellResult` is decomposed so its
-  header and footer segments are available as small helpers (`shellHeader(command)` /
-  `shellFooter(result)`); the existing method keeps composing them for the non-streaming return
-  value so REPL output is byte-for-byte unchanged.
+     truncated); `GuiTurnController` appends it as the final `sink.append(...)`, then
+     `sink.endBlock()`. The caller cannot build this itself — it holds only a `Consumer<String>`
+     and the returned `String`, not the `CommandResult` — so the footer must come back through
+     the return value. (Emitting it via the body `lineConsumer` instead would let the view-side
+     truncation budget swallow the exit status; keeping it on the return keeps it outside that
+     budget.)
+  `formatCapturedShellResult` is decomposed into small helpers (`shellHeader(command)` /
+  `shellFooter(result)`); the streaming path returns `shellFooter(result)` alone, and the existing
+  method keeps composing header + body + footer for the **non-streaming** return value so REPL
+  output is byte-for-byte unchanged.
 
 **stdout vs stderr:** the executor's `OutputListener` signature is `(String stream, String line)`
 and today's console mode uses it to route `"ERR"` lines to `System.err`. The new `lineConsumer`
@@ -85,13 +90,14 @@ inside the listener (`ShellCommands.groovy:1247-1259`) purely to build the strin
 (which bounds only `CommandRunner`'s internal `visibleOutput`) and the view-side budget (which
 bounds only what reaches the sink), so it too can grow without limit on a verbose command.
 Resolution: on the streaming path (a `lineConsumer` is present) the sink is the sole consumer of
-line output, so `executeShell` does **not** accumulate `captured` at all — `GuiTurnController`
-discards `handle(...)`'s return value (display comes entirely from the sink). The return still
-carries the already-capped `result.output` for callers that log it, and history/conversation
-logging is unaffected (it uses the capped `result.output`). On the non-streaming captured path
-(no `lineConsumer`), `captured` is bounded by the same `DIRECT_SHELL_MAX_OUTPUT_CHARS` cap
-(stop-appending past the limit, mirroring `appendVisible`) so it can no longer grow unbounded
-there either.
+the body, so `executeShell` does **not** accumulate `captured` and does **not** call
+`formatCapturedShellResult` (nor `formatDirectShellResult`) at all — it would be building a
+full-body string nobody reads. It returns only `shellFooter(result)` (a bounded one-liner) for
+the caller to close the block with. History/conversation logging is unaffected — it already uses
+the capped `result.output`, not `captured` or the formatted strings. On the non-streaming
+captured path (no `lineConsumer`), behaviour is as today except `captured` is now bounded by the
+same `DIRECT_SHELL_MAX_OUTPUT_CHARS` cap (stop-appending past the limit, mirroring
+`appendVisible`) so it can no longer grow unbounded there either.
 
 The REPL/console path is unchanged: it calls the no-consumer overloads and still streams to
 stdout via `streamToConsole`. History and conversation logging for the assistant are unchanged —
