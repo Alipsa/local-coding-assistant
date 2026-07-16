@@ -71,6 +71,47 @@ class ModelRegistrySpec extends Specification {
     !registry.checkHealth().reachable
   }
 
+  def "contextLength reads model_info context_length"() {
+    given:
+    String json = '{"model_info": {"qwen3.architecture": "qwen3", "qwen3.context_length": 98304}}'
+    ModelRegistry registry = new ShowRegistry(200, json)
+
+    expect:
+    registry.contextLength("qwen3.6-96k:latest") == 98304
+  }
+
+  def "contextLength returns null when not reported"() {
+    given:
+    ModelRegistry registry = new ShowRegistry(200, '{"model_info": {"general.name": "x"}}')
+
+    expect:
+    registry.contextLength("m") == null
+  }
+
+  def "contextLength returns null for blank model"() {
+    given:
+    ModelRegistry registry = new ShowRegistry(200, '{}')
+
+    expect:
+    registry.contextLength("   ") == null
+  }
+
+  private static class ShowRegistry extends ModelRegistry {
+    private final int status
+    private final String body
+
+    ShowRegistry(int status, String body) {
+      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      this.status = status
+      this.body = body
+    }
+
+    @Override
+    protected HttpResponse<String> fetchShow(String model) throws Exception {
+      [statusCode: { -> status }, body: { -> body }] as HttpResponse
+    }
+  }
+
   private static class FakeRegistry extends ModelRegistry {
     private final boolean reachable
     private final List<String> models

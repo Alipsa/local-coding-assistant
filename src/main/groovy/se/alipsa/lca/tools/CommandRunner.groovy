@@ -4,6 +4,8 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.LogSanitizer
 
@@ -35,19 +37,36 @@ class CommandRunner {
     .ofPattern("yyyyMMddHHmmssSSS")
     .withZone(ZoneId.systemDefault())
 
-  private final Path projectRoot
-  private final Path realProjectRoot
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
 
   CommandRunner() {
     this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   CommandRunner(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  CommandRunner(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
+  }
+
+  Path getProjectRoot() {
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  private Path getRealProjectRoot() {
+    Path root = getProjectRoot()
     try {
-      this.realProjectRoot = this.projectRoot.toRealPath()
+      return root.toRealPath()
     } catch (IOException e) {
-      throw new IllegalStateException("Failed to resolve project root path", e)
+      return root
     }
   }
 

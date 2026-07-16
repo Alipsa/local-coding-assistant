@@ -4,6 +4,8 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.nio.file.Files
@@ -15,22 +17,40 @@ import java.nio.file.Paths
 class GitTool {
 
   private static final Logger log = LoggerFactory.getLogger(GitTool)
-  private final Path projectRoot
-  private final Path realProjectRoot
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
   // Not thread-safe; create separate instances per thread/session.
   private final Object repoCheckLock = new Object()
   private Boolean cachedRepoStatus = null
+  private Path cachedRepoRoot = null
 
   GitTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   GitTool(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  GitTool(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
+  }
+
+  Path getProjectRoot() {
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  private Path getRealProjectRoot() {
+    Path root = getProjectRoot()
     try {
-      this.realProjectRoot = this.projectRoot.toRealPath()
+      return root.toRealPath()
     } catch (IOException e) {
-      this.realProjectRoot = this.projectRoot
+      return root
     }
   }
 
@@ -149,16 +169,60 @@ class GitTool {
     runGitWithInput(List.of("apply", "--cached", "--unidiff-zero"), patch)
   }
 
+  /**
+   * The current branch name, or {@code null} when this is not a git repository or the
+   * branch cannot be determined. Returns the literal {@code "HEAD"} when the repository
+   * is in a detached-HEAD state, mirroring {@code git rev-parse --abbrev-ref HEAD}.
+   */
+  String currentBranch() {
+    if (!isGitRepo()) {
+      return null
+    }
+    GitResult result = runGit(List.of("rev-parse", "--abbrev-ref", "HEAD"))
+    if (result.success && result.output != null && !result.output.trim().isEmpty()) {
+      return result.output.trim()
+    }
+    null
+  }
+
+  /** Local branch names (short), e.g. {@code ["main", "feature/x"]}. Empty when not a repo. */
+  List<String> listLocalBranches() {
+    branchList(List.of("branch", "--format=%(refname:short)"))
+  }
+
+  /**
+   * Remote-tracking branch names, e.g. {@code ["origin/main", "origin/feature/x"]}, excluding
+   * the {@code origin/HEAD} pointer. Empty when not a repo.
+   */
+  List<String> listRemoteBranches() {
+    branchList(List.of("branch", "-r", "--format=%(refname:short)")).findAll { !it.endsWith("/HEAD") }
+  }
+
+  private List<String> branchList(List<String> args) {
+    if (!isGitRepo()) {
+      return List.of()
+    }
+    GitResult result = runGit(args)
+    if (!result.success || result.output == null) {
+      return List.of()
+    }
+    result.output.readLines()
+      .collect { it.trim() }
+      .findAll { !it.isEmpty() }
+  }
+
   boolean isGitRepo() {
-    if (cachedRepoStatus != null) {
+    Path root = getProjectRoot()
+    if (cachedRepoStatus != null && root == cachedRepoRoot) {
       return cachedRepoStatus.booleanValue()
     }
     synchronized (repoCheckLock) {
-      if (cachedRepoStatus != null) {
+      if (cachedRepoStatus != null && root == cachedRepoRoot) {
         return cachedRepoStatus.booleanValue()
       }
       GitResult result = runGitNoCheck(List.of("rev-parse", "--is-inside-work-tree"))
       cachedRepoStatus = result.success && result.output?.toLowerCase()?.contains("true")
+      cachedRepoRoot = root
       return cachedRepoStatus
     }
   }

@@ -340,6 +340,23 @@ Do not execute any commands.
     this.reviewModel = (reviewModel != null && reviewModel.trim()) ? reviewModel.trim() : null
   }
 
+  // Injected by Spring; the console impl wins for the REPL, the Swing impl (@Primary) for the GUI.
+  // Field injection avoids threading a new parameter through the constructor and its many tests;
+  // when unset (unit tests without a context) we fall back to a plain console prompt.
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private ConfirmationService confirmationService
+  private ConfirmationService fallbackConfirmationService
+
+  private ConfirmationService resolveConfirmationService() {
+    if (confirmationService != null) {
+      return confirmationService
+    }
+    if (fallbackConfirmationService == null) {
+      fallbackConfirmationService = new ConsoleConfirmationService()
+    }
+    fallbackConfirmationService
+  }
+
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
   String chat(
     @ShellOption(value = "--prompt", arity = -1, help = "The chat prompt") String[] words,
@@ -1208,17 +1225,37 @@ Try:
     @ShellOption(defaultValue = DEFAULT_SESSION, help = "Session id for history logging") String session
   ) {
     // Intentionally no confirmation prompt to mirror a direct shell mode; rely on CommandPolicy for guardrails.
+    // Streams output live to the console (REPL); returns a concise summary.
+    executeShell(command, session, true).summary
+  }
+
+  /**
+   * Same as {@link #shellCommand} but returns the captured output text instead of streaming it
+   * to the console. Used by the GUI, where stdout is not visible to the user.
+   */
+  String shellCommandCaptured(String command, String session) {
+    executeShell(command, session, false).captured
+  }
+
+  private ShellExecution executeShell(String command, String session, boolean streamToConsole) {
     String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
     if (!decision.allowed) {
-      return decision.message ?: "Command blocked by policy."
+      String blocked = decision.message ?: "Command blocked by policy."
+      return new ShellExecution(blocked, blocked)
     }
+    StringBuilder captured = new StringBuilder()
     CommandRunner.OutputListener listener = { String stream, String line ->
-      if ("ERR" == stream) {
-        System.err.println(line)
-        System.err.flush()
-      } else {
-        println(line)
+      if (streamToConsole) {
+        if ("ERR" == stream) {
+          System.err.println(line)
+          System.err.flush()
+        } else {
+          println(line)
+        }
+      }
+      synchronized (captured) {
+        captured.append(line).append(System.lineSeparator())
       }
     } as CommandRunner.OutputListener
     CommandRunner.CommandResult result = commandRunner.runStreaming(
@@ -1234,7 +1271,41 @@ Try:
       "Exit ${result?.timedOut ? 'timeout' : result?.exitCode}; ${summary}"
     )
     appendShellCommandToConversation(session, trimmed, result)
-    return formatDirectShellResult(trimmed, result)
+    new ShellExecution(formatDirectShellResult(trimmed, result), formatCapturedShellResult(trimmed, result, captured.toString()))
+  }
+
+  private static String formatCapturedShellResult(String command, CommandRunner.CommandResult result, String output) {
+    StringBuilder builder = new StringBuilder()
+    builder.append('$ ').append(command).append("\n")
+    if (result == null) {
+      return builder.append("(no result)").toString()
+    }
+    String out = output != null ? output.stripTrailing() : ""
+    if (!out.isEmpty()) {
+      builder.append(out).append("\n")
+    }
+    builder.append("[exit ")
+    if (result.timedOut) {
+      builder.append("timeout")
+    } else {
+      builder.append(result.exitCode)
+    }
+    builder.append(result.success ? "]" : " — failed]")
+    if (result.truncated) {
+      builder.append(" (output truncated)")
+    }
+    builder.toString().stripTrailing()
+  }
+
+  @CompileStatic
+  private static class ShellExecution {
+    final String summary
+    final String captured
+
+    ShellExecution(String summary, String captured) {
+      this.summary = summary
+      this.captured = captured
+    }
   }
 
   @ShellMethod(
@@ -2637,28 +2708,24 @@ ${rendered}
         "Confirmation required in batch mode. Re-run with --yes to auto-confirm."
       )
     }
-    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
-    print("${prompt.trim()} [y/N/a]: ")
-    String response = reader.readLine()
-    String normalized = response != null ? response.trim().toLowerCase() : ""
-    if ("a" == normalized) {
-      return ConfirmChoice.ALL
+    ConfirmationChoice choice = resolveConfirmationService().confirm(prompt)
+    switch (choice) {
+      case ConfirmationChoice.ALL:
+        return ConfirmChoice.ALL
+      case ConfirmationChoice.YES:
+        return ConfirmChoice.YES
+      default:
+        return ConfirmChoice.NO
     }
-    if ("y" == normalized) {
-      return ConfirmChoice.YES
-    }
-    ConfirmChoice.NO
   }
 
   private boolean promptDisableLocalOnly(String sessionId) {
     if (batchMode) {
       return false
     }
-    print("Web search is disabled in local-only mode. Would you like to temporarily disable local-only mode for this session? (y/n): ")
-    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
-    String response = reader.readLine()
-    String normalised = response != null ? response.trim().toLowerCase(Locale.UK) : ""
-    if (normalised == "y" || normalised == "yes") {
+    boolean disable = resolveConfirmationService().confirmYesNo(
+      "Web search is disabled in local-only mode. Would you like to temporarily disable local-only mode for this session? (y/n): ")
+    if (disable) {
       sessionState.setLocalOnlyOverride(sessionId, false)
       println("Local-only mode disabled for this session, searching the web...")
       return true

@@ -4,6 +4,8 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.nio.file.Files
@@ -27,26 +29,48 @@ class FileEditingTool {
   private static final String BACKUP_ROOT = ".lca/backups"
   private static final int PREVIEW_LIMIT = 800
 
-  private final Path projectRoot
-  private final Path realProjectRoot
-  private final ExclusionPolicy exclusionPolicy
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
+  private ExclusionPolicy cachedExclusionPolicy
+  private Path cachedExclusionRoot
 
   FileEditingTool() {
-    this(Paths.get(".").toAbsolutePath())
+    this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   FileEditingTool(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
-    try {
-      this.realProjectRoot = this.projectRoot.toRealPath()
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to resolve project root path", e)
-    }
-    this.exclusionPolicy = new ExclusionPolicy(this.projectRoot)
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  FileEditingTool(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
   }
 
   Path getProjectRoot() {
-    projectRoot
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  private Path getRealProjectRoot() {
+    Path root = getProjectRoot()
+    try {
+      return root.toRealPath()
+    } catch (IOException e) {
+      return root
+    }
+  }
+
+  private synchronized ExclusionPolicy getExclusionPolicy() {
+    Path root = getProjectRoot()
+    if (cachedExclusionPolicy == null || root != cachedExclusionRoot) {
+      cachedExclusionPolicy = new ExclusionPolicy(root)
+      cachedExclusionRoot = root
+    }
+    cachedExclusionPolicy
   }
 
   String writeFile(String filePath, String content) {

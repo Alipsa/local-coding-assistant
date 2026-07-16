@@ -38,6 +38,8 @@
 
     <embabel-agent.version>0.5.0</embabel-agent.version>
     <extra-enforcer-rules.version>1.12.0</extra-enforcer-rules.version>
+    <flatlaf.version>3.7.2</flatlaf.version>
+    <flexmark.version>0.64.8</flexmark.version>
     <groovy.version>5.0.7</groovy.version>
     <htmlunit.version>5.2.0</htmlunit.version>
     <jsoup.version>1.22.2</jsoup.version>
@@ -130,6 +132,18 @@
       <groupId>org.jsoup</groupId>
       <artifactId>jsoup</artifactId>
       <version>${jsoup.version}</version>
+    </dependency>
+
+    <!-- Swing GUI (lcaGui): FlatLaf look-and-feel and flexmark Markdown -> HTML rendering -->
+    <dependency>
+      <groupId>com.formdev</groupId>
+      <artifactId>flatlaf</artifactId>
+      <version>${flatlaf.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.vladsch.flexmark</groupId>
+      <artifactId>flexmark</artifactId>
+      <version>${flexmark.version}</version>
     </dependency>
 
     <dependency>

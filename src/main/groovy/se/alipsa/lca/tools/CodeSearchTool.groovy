@@ -4,6 +4,8 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.nio.file.Path
@@ -22,16 +24,39 @@ class CodeSearchTool {
 
   private static final Logger log = LoggerFactory.getLogger(CodeSearchTool)
 
-  private final Path projectRoot
-  private final ExclusionPolicy exclusionPolicy
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
+  private ExclusionPolicy cachedExclusionPolicy
+  private Path cachedExclusionRoot
 
   CodeSearchTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   CodeSearchTool(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
-    this.exclusionPolicy = new ExclusionPolicy(this.projectRoot)
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  CodeSearchTool(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
+  }
+
+  Path getProjectRoot() {
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  private synchronized ExclusionPolicy getExclusionPolicy() {
+    Path root = getProjectRoot()
+    if (cachedExclusionPolicy == null || root != cachedExclusionRoot) {
+      cachedExclusionPolicy = new ExclusionPolicy(root)
+      cachedExclusionRoot = root
+    }
+    cachedExclusionPolicy
   }
 
   List<SearchHit> search(String query, List<String> paths, int contextLines, int limit) {

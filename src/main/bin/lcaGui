@@ -1,0 +1,16 @@
+#!/bin/sh
+# Launch the Local Coding Assistant Swing GUI, complementing the `lca` CLI.
+# Thin wrapper that delegates to `lca gui`, reusing its jar resolution, model
+# prerequisite setup, and upgrade logic. Enables lca.gui.enabled and disables the REPL.
+set -eu
+
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
+if [ -x "${script_dir}/lca" ]; then
+  exec "${script_dir}/lca" gui "$@"
+elif command -v lca >/dev/null 2>&1; then
+  exec lca gui "$@"
+else
+  echo "Error: could not find the 'lca' launcher (expected alongside lcaGui or on PATH)." >&2
+  exit 1
+fi

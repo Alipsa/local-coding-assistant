@@ -6,6 +6,7 @@ import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.intent.IntentCommandRouter
 import se.alipsa.lca.intent.IntentRoutingOutcome
 import se.alipsa.lca.intent.IntentRoutingPlan
+import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.CommandInputNormaliser
 import se.alipsa.lca.shell.ShellSettings
 import spock.lang.Specification
@@ -15,13 +16,14 @@ class JLineReplSpec extends Specification {
   IntentCommandRouter intentRouter = Mock()
   CommandExecutor commandExecutor = Mock()
   CommandInputNormaliser normaliser = new CommandInputNormaliser(new ShellSettings(true))
+  BangCommandHandler bangCommandHandler = Mock()
   Terminal terminal = TerminalBuilder.builder()
     .streams(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream())
     .system(false)
     .dumb(true)
     .build()
 
-  JLineRepl repl = new JLineRepl(intentRouter, commandExecutor, normaliser, terminal, "lca> ", null, 0.6d)
+  JLineRepl repl = new JLineRepl(intentRouter, commandExecutor, normaliser, bangCommandHandler, terminal, "lca> ", null, 0.6d)
 
   def cleanup() {
     terminal.close()
@@ -72,5 +74,15 @@ class JLineReplSpec extends Specification {
 
     then:
     1 * intentRouter.routeDetails("what does this project do") >> new IntentRoutingOutcome(plan: plan, result: null)
+  }
+
+  def "a bang-prefixed line runs as a shell command, bypassing intent routing"() {
+    when:
+    repl.handleInput("! git status")
+
+    then:
+    1 * bangCommandHandler.isBang("! git status") >> true
+    1 * bangCommandHandler.handle("! git status", "default", false) >> "Command: git status\nExit: 0 (success)"
+    0 * intentRouter.routeDetails(_)
   }
 }

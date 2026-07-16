@@ -27,6 +27,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class LocalCodingAssistantApplication {
 
     static void main(String[] args) {
-        SpringApplication.run(LocalCodingAssistantApplication.class, args)
+        SpringApplication app = new SpringApplication(LocalCodingAssistantApplication)
+        // Spring Boot forces java.awt.headless=true by default, which makes Swing throw
+        // HeadlessException. Allow AWT/Swing when launching the GUI (lca.gui.enabled=true).
+        if (Boolean.parseBoolean(System.getProperty("lca.gui.enabled", "false"))) {
+            app.setHeadless(false)
+        }
+        app.run(args)
     }
 }

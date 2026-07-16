@@ -1,5 +1,6 @@
 package se.alipsa.lca.tools
 
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
@@ -21,6 +22,7 @@ class ModelRegistry {
 
   private static final Logger log = LoggerFactory.getLogger(ModelRegistry)
   private final URI tagsUri
+  private final URI showUri
   private final HttpClient client
   private final Duration timeout
   private final String baseUrl
@@ -44,6 +46,7 @@ class ModelRegistry {
     this.baseUrl = baseUrl
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
+    this.showUri = URI.create("${normalized}/api/show")
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : 4000L
     this.timeout = Duration.ofMillis(effectiveTimeout)
     this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
@@ -141,6 +144,48 @@ class ModelRegistry {
         return health
       }
     }
+  }
+
+  /**
+   * The context-window size (in tokens) reported by Ollama for the given model, or
+   * {@code null} when the model is unknown, unreachable, or does not advertise a
+   * context length. Reads the {@code model_info.*.context_length} value from
+   * {@code POST /api/show}.
+   */
+  Integer contextLength(String model) {
+    if (model == null || model.trim().isEmpty()) {
+      return null
+    }
+    try {
+      HttpResponse<String> response = fetchShow(model.trim())
+      if (response.statusCode() >= 200 && response.statusCode() < 300) {
+        Map parsed = (Map) new JsonSlurper().parseText(response.body())
+        Object infoObj = parsed != null ? parsed.get("model_info") : null
+        if (infoObj instanceof Map) {
+          Map<String, Object> info = (Map<String, Object>) infoObj
+          for (Map.Entry<String, Object> entry : info.entrySet()) {
+            String key = entry.key
+            if (key != null && key.endsWith(".context_length") && entry.value instanceof Number) {
+              return ((Number) entry.value).intValue()
+            }
+          }
+        }
+      }
+      log.debug("No context_length reported for model {} (status {})", model, response.statusCode())
+    } catch (Exception e) {
+      log.debug("Failed to fetch context length for {}", model, e)
+    }
+    null
+  }
+
+  protected HttpResponse<String> fetchShow(String model) throws Exception {
+    String body = JsonOutput.toJson([name: model])
+    HttpRequest request = HttpRequest.newBuilder(showUri)
+      .timeout(timeout)
+      .header("Content-Type", "application/json")
+      .POST(HttpRequest.BodyPublishers.ofString(body))
+      .build()
+    client.send(request, HttpResponse.BodyHandlers.ofString())
   }
 
   protected HttpResponse<String> fetchTags() throws Exception {
