@@ -18,6 +18,7 @@ import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
+import java.util.List
 
 /**
  * The main window: header strip, a multi-line input with a Submit button, the conversation
@@ -93,44 +94,71 @@ class LcaMainFrame extends JFrame {
     conversationView.addUserMessage(text)
     inputArea.setText("")
     setBusy(true)
-    SwingWorker<TurnResult, Void> worker = new SwingWorker<TurnResult, Void>() {
-      @Override
-      protected TurnResult doInBackground() throws Exception {
-        turnController.process(text)
-      }
+    new StreamingWorker(text).execute()
+  }
 
-      @Override
-      protected void done() {
-        TurnResult result
-        try {
-          result = get()
-        } catch (Exception e) {
-          result = new TurnResult("Error: ${e.message}".toString(), null, true, GuiAction.NONE)
-        }
-        if (result?.action == GuiAction.EXIT) {
-          dispose()
-          System.exit(0)
-          return
-        }
-        if (result?.action == GuiAction.CLEAR) {
-          conversationView.clear()
-          setBusy(false)
-          inputArea.requestFocusInWindow()
-          return
-        }
-        if (result?.note) {
-          conversationView.addNote(result.note)
-        }
-        if (result?.output && !result.output.trim().isEmpty()) {
-          conversationView.addAssistantMessage(result.output)
-        }
-        footerBar.refresh()
-        headerBar.refresh()
-        setBusy(false)
-        inputArea.requestFocusInWindow()
+  /**
+   * Runs one turn off the EDT and streams its output back. The worker itself is the {@link TurnSink}:
+   * its sink methods run on background thread(s) and {@code publish} a {@link SinkEvent}; {@code process}
+   * applies each event to the transcript on the EDT.
+   */
+  private class StreamingWorker extends SwingWorker<TurnResult, SinkEvent> implements TurnSink {
+
+    private final String input
+
+    StreamingWorker(String input) {
+      this.input = input
+    }
+
+    @Override
+    protected TurnResult doInBackground() throws Exception {
+      turnController.process(input, this)
+    }
+
+    @Override
+    void note(String text) { publish(new SinkEvent(SinkEvent.Kind.NOTE, text)) }
+
+    @Override
+    void beginBlock() { publish(new SinkEvent(SinkEvent.Kind.BLOCK_BEGIN, null)) }
+
+    @Override
+    void append(String line) { publish(new SinkEvent(SinkEvent.Kind.BLOCK_APPEND, line)) }
+
+    @Override
+    void endBlock() { publish(new SinkEvent(SinkEvent.Kind.BLOCK_END, null)) }
+
+    @Override
+    void message(String markdown) { publish(new SinkEvent(SinkEvent.Kind.MESSAGE, markdown)) }
+
+    @Override
+    protected void process(List<SinkEvent> chunks) {
+      for (SinkEvent event : chunks) {
+        SinkEventDispatcher.apply(conversationView, event)
       }
     }
-    worker.execute()
+
+    @Override
+    protected void done() {
+      TurnResult result
+      try {
+        result = get()
+      } catch (Exception e) {
+        conversationView.addNote("Error: ${e.message}".toString())
+        result = new TurnResult(true, GuiAction.NONE)
+      }
+      if (result?.action == GuiAction.EXIT) {
+        dispose()
+        System.exit(0)
+        return
+      }
+      if (result?.action == GuiAction.CLEAR) {
+        conversationView.clear()
+      }
+      footerBar.refresh()
+      headerBar.refresh()
+      setBusy(false)
+      inputArea.requestFocusInWindow()
+    }
   }
 
   private void setBusy(boolean busy) {

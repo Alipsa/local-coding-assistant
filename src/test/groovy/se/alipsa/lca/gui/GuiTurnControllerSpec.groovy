@@ -8,6 +8,8 @@ import se.alipsa.lca.repl.CommandExecutor
 import se.alipsa.lca.shell.BangCommandHandler
 import spock.lang.Specification
 
+import java.util.function.Consumer
+
 class GuiTurnControllerSpec extends Specification {
 
   IntentCommandRouter router = Mock()
@@ -15,46 +17,55 @@ class GuiTurnControllerSpec extends Specification {
   BangCommandHandler bangCommandHandler = Mock()
   GuiTurnController controller = new GuiTurnController(router, executor, bangCommandHandler, 0.6d)
 
-  def "executes a high-confidence single command with no routing note"() {
+  /** Records sink calls as strings so ordering can be asserted. */
+  static class RecordingSink implements TurnSink {
+    List<String> events = []
+    void note(String t) { events << "note:${t}".toString() }
+    void beginBlock() { events << "begin" }
+    void append(String line) { events << "append:${line}".toString() }
+    void endBlock() { events << "end" }
+    void message(String m) { events << "msg:${m}".toString() }
+  }
+
+  RecordingSink sink = new RecordingSink()
+
+  def "high-confidence single command emits one message and no note"() {
     given:
     router.routeDetails("do it") >> new IntentRoutingOutcome(new IntentRoutingPlan(["/chat"], 0.95d, "clear"), null)
     executor.execute("/chat") >> "hello"
 
     when:
-    TurnResult result = controller.process("do it")
+    TurnResult result = controller.process("do it", sink)
 
     then:
     result.understood
-    result.output == "hello"
-    result.note == null
+    sink.events == ["msg:hello"]
   }
 
-  def "reports not understood when routing yields no commands"() {
+  def "not-understood routing emits a note and reports understood=false"() {
     given:
     router.routeDetails(_ as String) >> new IntentRoutingOutcome(new IntentRoutingPlan([], 0.0d, ""), null)
 
     when:
-    TurnResult result = controller.process("gibberish")
+    TurnResult result = controller.process("gibberish", sink)
 
     then:
     !result.understood
-    result.note.toLowerCase().contains("couldn't understand")
-    result.output == null
+    sink.events.size() == 1
+    sink.events[0].toLowerCase().contains("couldn't understand")
   }
 
-  def "adds a routing note and aggregates output for multiple commands"() {
+  def "multiple commands emit a routing note then one message each, in order"() {
     given:
     router.routeDetails("both") >> new IntentRoutingOutcome(new IntentRoutingPlan(["/plan", "/review"], 0.9d, "x"), null)
     executor.execute("/plan") >> "planned"
     executor.execute("/review") >> "reviewed"
 
     when:
-    TurnResult result = controller.process("both")
+    controller.process("both", sink)
 
     then:
-    result.note.startsWith("Routing to: /plan, /review")
-    result.output.contains("planned")
-    result.output.contains("reviewed")
+    sink.events == ["note:Routing to: /plan, /review", "msg:planned", "msg:reviewed"]
   }
 
   def "low-confidence single command note shows confidence, second opinion and low-confidence flag"() {
@@ -65,89 +76,107 @@ class GuiTurnControllerSpec extends Specification {
     executor.execute("/chat") >> "answer"
 
     when:
-    TurnResult result = controller.process("maybe")
+    controller.process("maybe", sink)
 
     then:
-    result.output == "answer"
-    result.note.contains("50%")
-    result.note.contains("second opinion")
-    result.note.contains("low confidence")
+    sink.events[0].contains("50%")
+    sink.events[0].contains("second opinion")
+    sink.events[0].contains("low confidence")
+    sink.events[1] == "msg:answer"
   }
 
-  def "blank input short-circuits without routing"() {
+  def "blank input does nothing"() {
     when:
-    TurnResult result = controller.process("   ")
+    TurnResult result = controller.process("   ", sink)
 
     then:
     0 * router.routeDetails(_)
     result.understood
-    result.output == null
+    sink.events.isEmpty()
   }
 
-  def "wraps routing failures in an error note"() {
-    given:
-    router.routeDetails("boom") >> { throw new RuntimeException("kaboom") }
-
-    when:
-    TurnResult result = controller.process("boom")
-
-    then:
-    result.note.contains("kaboom")
-  }
-
-  def "bang input delegates to the shell handler and skips routing"() {
+  def "a bang command streams a block: begin, header, body lines, footer, end"() {
     given:
     bangCommandHandler.isBang("! ls") >> true
-    bangCommandHandler.handle("! ls", "default", true) >> '$ ls\nfoo\n[exit 0]'
+    bangCommandHandler.strip("! ls") >> "ls"
+    bangCommandHandler.handle("! ls", "default", true, _ as Consumer) >> { args ->
+      Consumer<String> c = args[3] as Consumer
+      c.accept("foo")
+      c.accept("bar")
+      "[exit 0]"
+    }
 
     when:
-    TurnResult result = controller.process("! ls")
+    controller.process("! ls", sink)
 
     then:
     0 * router.routeDetails(_)
-    result.understood
-    result.output.startsWith("```")
-    result.output.contains("[exit 0]")
+    sink.events == ["begin", 'append:$ ls', "append:foo", "append:bar", "append:[exit 0]", "end"]
   }
 
-  def "an explicit slash command is executed directly without routing"() {
+  def "a bare bang reports usage without opening a block"() {
+    given:
+    bangCommandHandler.isBang("!") >> true
+    bangCommandHandler.strip("!") >> ""
+
+    when:
+    controller.process("!", sink)
+
+    then:
+    sink.events == ["note:Usage: ! <shell command>"]
+  }
+
+  def "an explicit slash command executes directly and emits its output as a message"() {
     given:
     executor.execute("/status") >> "on branch main"
 
     when:
-    TurnResult result = controller.process("/status")
+    TurnResult result = controller.process("/status", sink)
 
     then:
     0 * router.routeDetails(_)
     1 * executor.execute("/status") >> "on branch main"
     result.understood
-    result.output == "on branch main"
+    sink.events == ["msg:on branch main"]
     result.action == GuiAction.NONE
   }
 
-  def "#input requests an exit without routing or executing"() {
+  def "#input requests exit without routing or executing"() {
     when:
-    TurnResult result = controller.process(input)
+    TurnResult result = controller.process(input, sink)
 
     then:
     0 * router.routeDetails(_)
     0 * executor.execute(_)
     result.action == GuiAction.EXIT
+    sink.events.isEmpty()
 
     where:
     input << ["exit", "quit", "/exit", "/quit", "  /Quit  "]
   }
 
-  def "#input clears the transcript without routing or executing"() {
+  def "#input clears without routing or executing"() {
     when:
-    TurnResult result = controller.process(input)
+    TurnResult result = controller.process(input, sink)
 
     then:
     0 * router.routeDetails(_)
     0 * executor.execute(_)
     result.action == GuiAction.CLEAR
+    sink.events.isEmpty()
 
     where:
     input << ["clear", "cls", "/clear", "/cls"]
+  }
+
+  def "budgetedForwarder forwards up to the budget then emits one truncation marker"() {
+    given:
+    Consumer<String> fwd = GuiTurnController.budgetedForwarder(sink, 3)
+
+    when:
+    (1..6).each { fwd.accept("line-${it}".toString()) }
+
+    then:
+    sink.events == ["append:line-1", "append:line-2", "append:line-3", "append:… output truncated in view …"]
   }
 }

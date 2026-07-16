@@ -12,6 +12,9 @@ import se.alipsa.lca.repl.CommandExecutor
 import se.alipsa.lca.shell.BangCommandHandler
 
 import java.util.Locale
+import java.util.function.Consumer
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Drives one GUI turn through the same intent-routing pipeline the REPL uses
@@ -27,6 +30,7 @@ class GuiTurnController {
 
   private static final Logger log = LoggerFactory.getLogger(GuiTurnController)
   private static final double SHOW_ROUTING_BELOW = 0.85d
+  private static final int MAX_VIEW_LINES = 5000
 
   private final IntentCommandRouter intentRouter
   private final CommandExecutor commandExecutor
@@ -45,34 +49,47 @@ class GuiTurnController {
     this.secondOpinionThreshold = secondOpinionThreshold
   }
 
-  TurnResult process(String input) {
+  TurnResult process(String input, TurnSink sink) {
     if (input == null || input.trim().isEmpty()) {
-      return new TurnResult(null, null, true)
+      return new TurnResult(true)
     }
+
     if (bangCommandHandler.isBang(input)) {
-      // Shell command: capture output (GUI stdout is not visible) and show it as a code block.
-      String output = bangCommandHandler.handle(input, "default", true)
-      String block = "```\n${output ?: ''}\n```".toString()
-      return new TurnResult(null, block, true, GuiAction.NONE)
+      String command = bangCommandHandler.strip(input)
+      if (command.isEmpty()) {
+        sink.note("Usage: ! <shell command>")
+        return new TurnResult(true)
+      }
+      sink.beginBlock()
+      sink.append('$ ' + command)
+      String footer = bangCommandHandler.handle(input, "default", true, budgetedForwarder(sink, MAX_VIEW_LINES))
+      if (footer != null && !footer.trim().isEmpty()) {
+        sink.append(footer)
+      }
+      sink.endBlock()
+      return new TurnResult(true)
     }
 
     String trimmed = input.trim()
     String lower = trimmed.toLowerCase(Locale.ROOT)
     if (lower in ["exit", "quit", "/exit", "/quit"]) {
-      return new TurnResult(null, null, true, GuiAction.EXIT)
+      return new TurnResult(true, GuiAction.EXIT)
     }
     if (lower in ["clear", "cls", "/clear", "/cls"]) {
-      return new TurnResult(null, null, true, GuiAction.CLEAR)
+      return new TurnResult(true, GuiAction.CLEAR)
     }
 
-    // Explicit slash command: execute directly (same as the CLI), bypassing the LLM router.
     if (trimmed.startsWith("/")) {
       try {
         String output = commandExecutor.execute(trimmed)
-        return new TurnResult(null, output, true, GuiAction.NONE)
+        if (output != null && !output.trim().isEmpty()) {
+          sink.message(output)
+        }
+        return new TurnResult(true)
       } catch (Exception e) {
         log.error("Error executing command: {}", trimmed, e)
-        return new TurnResult("Error: ${e.message}".toString(), null, true, GuiAction.NONE)
+        sink.note("Error: ${e.message}".toString())
+        return new TurnResult(true)
       }
     }
 
@@ -80,24 +97,42 @@ class GuiTurnController {
       IntentRoutingOutcome outcome = intentRouter.routeDetails(input)
       IntentRoutingPlan plan = outcome?.plan
       if (plan == null || plan.commands == null || plan.commands.isEmpty()) {
-        return new TurnResult("I couldn't understand that. Try rephrasing or use /help.", null, false)
+        sink.note("I couldn't understand that. Try rephrasing or use /help.")
+        return new TurnResult(false)
       }
       String note = buildNote(plan, outcome)
-      StringBuilder output = new StringBuilder()
+      if (note != null) {
+        sink.note(note)
+      }
       for (String command : plan.commands) {
         String result = commandExecutor.execute(command)
         if (result != null && !result.trim().isEmpty()) {
-          if (output.length() > 0) {
-            output.append("\n\n")
-          }
-          output.append(result)
+          sink.message(result)
         }
       }
-      new TurnResult(note, output.toString(), true)
+      new TurnResult(true)
     } catch (Exception e) {
       log.error("Error processing GUI input: {}", input, e)
-      new TurnResult("Error: ${e.message}".toString(), null, true)
+      sink.note("Error: ${e.message}".toString())
+      new TurnResult(true)
     }
+  }
+
+  /**
+   * A thread-safe consumer that forwards up to {@code maxLines} lines to the sink, then emits a
+   * single truncation marker. May be called concurrently from the stdout and stderr reader threads.
+   */
+  static Consumer<String> budgetedForwarder(TurnSink sink, int maxLines) {
+    AtomicInteger count = new AtomicInteger()
+    AtomicBoolean marked = new AtomicBoolean()
+    return { String line ->
+      int n = count.incrementAndGet()
+      if (n <= maxLines) {
+        sink.append(line)
+      } else if (marked.compareAndSet(false, true)) {
+        sink.append("… output truncated in view …")
+      }
+    } as Consumer<String>
   }
 
   private String buildNote(IntentRoutingPlan plan, IntentRoutingOutcome outcome) {
