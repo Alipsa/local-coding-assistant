@@ -1,14 +1,18 @@
 package se.alipsa.lca.gui
 
+import se.alipsa.lca.tools.ModelRegistry
 import spock.lang.Specification
+import spock.lang.Unroll
 import spock.util.concurrent.PollingConditions
 
+import javax.swing.JLabel
 import javax.swing.JProgressBar
 
 class FooterBarSpec extends Specification {
 
   SystemMetrics systemMetrics = Mock()
   ContextEstimator contextEstimator = Mock()
+  ModelRegistry modelRegistry = Mock()
   PollingConditions conditions = new PollingConditions(timeout: 2)
 
   private static String contextText(FooterBar footer) {
@@ -41,7 +45,7 @@ class FooterBarSpec extends Specification {
     systemMetrics.memorySummary() >> "4 / 8 Gb"
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
 
     then: "the slow metric is fetched off the calling thread, not blocking construction"
     conditions.eventually {
@@ -63,7 +67,7 @@ class FooterBarSpec extends Specification {
     systemMetrics.memorySummary() >> "2 / 8 Gb"
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
     footer.refreshAsync()
 
     then:
@@ -75,7 +79,7 @@ class FooterBarSpec extends Specification {
 
   def "a fresh refreshAsync call supersedes the generation an earlier, still-running one captured"() {
     given:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
 
     when: "an earlier tick's worker captures its generation before a second tick starts"
     int firstGeneration = footer.beginRefreshGeneration()
@@ -89,5 +93,94 @@ class FooterBarSpec extends Specification {
     then: "the first worker's captured generation is now stale and must not apply its result"
     !footer.isCurrentRefreshGeneration(firstGeneration)
     footer.isCurrentRefreshGeneration(secondGeneration)
+  }
+
+  def "the footer bar no longer shows pipe separators between segments"() {
+    given:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+
+    expect:
+    footer.components.findAll { it instanceof JLabel }.every { !((JLabel) it).text?.contains("|") }
+  }
+
+  @Unroll
+  def "memoryDisplayFor(remote=#remote, localPercent=#localPercent) -> (#expectedPercent, '#expectedText')"() {
+    expect:
+    FooterBar.MemoryDisplay display = FooterBar.memoryDisplayFor(remote, localPercent, localSummary, loaded)
+    display.percent == expectedPercent
+    display.text == expectedText
+
+    where:
+    remote | localPercent | localSummary | loaded                                                       || expectedPercent | expectedText
+    false  | 55           | "4 / 8 Gb"   | []                                                           || 55              | "4 / 8 Gb"
+    false  | null         | null         | []                                                           || null            | "n/a"
+    true   | null         | null         | [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 0L)]   || null            | "5 Gb (Ollama)"
+    true   | null         | null         | []                                                           || null            | "n/a"
+    true   | null         | null         | [new ModelRegistry.LoadedModel("m1", 0L, 0L)]               || null            | "n/a"
+  }
+
+  @Unroll
+  def "gpuLabelFor(#loaded) == '#expected'"() {
+    expect:
+    FooterBar.gpuLabelFor(loaded) == expected
+
+    where:
+    loaded                                                                       | expected
+    []                                                                            | "GPU memory: n/a"
+    [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 0L)]                    | "GPU memory: n/a"
+    [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 3_000_000_000L)]        | "GPU memory: 3 Gb"
+  }
+
+  def "a remote Ollama with no loaded models shows n/a instead of local host stats"() {
+    given:
+    systemMetrics.usedMemoryPercent() >> 55
+    systemMetrics.memorySummary() >> "4 / 8 Gb"
+    modelRegistry.isRemote() >> true
+    modelRegistry.loadedModels() >> []
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      memoryText(footer) == "n/a"
+      footer.components.find { it instanceof JLabel && ((JLabel) it).text == "GPU memory: n/a" } != null
+    }
+  }
+
+  def "a remote Ollama with a loaded model shows its reported memory, not local host stats"() {
+    given:
+    systemMetrics.usedMemoryPercent() >> 55
+    systemMetrics.memorySummary() >> "4 / 8 Gb"
+    modelRegistry.isRemote() >> true
+    modelRegistry.loadedModels() >> [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 3_000_000_000L)]
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      memoryText(footer)?.contains("(Ollama)")
+      footer.components.find { it instanceof JLabel && ((JLabel) it).text == "GPU memory: 3 Gb" } != null
+    }
+  }
+
+  def "a local Ollama keeps showing local host stats unchanged"() {
+    given:
+    systemMetrics.usedMemoryPercent() >> 55
+    systemMetrics.memorySummary() >> "4 / 8 Gb"
+    modelRegistry.isRemote() >> false
+    modelRegistry.loadedModels() >> []
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      memoryText(footer) == "4 / 8 Gb"
+    }
   }
 }

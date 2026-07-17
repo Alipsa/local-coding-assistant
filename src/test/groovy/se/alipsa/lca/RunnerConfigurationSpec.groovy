@@ -12,6 +12,7 @@ import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
+import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.Workspace
 import spock.lang.Specification
 import spock.lang.Unroll
@@ -24,6 +25,7 @@ class RunnerConfigurationSpec extends Specification {
       .withBean(MarkdownRenderer, { Mock(MarkdownRenderer) })
       .withBean(SystemMetrics, { Mock(SystemMetrics) })
       .withBean(ContextEstimator, { Mock(ContextEstimator) })
+      .withBean(ModelRegistry, { Mock(ModelRegistry) })
       .withBean(GuiTurnController, { Mock(GuiTurnController) })
       .withBean(FileEditingTool, { Mock(FileEditingTool) })
       .withBean(GitTool, { Mock(GitTool) })

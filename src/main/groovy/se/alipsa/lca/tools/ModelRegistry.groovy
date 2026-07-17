@@ -16,14 +16,20 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.Locale
 
 @Component
 @CompileStatic
 class ModelRegistry {
 
   private static final Logger log = LoggerFactory.getLogger(ModelRegistry)
+  private static final Set<String> LOOPBACK_HOSTS = Set.of(
+    "localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1", "0.0.0.0"
+  )
   private final URI tagsUri
   private final URI showUri
+  private final URI psUri
+  private final boolean remote
   private final HttpClient client
   private final Duration timeout
   private final String baseUrl
@@ -31,6 +37,8 @@ class ModelRegistry {
   private final long healthTtlMillis
   protected volatile List<String> cachedModels = null
   protected volatile long cachedAt = 0L
+  protected volatile List<LoadedModel> cachedLoaded = null
+  protected volatile long cachedLoadedAt = 0L
   private volatile Health cachedHealth = null
   private volatile long healthCachedAt = 0L
 
@@ -48,6 +56,8 @@ class ModelRegistry {
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
     this.showUri = URI.create("${normalized}/api/show")
+    this.psUri = URI.create("${normalized}/api/ps")
+    this.remote = isRemoteHost(tagsUri.getHost())
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : 4000L
     this.timeout = Duration.ofMillis(effectiveTimeout)
     this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
@@ -104,6 +114,83 @@ class ModelRegistry {
           log.info("Returning stale model cache due to fetch failure; cache age={}ms", nowMillis() - cachedAt)
         }
         return List.copyOf(cachedModels)
+      }
+      List.of()
+    }
+  }
+
+  /**
+   * Whether the configured Ollama base URL points somewhere other than this machine — used to
+   * decide whether local host memory metrics are representative of the machine actually running
+   * inference. Fixed at construction; no I/O.
+   */
+  boolean isRemote() {
+    remote
+  }
+
+  /**
+   * Pure host-string check — no DNS/InetAddress resolution (which could block or misfire across
+   * networks). Known limitation: a loopback alias via {@code /etc/hosts} or mDNS (e.g.
+   * {@code host.docker.internal}, {@code foo.local}) is classified as remote even if it happens
+   * to resolve to this machine — acceptable until it proves wrong for a real setup.
+   */
+  @PackageScope
+  static boolean isRemoteHost(String host) {
+    if (host == null || host.trim().isEmpty()) {
+      return false
+    }
+    !LOOPBACK_HOSTS.contains(host.toLowerCase(Locale.ROOT))
+  }
+
+  /**
+   * Currently loaded models on the Ollama server ({@code GET /api/ps}), with their reported
+   * memory footprint. This reflects the host actually running inference — which may differ from
+   * this machine's own stats when {@link #isRemote} is true. Cached/degraded like
+   * {@link #listModels}.
+   */
+  List<LoadedModel> loadedModels() {
+    long now = nowMillis()
+    List<LoadedModel> current
+    long currentAt
+    synchronized (this) {
+      current = cachedLoaded
+      currentAt = cachedLoadedAt
+    }
+    if (current != null && (now - currentAt) < cacheTtlMillis) {
+      return List.copyOf(current)
+    }
+    synchronized (this) {
+      if (cachedLoaded != null && (nowMillis() - cachedLoadedAt) < cacheTtlMillis) {
+        return List.copyOf(cachedLoaded)
+      }
+      try {
+        HttpResponse<String> response = fetchPs()
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+          Map parsed = (Map) new JsonSlurper().parseText(response.body())
+          Object modelsObj = parsed != null ? parsed.get("models") : null
+          if (modelsObj instanceof List) {
+            List<LoadedModel> models = new ArrayList<>()
+            for (Object it : (List<?>) modelsObj) {
+              if (it instanceof Map) {
+                Map m = (Map) it
+                models.add(new LoadedModel(loadedModelName(m), asLong(m.get("size")), asLong(m.get("size_vram"))))
+              }
+            }
+            cachedLoaded = models
+            cachedLoadedAt = nowMillis()
+            return List.copyOf(models)
+          }
+        }
+        log.debug("Unexpected response listing loaded models: status {}", response.statusCode())
+      } catch (Exception e) {
+        log.debug("Failed to list loaded models from {}", psUri, e)
+      }
+      if (cachedLoaded != null) {
+        boolean stale = (nowMillis() - cachedLoadedAt) >= cacheTtlMillis
+        if (stale) {
+          log.info("Returning stale loaded-model cache due to fetch failure; cache age={}ms", nowMillis() - cachedLoadedAt)
+        }
+        return List.copyOf(cachedLoaded)
       }
       List.of()
     }
@@ -224,6 +311,20 @@ class ModelRegistry {
     client.send(request, HttpResponse.BodyHandlers.discarding())
   }
 
+  protected HttpResponse<String> fetchPs() throws Exception {
+    HttpRequest request = HttpRequest.newBuilder(psUri).timeout(timeout).GET().build()
+    client.send(request, HttpResponse.BodyHandlers.ofString())
+  }
+
+  private static String loadedModelName(Map m) {
+    Object name = m.get("name") ?: m.get("model")
+    name != null ? name.toString() : null
+  }
+
+  private static long asLong(Object o) {
+    o instanceof Number ? ((Number) o).longValue() : 0L
+  }
+
   protected long nowMillis() {
     System.currentTimeMillis()
   }
@@ -233,6 +334,14 @@ class ModelRegistry {
   static class Health {
     boolean reachable
     String message
+  }
+
+  @Canonical
+  @CompileStatic
+  static class LoadedModel {
+    String name
+    long size       // total memory footprint, bytes
+    long sizeVram   // portion resident in GPU VRAM, bytes (0 if CPU-only)
   }
 
   String getBaseUrl() {

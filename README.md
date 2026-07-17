@@ -18,6 +18,8 @@ It requires at least 20 GB of free RAM to run comfortably.
 
 ## What this project is today
 - Interactive shell as the user interface with slash commands for chat, planning, code review, editing, git operations, and more. REST commands are also available.
+- Optional Swing desktop GUI (`lcaGui`) as an alternative to the shell — see
+  [Desktop GUI (lcaGui)](#desktop-gui-lcagui) below.
 - Embabel agents for code crafting, review, planning and git operations with safety guardrails.
 - Spring Boot entry point with Embabel agents enabled
   (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
@@ -139,7 +141,24 @@ assistant.intent.confidence-threshold=0.8
 ## Running from source
 1. Install Java 21 and maven 3.9.9 or later
 2. Pull a code-capable model. `./models.sh` will install the appropriate models.
-3. Start the interactive shell: `./scripts/shell.sh`. The script sets `AGENT_APPLICATION` and launches Spring Shell with Embabel agents loaded.
+3. Start the interactive shell: `./run.sh`. The script builds the jar with Maven and launches it
+   with Spring Shell and Embabel agents loaded.
+
+## Desktop GUI (lcaGui)
+A Swing-based desktop UI is available as an alternative to the interactive shell — see
+`docs/gui.md` for the design rationale. It's disabled by default
+(`lca.gui.enabled=false` in `application.properties`); enable it by passing the property at
+launch:
+```
+./run.sh --lca.gui.enabled=true
+```
+or, running the packaged jar directly:
+```
+java -jar local-coding-assistant-<version>.jar --lca.gui.enabled=true
+```
+The GUI shows the base directory, current git branch (with an open PR number alongside it, when
+one exists), and the active main/small models in a header strip, plus context/memory usage in a
+footer strip, with the conversation in between.
 
 ## Quickstart examples
 Full end-to-end flows are in `docs/quickstart.md`.

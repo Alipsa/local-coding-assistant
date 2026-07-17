@@ -61,13 +61,19 @@ class HeaderBar extends JPanel {
 
   private final JLabel baseDirLabel = new JLabel()
   private final JComboBox<String> branchCombo = new JComboBox<>()
+  private final JLabel pullRequestLabel = new JLabel()
   private final JLabel mainModelLabel = new JLabel()
   private final JLabel smallModelLabel = new JLabel()
+
+  private static final int SEGMENT_GAP = 12
 
   private final Set<String> localBranches = new LinkedHashSet<>()
   private boolean populating = false
   // Guards against a slower popup-open's worker overwriting a faster, more recent one's result.
   private final AtomicInteger populateGeneration = new AtomicInteger(0)
+  // Separate from populateGeneration: the PR check is triggered by refresh(), not popup-open, so
+  // a popup-open must not be able to invalidate an unrelated in-flight PR check (and vice versa).
+  private final AtomicInteger prCheckGeneration = new AtomicInteger(0)
 
   HeaderBar(FileEditingTool fileEditingTool, GitTool gitTool, SessionState sessionState,
             Workspace workspace, BangCommandHandler bangCommandHandler,
@@ -82,15 +88,18 @@ class HeaderBar extends JPanel {
     setLayout(new BoxLayout(this, BoxLayout.X_AXIS))
     setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8))
     configureBranchCombo()
+    pullRequestLabel.setVisible(false)
     add(baseDirLabel)
-    add(Box.createHorizontalStrut(12))
+    add(Box.createHorizontalStrut(SEGMENT_GAP))
     add(changeDirButton())
-    add(separator())
+    add(spacer())
     add(new JLabel("branch: "))
     add(branchCombo)
-    add(separator())
+    add(Box.createHorizontalStrut(8))
+    add(pullRequestLabel)
+    add(spacer())
     add(mainModelLabel)
-    add(separator())
+    add(spacer())
     add(smallModelLabel)
     refresh()
   }
@@ -309,6 +318,92 @@ class HeaderBar extends JPanel {
     updateBranchSelection()
     mainModelLabel.text = "Main model: ${sessionState?.defaultModel ?: '-'}"
     smallModelLabel.text = "Small model: ${sessionState?.fallbackModel ?: '-'}"
+    refreshPullRequestStatus()
+  }
+
+  /**
+   * Checks for open PRs on the current branch off the EDT (shells out to {@code gh}) and shows
+   * the result once done — hidden when there is none, the check fails, or this isn't a git repo.
+   * Mirrors {@link #populateBranches}'s SwingWorker + generation-guard pattern, with its own
+   * generation counter since this is triggered by {@link #refresh}, not popup-open.
+   */
+  @PackageScope
+  void refreshPullRequestStatus() {
+    int generation = beginPrCheckGeneration()
+    new SwingWorker<String, Void>() {
+      @Override
+      protected String doInBackground() {
+        collectPullRequestLabel()
+      }
+
+      @Override
+      protected void done() {
+        if (!isCurrentPrCheckGeneration(generation)) {
+          return
+        }
+        String text
+        try {
+          text = get()
+        } catch (Exception e) {
+          log.warn("Could not check open PRs: {}", e.message)
+          text = null
+        }
+        applyPullRequestLabel(text)
+      }
+    }.execute()
+  }
+
+  /** Starts a new PR-check generation, superseding any still-running earlier one. */
+  @PackageScope
+  int beginPrCheckGeneration() {
+    prCheckGeneration.incrementAndGet()
+  }
+
+  /** Whether {@code generation} is still the most recently started PR-check call. */
+  @PackageScope
+  boolean isCurrentPrCheckGeneration(int generation) {
+    generation == prCheckGeneration.get()
+  }
+
+  /** The PR label's shown text, or {@code null} when hidden — exposed read-only for tests. */
+  @PackageScope
+  String currentPullRequestText() {
+    pullRequestLabel.isVisible() ? pullRequestLabel.text : null
+  }
+
+  private String collectPullRequestLabel() {
+    if (gitTool == null) {
+      return null
+    }
+    try {
+      GitTool.GitResult result = gitTool.openPullRequestsForCurrentBranch()
+      result.success ? pullRequestLabelFor(GitTool.parsePullRequestJson(result.output)) : null
+    } catch (Exception e) {
+      log.warn("Could not check open PRs: {}", e.message)
+      null
+    }
+  }
+
+  private void applyPullRequestLabel(String text) {
+    pullRequestLabel.setText(text ?: "")
+    pullRequestLabel.setVisible(text != null)
+  }
+
+  /**
+   * Display text for the PR indicator from parsed {@code gh pr list} output, or {@code null} when
+   * there is nothing to show (no open PR for the branch, or every entry lacks a usable number) —
+   * callers hide the label in that case.
+   */
+  static String pullRequestLabelFor(List<Map> pullRequests) {
+    if (pullRequests == null || pullRequests.isEmpty()) {
+      return null
+    }
+    List<String> numbers = pullRequests.findAll { it?.get("number") != null }
+                                        .collect { "#${it.get('number')}".toString() }
+    if (numbers.isEmpty()) {
+      return null
+    }
+    numbers.size() == 1 ? "PR ${numbers.get(0)}".toString() : "PRs ${numbers.join(', ')}".toString()
   }
 
   private void updateBranchSelection() {
@@ -358,8 +453,8 @@ class HeaderBar extends JPanel {
     slash >= 0 ? ref.substring(slash + 1) : ref
   }
 
-  private static Component separator() {
-    new JLabel("     |     ")
+  private static Component spacer() {
+    Box.createHorizontalStrut(SEGMENT_GAP)
   }
 
   /** Immutable snapshot of branch state collected off the EDT and applied on it. */
