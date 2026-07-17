@@ -147,14 +147,21 @@ assistant.intent.confidence-threshold=0.8
 ## Desktop GUI (lcaGui)
 A Swing-based desktop UI is available as an alternative to the interactive shell — see
 `docs/gui.md` for the design rationale. It's disabled by default
-(`lca.gui.enabled=false` in `application.properties`); enable it by passing the property at
-launch:
+(`lca.gui.enabled=false` in `application.properties`).
+
+Launch it with:
+```
+lca gui
+```
+This works with the `lca` launcher from [Launcher script (lca)](#launcher-script-lca) above, or
+from a source build — it resolves/downloads the jar, ensures the required Ollama models are
+installed, and launches with `lca.gui.enabled=true` (REPL disabled). Building from source,
+`./localInstall.sh` also installs a standalone `lcaGui` wrapper script — equivalent to `lca gui`
+— alongside `lca` in `~/.local/bin`.
+
+Running from source without either script installed, pass the property directly instead:
 ```
 ./run.sh --lca.gui.enabled=true
-```
-or, running the packaged jar directly:
-```
-java -jar local-coding-assistant-<version>.jar --lca.gui.enabled=true
 ```
 The GUI shows the base directory, current git branch (with an open PR number alongside it, when
 one exists), and the active main/small models in a header strip, plus context/memory usage in a
