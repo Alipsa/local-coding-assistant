@@ -2,8 +2,13 @@ package se.alipsa.lca.agent
 
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.api.common.PromptRunner
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.domain.io.UserInput
+import se.alipsa.lca.shell.ConfirmationChoice
+import se.alipsa.lca.shell.ConfirmationService
+import se.alipsa.lca.tools.ConfirmingLlmTool
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.LocalOnlyState
@@ -14,10 +19,13 @@ class CodingAssistantAgentSpec extends Specification {
 
   FileEditingTool fileEditingTool = Mock(FileEditingTool)
   CodeSearchTool codeSearchTool = Mock(CodeSearchTool)
+  GitTool gitTool = Mock(GitTool)
+  ConfirmationService confirmationService = Mock(ConfirmationService)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
-  SessionState sessionState = Stub(SessionState) {
+  SessionState sessionState = Mock(SessionState) {
     getWebSearchFetcher(_) >> "htmlunit"
     getWebSearchFallbackFetcher(_) >> "jsoup"
+    isToolConfirmationAllowedForAll(_) >> false
   }
   CodingAssistantAgent agent = new CodingAssistantAgent(
     220,
@@ -30,6 +38,8 @@ class CodingAssistantAgentSpec extends Specification {
     fileEditingTool,
     webSearchTool,
     codeSearchTool,
+    gitTool,
+    confirmationService,
     new LocalOnlyState(false),
     sessionState
   )
@@ -240,6 +250,124 @@ class CodingAssistantAgentSpec extends Specification {
     result.is(srResult)
   }
 
+  def "chat-facing methods are actually discoverable as Embabel LLM tools"() {
+    // Regression guard: withToolObject(agent) only exposes methods annotated @LlmTool (Embabel's
+    // MethodToolFactory), NOT @Action (the goal/planning-graph annotation). An @Action-only method
+    // silently contributes zero tools to chat instead of failing loudly, so this exercises the real
+    // Embabel entry point rather than trusting the annotation is present.
+    when:
+    // Tool.Companion is ambiguous to Groovy's dynamic dispatch (it collides with the nested
+    // Tool$Companion class of the same simple name), so fetch the singleton via reflection instead.
+    def companion = Tool.getDeclaredField("Companion").get(null)
+    List<Tool> tools = companion.safelyFromInstance(agent, new com.fasterxml.jackson.databind.ObjectMapper())
+    Set<String> toolNames = tools.collect { it.definition.name }.toSet()
+
+    then:
+    toolNames.containsAll([
+      "writeFile", "replace", "deleteFile", "applyPatch", "replaceRange", "fileContext",
+      "revertFromBackup", "applySearchReplaceBlocks", "search", "searchFiles", "checkOpenPullRequests"
+    ])
+  }
+
+  def "buildLlmTools wraps confirmation-required tools but leaves read-only tools alone"() {
+    when:
+    List<Tool> tools = agent.buildLlmTools("session-1")
+    Map<String, Tool> byName = tools.collectEntries { [(it.definition.name): it] }
+
+    then:
+    byName["writeFile"] instanceof ConfirmingLlmTool
+    byName["deleteFile"] instanceof ConfirmingLlmTool
+    byName["applyPatch"] instanceof ConfirmingLlmTool
+    byName["replaceRange"] instanceof ConfirmingLlmTool
+    byName["applySearchReplaceBlocks"] instanceof ConfirmingLlmTool
+    byName["revertFromBackup"] instanceof ConfirmingLlmTool
+    byName["replace"] instanceof ConfirmingLlmTool
+    !(byName["searchFiles"] instanceof ConfirmingLlmTool)
+    !(byName["search"] instanceof ConfirmingLlmTool)
+    !(byName["checkOpenPullRequests"] instanceof ConfirmingLlmTool)
+    !(byName["fileContext"] instanceof ConfirmingLlmTool)
+  }
+
+  def "findLlmToolMethod matches by the @LlmTool name attribute, not the Java method name"() {
+    expect: "a tool name equal to the annotation's declared name() resolves, even though it diverges from the method name"
+    CodingAssistantAgent.findLlmToolMethod(DivergentNameFixture, "delete_file")?.name == "deleteFile"
+
+    and: "the bare Java method name no longer resolves anything, since it is not the tool's name"
+    CodingAssistantAgent.findLlmToolMethod(DivergentNameFixture, "deleteFile") == null
+
+    and: "a tool with no name() attribute still falls back to the Java method name"
+    CodingAssistantAgent.findLlmToolMethod(DivergentNameFixture, "writeFile")?.name == "writeFile"
+  }
+
+  static class DivergentNameFixture {
+    @com.embabel.agent.api.annotation.LlmTool(name = "delete_file", description = "Delete a file.")
+    @RequiresConfirmation(message = "delete?")
+    void deleteFile() {}
+
+    @com.embabel.agent.api.annotation.LlmTool(description = "Write a file.")
+    void writeFile() {}
+  }
+
+  def "buildLlmTools' confirmation wrapper actually blocks the underlying call"() {
+    given:
+    List<Tool> tools = agent.buildLlmTools("session-1")
+    Tool writeFileTool = tools.find { it.definition.name == "writeFile" }
+
+    when:
+    def declined = writeFileTool.call('{"filePath":"a.txt","content":"x"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.NO
+    0 * fileEditingTool.writeFile(_, _)
+    declined != null
+
+    when:
+    writeFileTool.call('{"filePath":"a.txt","content":"x"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.YES
+    1 * fileEditingTool.writeFile("a.txt", "x") >> "written"
+  }
+
+  def "buildLlmTools' confirmation wrapper honours session-scoped allow-all"() {
+    given:
+    List<Tool> tools = agent.buildLlmTools("session-allow-all")
+    Tool writeFileTool = tools.find { it.definition.name == "writeFile" }
+    Tool deleteFileTool = tools.find { it.definition.name == "deleteFile" }
+
+    when: "the user picks ALL on the first confirmation-gated call"
+    writeFileTool.call('{"filePath":"a.txt","content":"x"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.ALL
+    1 * fileEditingTool.writeFile("a.txt", "x") >> "written"
+    1 * sessionState.allowAllToolConfirmations("session-allow-all")
+
+    when: "a later confirmation-gated call in the same session is made"
+    sessionState.isToolConfirmationAllowedForAll("session-allow-all") >> true
+    deleteFileTool.call('{"filePath":"a.txt"}')
+
+    then: "it is not prompted again"
+    0 * confirmationService.confirm(_)
+    1 * fileEditingTool.deleteFile("a.txt") >> "deleted"
+  }
+
+  def "buildLlmTools' confirmation wrapper still prompts a different session"() {
+    given:
+    List<Tool> firstSessionTools = agent.buildLlmTools("session-a")
+    Tool firstSessionWriteFile = firstSessionTools.find { it.definition.name == "writeFile" }
+    firstSessionWriteFile.call('{"filePath":"a.txt","content":"x"}')
+    List<Tool> secondSessionTools = agent.buildLlmTools("session-b")
+    Tool secondSessionWriteFile = secondSessionTools.find { it.definition.name == "writeFile" }
+
+    when:
+    secondSessionWriteFile.call('{"filePath":"b.txt","content":"y"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.YES
+    1 * fileEditingTool.writeFile("b.txt", "y") >> "written"
+  }
+
   def "searchFiles delegates"() {
     given:
     def hits = List.of(new CodeSearchTool.SearchHit("p", 1, 1, "snippet"))
@@ -250,6 +378,39 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     1 * codeSearchTool.search("q", List.of("p"), 2, 5) >> hits
     result == hits
+  }
+
+  def "checkOpenPullRequests delegates to GitTool and maps a successful result"() {
+    given:
+    def ghResult = new GitTool.GitResult(true, true, 0,
+      '[{"number":42,"title":"Fix bug","url":"https://github.com/x/y/pull/42",' +
+        '"headRefName":"feature/x","state":"OPEN"}]',
+      "")
+
+    when:
+    def result = agent.checkOpenPullRequests()
+
+    then:
+    1 * gitTool.openPullRequestsForCurrentBranch() >> ghResult
+    result.success
+    result.pullRequests.size() == 1
+    result.pullRequests[0].number == 42
+    result.pullRequests[0].title == "Fix bug"
+  }
+
+  def "checkOpenPullRequests surfaces a failure without pull requests"() {
+    given:
+    def ghResult = new GitTool.GitResult(false, true, 1, "",
+      "GitHub CLI (gh) is required for PR reviews. Install it from https://cli.github.com/")
+
+    when:
+    def result = agent.checkOpenPullRequests()
+
+    then:
+    1 * gitTool.openPullRequestsForCurrentBranch() >> ghResult
+    !result.success
+    result.pullRequests.isEmpty()
+    result.error.contains("GitHub CLI")
   }
 
   def "local-only mode skips web search"() {
@@ -266,6 +427,8 @@ class CodingAssistantAgentSpec extends Specification {
       fileEditingTool,
       searchTool,
       codeSearchTool,
+      gitTool,
+      confirmationService,
       new LocalOnlyState(true),
       sessionState
     )

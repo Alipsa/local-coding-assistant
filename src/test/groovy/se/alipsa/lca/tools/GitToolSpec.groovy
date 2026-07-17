@@ -342,6 +342,49 @@ six
     result.error.contains("PR number must be positive")
   }
 
+  def "openPullRequestsForCurrentBranch reports missing repository"() {
+    when:
+    def result = gitTool.openPullRequestsForCurrentBranch()
+
+    then:
+    !result.success
+    !result.repoPresent
+  }
+
+  def "openPullRequestsForCurrentBranch returns error when gh is not available"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "hello\n")
+    runGit("add", "a.txt")
+    runGit("commit", "-m", "init")
+
+    when:
+    def result = gitTool.openPullRequestsForCurrentBranch()
+
+    then:
+    !result.success
+    result.repoPresent
+    result.error != null && !result.error.isEmpty()
+  }
+
+  def "parsePullRequestJson parses a gh pr list JSON array"() {
+    given:
+    String json = '[{"number":7,"title":"Add feature","url":"https://example/pull/7",' +
+      '"headRefName":"feature/x","state":"OPEN"}]'
+
+    expect:
+    GitTool.parsePullRequestJson(json).size() == 1
+    GitTool.parsePullRequestJson(json)[0].number == 7
+    GitTool.parsePullRequestJson(json)[0].title == "Add feature"
+  }
+
+  def "parsePullRequestJson returns an empty list for blank or invalid input"() {
+    expect:
+    GitTool.parsePullRequestJson(null).isEmpty()
+    GitTool.parsePullRequestJson("").isEmpty()
+    GitTool.parsePullRequestJson("not json").isEmpty()
+  }
+
   def "currentBranch returns null when not a repository"() {
     expect:
     gitTool.currentBranch() == null

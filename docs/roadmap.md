@@ -17,7 +17,11 @@ If lca i using a remote Ollama model so that inference does not happen the local
     https://github.com/embabel/embabel-common/issues/77
 
 ## Extension support
-Perhaps we should consider tools to be the lowest level functional unit.
+Perhaps we should consider tools to be the lowest level extension unit.
+We have tools (using @LlmTool, in combination with @RequiresConfirmation) today
+but they are built into the app. We need a way to dynamically add and disable tools in the application.
+Perhaps running lca using the groovy command would enable that since the classloader then
+allows for dynamic adding of classes?
 
 ```groovy
 import se.alipsa.lca.tools.Tool
@@ -60,7 +64,7 @@ response = openai.chat.completions.create(
     tools=my_tools
 )
 ```
-6. Add built in support for development tools
+6. Externalize the built in support for development tools so they are deployed the same way a user registered tool would be.
     - git support via jgit instead of process runner in GitTool
     - github support (see github.-integration-md for details)
     - file creation, reading, editing

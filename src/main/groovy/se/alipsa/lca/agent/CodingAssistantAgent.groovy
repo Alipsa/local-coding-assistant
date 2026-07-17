@@ -4,13 +4,17 @@ import com.embabel.agent.api.annotation.AchievesGoal
 import com.embabel.agent.api.annotation.Action
 import com.embabel.agent.api.annotation.Agent
 import com.embabel.agent.api.annotation.Export
+import com.embabel.agent.api.annotation.LlmTool
 import com.embabel.agent.api.common.Ai
+import com.embabel.agent.api.tool.MethodToolFactory
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.domain.library.HasContent
 import com.embabel.agent.prompt.persona.RoleGoalBackstory
 import com.embabel.agent.prompt.persona.RoleGoalBackstorySpec
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.core.thinking.ThinkingResponse
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import com.embabel.common.core.types.Timestamped
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
@@ -19,12 +23,16 @@ import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.lang.NonNull
+import se.alipsa.lca.shell.ConfirmationService
+import se.alipsa.lca.tools.ConfirmingLlmTool
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.CodeSearchTool
 
+import java.lang.reflect.Method
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -90,6 +98,25 @@ class CodingAssistantAgent {
 
   @Canonical
   @CompileStatic
+  static class PullRequestInfo {
+    int number
+    String title
+    String url
+    String headRefName
+    String state
+  }
+
+  @Canonical
+  @CompileStatic
+  static class PullRequestSummary {
+    boolean success
+    boolean repoPresent
+    List<PullRequestInfo> pullRequests
+    String error
+  }
+
+  @Canonical
+  @CompileStatic
   static class ReviewedCodeSnippet implements HasContent, Timestamped {
     CodeSnippet codeSnippet
     String review
@@ -130,8 +157,11 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   private final FileEditingTool fileEditingAgent
   private final WebSearchTool webSearchAgent
   private final CodeSearchTool codeSearchTool
+  private final GitTool gitTool
+  private final ConfirmationService confirmationService
   private final LocalOnlyState localOnlyState
   private final SessionState sessionState
+  private volatile List<Tool> discoveredLlmTools
 
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
@@ -144,6 +174,8 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent,
     CodeSearchTool codeSearchTool,
+    GitTool gitTool,
+    ConfirmationService confirmationService,
     LocalOnlyState localOnlyState,
     SessionState sessionState
   ) {
@@ -159,6 +191,8 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.fileEditingAgent = fileEditingAgent
     this.webSearchAgent = webSearchAgent
     this.codeSearchTool = codeSearchTool
+    this.gitTool = gitTool
+    this.confirmationService = confirmationService
     this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
     this.sessionState = Objects.requireNonNull(sessionState, "sessionState must not be null")
   }
@@ -273,26 +307,36 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Write content to a file. This will overwrite the file if it exists.")
+  @LlmTool(name = "writeFile", description = "Write content to a file. This will overwrite the file if it exists.")
+  @RequiresConfirmation(message = "The assistant wants to write to a file (overwriting it if it exists).")
   String writeFile(String filePath, String content) {
     fileEditingAgent.writeFile(filePath, content)
   }
 
   @Action(description = "Replace content in a file.")
+  @LlmTool(name = "replace", description = "Replace content in a file.")
+  @RequiresConfirmation(message = "The assistant wants to replace content in a file.")
   String replace(String filePath, String oldString, String newString) {
     fileEditingAgent.replace(filePath, oldString, newString)
   }
 
   @Action(description = "Delete a file.")
+  @LlmTool(name = "deleteFile", description = "Delete a file.")
+  @RequiresConfirmation(message = "The assistant wants to delete a file.")
   String deleteFile(String filePath) {
     fileEditingAgent.deleteFile(filePath)
   }
 
   @Action(description = "Apply a unified diff patch with backup and conflict detection.")
+  @LlmTool(name = "applyPatch", description = "Apply a unified diff patch with backup and conflict detection.")
+  @RequiresConfirmation(message = "The assistant wants to apply a patch to a file.")
   FileEditingTool.PatchResult applyPatch(String patchText, boolean dryRun) {
     fileEditingAgent.applyPatch(patchText, dryRun)
   }
 
   @Action(description = "Replace a specific line range in a file.")
+  @LlmTool(name = "replaceRange", description = "Replace a specific line range in a file.")
+  @RequiresConfirmation(message = "The assistant wants to replace a line range in a file.")
   FileEditingTool.EditResult replaceRange(
     String filePath,
     int startLine,
@@ -304,6 +348,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Show file context around a line range or symbol to guide edits.")
+  @LlmTool(name = "fileContext", description = "Show file context around a line range or symbol to guide edits.")
   FileEditingTool.TargetedEditContext fileContext(
     String filePath,
     Integer startLine,
@@ -322,11 +367,15 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Restore a file from the most recent patch backup.")
+  @LlmTool(name = "revertFromBackup", description = "Restore a file from the most recent patch backup.")
+  @RequiresConfirmation(message = "The assistant wants to restore a file from backup, discarding its current content.")
   FileEditingTool.EditResult revertFromBackup(String filePath, boolean dryRun) {
     fileEditingAgent.revertLatestBackup(filePath, dryRun)
   }
 
   @Action(description = "Apply Search-and-Replace blocks to a file with backups.")
+  @LlmTool(name = "applySearchReplaceBlocks", description = "Apply Search-and-Replace blocks to a file with backups.")
+  @RequiresConfirmation(message = "The assistant wants to apply search-and-replace blocks to a file.")
   FileEditingTool.SearchReplaceResult applySearchReplaceBlocks(String filePath, String blocksText, boolean dryRun) {
     fileEditingAgent.applySearchReplaceBlocks(filePath, blocksText, dryRun)
   }
@@ -337,6 +386,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Search the web for a given query with options")
+  @LlmTool(name = "search", description = "Search the web for a given query with options")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query, WebSearchTool.SearchOptions options) {
     WebSearchTool.SearchOptions input = options ?: new WebSearchTool.SearchOptions()
@@ -355,9 +405,79 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Search repository files for a pattern.")
+  @LlmTool(name = "searchFiles", description = "Search repository files for a pattern.")
   @JsonDeserialize(as = ArrayList.class, contentAs = CodeSearchTool.SearchHit.class)
   List<CodeSearchTool.SearchHit> searchFiles(String query, List<String> paths, int contextLines, int limit) {
     codeSearchTool.search(query, paths, contextLines, limit)
+  }
+
+  @Action(description = "Check for open GitHub pull requests targeting the current git branch.")
+  @LlmTool(
+    name = "checkOpenPullRequests",
+    description = "Check for open GitHub pull requests targeting the current git branch."
+  )
+  PullRequestSummary checkOpenPullRequests() {
+    GitTool.GitResult result = gitTool.openPullRequestsForCurrentBranch()
+    if (!result.success) {
+      return new PullRequestSummary(false, result.repoPresent, List.of(), result.error)
+    }
+    List<PullRequestInfo> prs = GitTool.parsePullRequestJson(result.output).collect { Map entry ->
+      new PullRequestInfo(
+        entry.number instanceof Number ? ((Number) entry.number).intValue() : 0,
+        entry.title?.toString() ?: "",
+        entry.url?.toString() ?: "",
+        entry.headRefName?.toString() ?: "",
+        entry.state?.toString() ?: ""
+      )
+    }
+    new PullRequestSummary(true, true, prs, null)
+  }
+
+  /**
+   * The real Embabel tool list for this agent, for use with {@code PromptRunner.withTools(...)}
+   * instead of {@code withToolObject(this)}. Built via {@code Tool.Companion}, the same reflective
+   * entry point {@code withToolObject} itself uses, so this only ever exposes {@code @LlmTool}
+   * methods. Methods also carrying {@link RequiresConfirmation} are wrapped in a
+   * {@link ConfirmingLlmTool} that blocks on {@link ConfirmationService} before delegating, scoped
+   * to the given {@code sessionId} so a "yes to all" choice only skips prompting for the rest of
+   * that one chat session.
+   */
+  List<Tool> buildLlmTools(String sessionId) {
+    discoverLlmTools().collect { Tool tool -> withConfirmationIfRequired(tool, sessionId) }
+  }
+
+  /**
+   * Reflective tool discovery is invariant for a given instance — only the confirmation
+   * wrapping in {@link #buildLlmTools(String)} varies per chat turn/session — so the scan is
+   * done once and cached rather than repeated on every {@code buildLlmTools} call.
+   */
+  private synchronized List<Tool> discoverLlmTools() {
+    if (discoveredLlmTools == null) {
+      MethodToolFactory factory = (MethodToolFactory) Tool.getDeclaredField("Companion").get(null)
+      discoveredLlmTools = factory.safelyFromInstance(this, new ObjectMapper())
+    }
+    discoveredLlmTools
+  }
+
+  /**
+   * Finds the method on {@code owner} whose {@code @LlmTool} name — its {@code name()} attribute
+   * if set, else its Java method name, matching Embabel's own {@code JavaMethodTool} fallback —
+   * equals {@code toolName}. Matching on the annotation's own name (rather than assuming the
+   * Java method name equals the tool name) keeps this correct even if a future {@code @LlmTool}
+   * is given a name that diverges from its method, e.g. a snake_case LLM-facing alias.
+   */
+  static Method findLlmToolMethod(Class<?> owner, String toolName) {
+    owner.declaredMethods.find { Method candidate ->
+      LlmTool llmTool = candidate.getAnnotation(LlmTool)
+      llmTool != null && (llmTool.name() ?: candidate.name) == toolName
+    }
+  }
+
+  private Tool withConfirmationIfRequired(Tool tool, String sessionId) {
+    Method method = findLlmToolMethod(this.class, tool.definition.name)
+    RequiresConfirmation annotation = method?.getAnnotation(RequiresConfirmation)
+    annotation == null ? tool :
+      new ConfirmingLlmTool(tool, annotation.message(), confirmationService, sessionState, sessionId)
   }
 
   protected String buildCraftCodePrompt(

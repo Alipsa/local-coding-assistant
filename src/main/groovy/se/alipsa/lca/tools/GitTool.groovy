@@ -1,5 +1,6 @@
 package se.alipsa.lca.tools
 
+import groovy.json.JsonSlurper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
@@ -287,6 +288,39 @@ class GitTool {
       return new GitResult(false, false, 1, "", "PR number must be positive.")
     }
     runCommand(List.of("gh", "pr", "view", String.valueOf(prNumber), "--json", "files", "--jq", ".files[].path"))
+  }
+
+  /**
+   * Open pull requests targeting the current branch, as raw {@code gh pr list --json} output in
+   * {@link GitResult#output}. Use {@link #parsePullRequestJson} to turn that into structured data.
+   */
+  GitResult openPullRequestsForCurrentBranch() {
+    String branch = currentBranch()
+    if (branch == null || branch.trim().isEmpty()) {
+      return new GitResult(false, isGitRepo(), 1, "",
+        "Not a git repository or current branch could not be determined.")
+    }
+    runCommand(List.of(
+      "gh", "pr", "list",
+      "--head", branch,
+      "--state", "open",
+      "--json", "number,title,url,headRefName,state"
+    ))
+  }
+
+  /** Parses {@code gh pr list --json ...} output into maps; empty on blank or unparsable input. */
+  static List<Map> parsePullRequestJson(String output) {
+    String trimmed = output != null ? output.trim() : ""
+    if (trimmed.isEmpty()) {
+      return List.of()
+    }
+    try {
+      def parsed = new JsonSlurper().parseText(trimmed)
+      parsed instanceof List ? (List<Map>) parsed : List.of()
+    } catch (Exception e) {
+      log.warn("Failed to parse gh pr list output as JSON: {}", e.message)
+      List.of()
+    }
   }
 
   GitResult listFiles() {

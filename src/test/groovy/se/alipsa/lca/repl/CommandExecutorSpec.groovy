@@ -34,6 +34,18 @@ class CommandExecutorSpec extends Specification {
     result == "Invalid command format. Expected: /command [args]"
   }
 
+  def "execute forwards the --command flag text to ShellCommands.runCommand"() {
+    given:
+    String command = '/run --command "gh pr list --state open"'
+
+    when:
+    String result = executor.execute(command)
+
+    then:
+    1 * shellCommands.runCommand("gh pr list --state open", 60000L, 8000, "default", true, false) >> "ran"
+    result == "ran"
+  }
+
   def "executePasteContent forwards directly to ShellCommands.paste without re-parsing"() {
     given:
     String content = "/review --code \"whatever\"\nmore lines that would break COMMAND_PATTERN reparsing"
