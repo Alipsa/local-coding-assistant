@@ -66,7 +66,8 @@ Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode exa
   - `snippetWordCount`, `reviewWordCount`
   - `assistant.context.autocompact-enabled` (default `true`), `assistant.context.autocompact-threshold-percent`
     (default `80`), `assistant.context.autocompact-keep-recent` (default `6`), `assistant.context.compaction-model`
-    (optional override; falls back to the session's craft model)
+    (optional override; falls back to the session's craft model), `assistant.context.compaction-max-tokens`
+    (default `1024`; independent of `assistant.llm.max-tokens` so a small chat cap doesn't truncate summaries)
 
 ## Safety
 - Add a `.aiexclude` file at the project root to block the assistant from reading or modifying sensitive files.

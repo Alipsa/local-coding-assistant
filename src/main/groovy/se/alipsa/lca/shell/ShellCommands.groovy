@@ -471,9 +471,15 @@ Do not execute any commands.
       return null
     }
     ContextCompactor.CompactionResult result = contextCompactor.compact(session)
-    result.compacted
-      ? "\n\n(Context automatically compacted: ${result.messagesBefore} messages -> ${result.messagesAfter}.)"
-      : null
+    if (result.compacted) {
+      return "\n\n(Context automatically compacted: ${result.messagesBefore} messages -> ${result.messagesAfter}.)"
+    }
+    // shouldAutoCompact() triggers on token usage; compact() separately refuses to touch a
+    // conversation at or below the keep-recent floor regardless of how token-heavy those few
+    // messages are. Without this, that mismatch would be silent: the session would sit above
+    // the threshold turn after turn with no indication anything was (or wasn't) done.
+    "\n\n(Context usage is high, but there isn't enough conversation history yet to compact " +
+      "— only ${result.messagesBefore} message(s) recorded.)"
   }
 
   @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement your task here OR /implement --prompt \"your task\"")

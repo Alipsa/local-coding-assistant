@@ -227,6 +227,23 @@ class ShellCommandsSpec extends Specification {
     response.contains("(Context automatically compacted: 20 messages -> 7.)")
   }
 
+  def "chat notes when over threshold but too few messages exist yet to compact"() {
+    given: "shouldAutoCompact fires on token usage, but compact refuses below its keep-recent floor"
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("result"), null)
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
+    contextCompactor.shouldAutoCompact("s1") >> true
+    contextCompactor.compact("s1") >> new ContextCompactor.CompactionResult(false, 3, 3, null)
+
+    when:
+    def response = commands.chat(
+      ["hi"] as String[], "s1", PersonaMode.CODER, null, null, null, null, null, false, false)
+
+    then:
+    response.contains("result")
+    response.contains("Context usage is high, but there isn't enough conversation history yet to compact")
+    response.contains("only 3 message(s) recorded")
+  }
+
   def "compact reports nothing to compact when below the keep-recent floor"() {
     given:
     contextCompactor.compact("s1") >> new ContextCompactor.CompactionResult(false, 3, 3, null)

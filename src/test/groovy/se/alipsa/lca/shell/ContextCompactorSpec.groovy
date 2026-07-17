@@ -37,8 +37,9 @@ class ContextCompactorSpec extends Specification {
   PromptRunner promptRunner = Mock()
 
   private ContextCompactor compactorWith(boolean enabled = true, int threshold = 80, int keepRecent = 6,
-                                          String compactionModel = null) {
-    new ContextCompactor(sessionState, contextEstimator, ai, enabled, threshold, keepRecent, compactionModel)
+                                          String compactionModel = null, int compactionMaxTokens = 1024) {
+    new ContextCompactor(sessionState, contextEstimator, ai, enabled, threshold, keepRecent, compactionModel,
+      compactionMaxTokens)
   }
 
   private static void seedMessages(SessionState state, String sessionId, int count) {
@@ -121,6 +122,21 @@ class ContextCompactorSpec extends Specification {
     }
     promptRunner.generateText(_ as String) >> "summary"
     ContextCompactor compactor = compactorWith(true, 80, 6, "small-model")
+
+    expect:
+    compactor.compact("s1").compacted
+  }
+
+  def "compact's summarization call uses its own max-tokens budget, not the session's chat cap"() {
+    given: "the session has a small chat max-tokens override, e.g. for terse chat replies"
+    sessionState.update("s1", null, null, null, 50, null, null)
+    seedMessages(sessionState, "s1", 10)
+    ai.withLlm(_ as LlmOptions) >> { LlmOptions opts ->
+      assert opts.maxTokens == 2048
+      promptRunner
+    }
+    promptRunner.generateText(_ as String) >> "summary"
+    ContextCompactor compactor = compactorWith(true, 80, 6, null, 2048)
 
     expect:
     compactor.compact("s1").compacted

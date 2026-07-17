@@ -32,6 +32,10 @@ class ContextCompactor {
   // Optional override for the summarization call; falls back to the session's own craft model
   // when unset, so compaction doesn't silently switch models on the user without configuration.
   private final String compactionModel
+  // The summarization call always gets its own budget, independent of the session's chat
+  // max-tokens override — otherwise a small --max-tokens set for chat replies would silently
+  // truncate the compaction summary too.
+  private final int compactionMaxTokens
 
   ContextCompactor(
     SessionState sessionState,
@@ -40,7 +44,8 @@ class ContextCompactor {
     @Value('${assistant.context.autocompact-enabled:true}') boolean autocompactEnabled,
     @Value('${assistant.context.autocompact-threshold-percent:80}') int thresholdPercent,
     @Value('${assistant.context.autocompact-keep-recent:6}') int keepRecentMessages,
-    @Value('${assistant.context.compaction-model:}') String compactionModel
+    @Value('${assistant.context.compaction-model:}') String compactionModel,
+    @Value('${assistant.context.compaction-max-tokens:1024}') int compactionMaxTokens
   ) {
     this.sessionState = sessionState
     this.contextEstimator = contextEstimator
@@ -49,6 +54,7 @@ class ContextCompactor {
     this.thresholdPercent = thresholdPercent > 0 ? thresholdPercent : 80
     this.keepRecentMessages = keepRecentMessages > 0 ? keepRecentMessages : 6
     this.compactionModel = (compactionModel != null && compactionModel.trim()) ? compactionModel.trim() : null
+    this.compactionMaxTokens = compactionMaxTokens > 0 ? compactionMaxTokens : 1024
   }
 
   boolean isAutocompactEnabled() {
@@ -106,16 +112,21 @@ class ContextCompactor {
    * session's own craft model. Mirrors {@code SessionState.buildOptions}'s defensive
    * {@code setModel} workaround — {@code LlmOptions.withModel(...)} only sets
    * {@code modelSelectionCriteria}, not the plain {@code model} field some callers read directly.
+   * {@code maxTokens} is always overridden to {@link #compactionMaxTokens}, deliberately NOT
+   * inherited from the session's craft options — a small {@code --max-tokens} set for chat
+   * replies must not also cap (and silently truncate) the compaction summary.
    */
   private LlmOptions resolveOptions(String sessionId) {
+    LlmOptions options
     if (compactionModel == null) {
-      return sessionState.craftOptions(sessionState.getOrCreate(sessionId)).withTemperature(0.2d)
+      options = sessionState.craftOptions(sessionState.getOrCreate(sessionId))
+    } else {
+      options = LlmOptions.withModel(compactionModel)
+      if (options.getModel() == null) {
+        options.setModel(compactionModel)
+      }
     }
-    LlmOptions options = LlmOptions.withModel(compactionModel)
-    if (options.getModel() == null) {
-      options.setModel(compactionModel)
-    }
-    options.withTemperature(0.2d)
+    options.withTemperature(0.2d).withMaxTokens(compactionMaxTokens)
   }
 
   private static String buildSummaryPrompt(String transcript) {

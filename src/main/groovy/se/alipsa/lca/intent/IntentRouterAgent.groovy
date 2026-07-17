@@ -198,6 +198,7 @@ class IntentRouterAgent {
     builder.append("- /chat: General conversation, questions, explanations, or when intent is unclear\n")
     builder.append("- /plan: Create implementation plans, architectural suggestions, design proposals\n")
     builder.append("- /review: Code review for correctness, security, style (not for getting suggestions)\n")
+    builder.append("- /reviewlog: Show recent past review entries from the log\n")
     builder.append("- /implement: Actually create or modify files to implement changes\n")
     builder.append("- /edit: Open editor to draft or modify a prompt\n")
     builder.append("- /search: Web search for information\n")
