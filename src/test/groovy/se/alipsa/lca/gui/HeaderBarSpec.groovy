@@ -9,6 +9,8 @@ import spock.lang.Specification
 import spock.lang.Unroll
 import spock.util.concurrent.PollingConditions
 
+import javax.swing.JLabel
+
 class HeaderBarSpec extends Specification {
 
   @Unroll
@@ -125,5 +127,96 @@ class HeaderBarSpec extends Specification {
     new PollingConditions(timeout: 2).eventually {
       header.currentBranchItems().containsAll(["main", "feature-a"])
     }
+  }
+
+  @Unroll
+  def "pullRequestLabelFor('#pullRequests') returns '#expected'"() {
+    expect:
+    HeaderBar.pullRequestLabelFor(pullRequests) == expected
+
+    where:
+    pullRequests                                          | expected
+    null                                                   | null
+    []                                                     | null
+    [[number: 7, title: "x", url: "y"]]                    | "PR #7"
+    [[number: 7], [number: 9]]                             | "PRs #7, #9"
+    [[title: "no number"]]                                 | null
+  }
+
+  def "a fresh refreshPullRequestStatus call supersedes the generation an earlier, still-running one captured"() {
+    given:
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), Mock(GitTool), Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+
+    when: "an earlier check's worker captures its generation before a second check starts"
+    int firstGeneration = header.beginPrCheckGeneration()
+
+    then:
+    header.isCurrentPrCheckGeneration(firstGeneration)
+
+    when: "a second, later check starts before the first worker finishes"
+    int secondGeneration = header.beginPrCheckGeneration()
+
+    then: "the first worker's captured generation is now stale and must not apply its result"
+    !header.isCurrentPrCheckGeneration(firstGeneration)
+    header.isCurrentPrCheckGeneration(secondGeneration)
+  }
+
+  def "constructing HeaderBar shows the open PR number once the async check completes"() {
+    given:
+    GitTool gitTool = Mock(GitTool)
+    gitTool.openPullRequestsForCurrentBranch() >> new GitTool.GitResult(
+      true, true, 0, '[{"number":7,"title":"x","url":"y","headRefName":"b","state":"OPEN"}]', "")
+
+    when:
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), gitTool, Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+
+    then:
+    new PollingConditions(timeout: 2).eventually {
+      header.currentPullRequestText() == "PR #7"
+    }
+  }
+
+  def "refreshPullRequestStatus hides the PR label when the gh check fails"() {
+    given:
+    GitTool gitTool = Mock(GitTool)
+    gitTool.openPullRequestsForCurrentBranch() >> new GitTool.GitResult(
+      false, true, 1, "", "gh: command not found")
+
+    when:
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), gitTool, Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+    header.refreshPullRequestStatus()
+
+    then:
+    new PollingConditions(timeout: 2).eventually {
+      header.currentPullRequestText() == null
+    }
+  }
+
+  def "refreshPullRequestStatus hides the PR label when there is no open PR"() {
+    given:
+    GitTool gitTool = Mock(GitTool)
+    gitTool.openPullRequestsForCurrentBranch() >> new GitTool.GitResult(true, true, 0, "[]", "")
+
+    when:
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), gitTool, Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+    header.refreshPullRequestStatus()
+
+    then:
+    new PollingConditions(timeout: 2).eventually {
+      header.currentPullRequestText() == null
+    }
+  }
+
+  def "the header bar no longer shows pipe separators between segments"() {
+    given:
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), Mock(GitTool), Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+
+    expect:
+    header.components.findAll { it instanceof JLabel }.every { !((JLabel) it).text?.contains("|") }
   }
 }

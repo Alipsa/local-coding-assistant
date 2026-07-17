@@ -3,8 +3,10 @@ package se.alipsa.lca.gui
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
+import se.alipsa.lca.tools.ModelRegistry
 
 import javax.swing.BorderFactory
+import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JLabel
 import javax.swing.JPanel
@@ -15,15 +17,22 @@ import java.awt.Dimension
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The bottom metrics strip. Context-window usage and host RAM are live (best-effort);
- * autocompact and GPU memory are shown as {@code n/a} until backing features exist
- * (see {@code docs/gui.md}).
+ * The bottom metrics strip. Context-window usage and host RAM are live (best-effort); autocompact
+ * is shown as {@code n/a} until that feature exists (see {@code docs/gui.md}). "Main memory" and
+ * "GPU memory" source from local host stats ({@link SystemMetrics}) only when Ollama is local —
+ * when {@code spring.ai.ollama.base-url} points at a remote server, local host stats wouldn't
+ * represent the machine actually running inference, so both switch to what Ollama itself reports
+ * about its currently loaded models ({@link ModelRegistry#loadedModels}), or {@code n/a} when
+ * Ollama doesn't report anything useful.
  */
 @CompileStatic
 class FooterBar extends JPanel {
 
+  private static final int SEGMENT_GAP = 12
+
   private final SystemMetrics systemMetrics
   private final ContextEstimator contextEstimator
+  private final ModelRegistry modelRegistry
   private final String sessionId
 
   private final JProgressBar contextBar = new JProgressBar(0, 100)
@@ -34,9 +43,11 @@ class FooterBar extends JPanel {
   // mirrors HeaderBar.populateBranches()'s generation counter for the same race.
   private final AtomicInteger refreshGeneration = new AtomicInteger(0)
 
-  FooterBar(SystemMetrics systemMetrics, ContextEstimator contextEstimator, String sessionId) {
+  FooterBar(SystemMetrics systemMetrics, ContextEstimator contextEstimator, ModelRegistry modelRegistry,
+            String sessionId) {
     this.systemMetrics = systemMetrics
     this.contextEstimator = contextEstimator
+    this.modelRegistry = modelRegistry
     this.sessionId = sessionId ?: "default"
     setLayout(new BoxLayout(this, BoxLayout.X_AXIS))
     setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8))
@@ -48,12 +59,12 @@ class FooterBar extends JPanel {
     memoryBar.setMaximumSize(new Dimension(200, 18))
     add(new JLabel("Context: "))
     add(contextBar)
-    add(separator())
+    add(spacer())
     add(autoCompactLabel)
-    add(separator())
+    add(spacer())
     add(new JLabel("Main memory: "))
     add(memoryBar)
-    add(separator())
+    add(spacer())
     add(gpuLabel)
     // Never fetch synchronously here: on a cache miss, contextEstimator.usedPercent() chains
     // into a real HTTP call to Ollama (default 4s timeout), which would block the EDT — and the
@@ -109,15 +120,38 @@ class FooterBar extends JPanel {
     } catch (Exception ignored) {
       // contextPercent stays null; apply() renders "n/a" for it.
     }
+    // remote is I/O-free (fixed at ModelRegistry construction), so it's resolved first: local
+    // host memory is only sampled when it would actually be shown — memoryDisplayFor() discards
+    // it entirely when remote, so sampling it unconditionally on every 2s footer tick would be
+    // wasted vm_stat/proc work in the (now more common) remote-Ollama case.
+    boolean remote = false
+    try {
+      remote = modelRegistry != null && modelRegistry.isRemote()
+    } catch (Exception ignored) {
+      // remote stays false: isRemote() is I/O-free and shouldn't throw; degrade toward today's
+      // local-stats display if it somehow does.
+    }
     Integer memoryPercent = null
     String memorySummary = null
-    try {
-      memoryPercent = systemMetrics.usedMemoryPercent()
-      memorySummary = systemMetrics.memorySummary()
-    } catch (Exception ignored) {
-      // memoryPercent/memorySummary stay null; apply() renders "n/a" for them.
+    if (!remote) {
+      try {
+        memoryPercent = systemMetrics.usedMemoryPercent()
+        memorySummary = systemMetrics.memorySummary()
+      } catch (Exception ignored) {
+        // memoryPercent/memorySummary stay null; apply() renders "n/a" for them.
+      }
     }
-    new FooterSnapshot(contextPercent, memoryPercent, memorySummary)
+    // A SEPARATE try/catch from isRemote() above, deliberately: a loadedModels() failure while
+    // remote is true must degrade to "n/a" (via memoryDisplayFor), never fall back to local
+    // stats — showing local numbers for a remote Ollama server is the exact bug being fixed, and
+    // merging these into one catch would silently reintroduce it on a transient connectivity blip.
+    List<ModelRegistry.LoadedModel> loaded = List.of()
+    try {
+      loaded = modelRegistry != null ? modelRegistry.loadedModels() : List.of()
+    } catch (Exception ignored) {
+      // loaded stays empty: memoryDisplayFor renders "n/a" when remote, never local stats.
+    }
+    new FooterSnapshot(contextPercent, memoryPercent, memorySummary, remote, loaded)
   }
 
   private void apply(FooterSnapshot snapshot) {
@@ -127,16 +161,58 @@ class FooterBar extends JPanel {
     } else {
       contextBar.setString("n/a")
     }
-    if (snapshot.memoryPercent != null) {
-      memoryBar.setValue(snapshot.memoryPercent)
-      memoryBar.setString(snapshot.memorySummary)
-    } else {
-      memoryBar.setString("n/a")
-    }
+    MemoryDisplay memoryDisplay = memoryDisplayFor(
+      snapshot.remote, snapshot.memoryPercent, snapshot.memorySummary, snapshot.loadedModels)
+    memoryBar.setValue(memoryDisplay.percent != null ? memoryDisplay.percent : 0)
+    memoryBar.setString(memoryDisplay.text)
+    memoryBar.setToolTipText(memoryDisplay.tooltip)
+    gpuLabel.setText(gpuLabelFor(snapshot.loadedModels))
   }
 
-  private static Component separator() {
-    new JLabel("     |     ")
+  /**
+   * The "Main memory" bar's percent/text/tooltip. Local host stats are only representative of
+   * the machine actually running inference when Ollama is local; when remote, source memory
+   * from what Ollama itself reports about its currently loaded models instead — an absolute byte
+   * count (or {@code n/a}) rather than a percent, since {@code /api/ps} reports what's loaded,
+   * never the remote host's total memory, so any derived percentage would be exactly as invented
+   * as the local numbers this is meant to replace. Pure/static so it's unit-testable without
+   * Swing or HTTP mocking, mirroring {@code HeaderBar}'s {@code branchItemsFor}/{@code
+   * pullRequestLabelFor} helpers.
+   */
+  static MemoryDisplay memoryDisplayFor(boolean remote, Integer localPercent, String localSummary,
+                                         List<ModelRegistry.LoadedModel> loaded) {
+    if (!remote) {
+      return localPercent != null
+        ? new MemoryDisplay(localPercent, localSummary, "This machine's memory")
+        : new MemoryDisplay(null, "n/a", "This machine's memory")
+    }
+    long totalBytes = 0L
+    for (ModelRegistry.LoadedModel model : (loaded ?: List.<ModelRegistry.LoadedModel> of())) {
+      totalBytes += model.size
+    }
+    totalBytes > 0L
+      ? new MemoryDisplay(null, "${SystemMetrics.formatGb(totalBytes)} Gb (Ollama)".toString(),
+          "Reported by Ollama for its currently loaded models (remote host)")
+      : new MemoryDisplay(null, "n/a", "Ollama did not report any loaded models")
+  }
+
+  /**
+   * GPU memory reported by Ollama for its currently loaded models — works whether Ollama is
+   * local or remote, since it's always the Ollama server's own report of VRAM usage, not a
+   * host-level GPU query (which {@link SystemMetrics} notes has no portable source).
+   */
+  static String gpuLabelFor(List<ModelRegistry.LoadedModel> loaded) {
+    long vramBytes = 0L
+    for (ModelRegistry.LoadedModel model : (loaded ?: List.<ModelRegistry.LoadedModel> of())) {
+      vramBytes += model.sizeVram
+    }
+    vramBytes > 0L
+      ? "GPU memory: ${SystemMetrics.formatGb(vramBytes)} Gb".toString()
+      : "GPU memory: n/a"
+  }
+
+  private static Component spacer() {
+    Box.createHorizontalStrut(SEGMENT_GAP)
   }
 
   /** Immutable snapshot collected off the EDT and applied on it; a null field means "failed". */
@@ -146,5 +222,16 @@ class FooterBar extends JPanel {
     Integer contextPercent
     Integer memoryPercent
     String memorySummary
+    boolean remote
+    List<ModelRegistry.LoadedModel> loadedModels
+  }
+
+  /** The "Main memory" bar's resolved display: a null {@code percent} paints the bar empty. */
+  @Canonical
+  @CompileStatic
+  static class MemoryDisplay {
+    Integer percent
+    String text
+    String tooltip
   }
 }

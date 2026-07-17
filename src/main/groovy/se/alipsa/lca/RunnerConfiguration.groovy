@@ -16,6 +16,7 @@ import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
+import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.Workspace
 
 /**
@@ -42,6 +43,7 @@ class RunnerConfiguration {
     MarkdownRenderer markdownRenderer,
     SystemMetrics systemMetrics,
     ContextEstimator contextEstimator,
+    ModelRegistry modelRegistry,
     GuiTurnController turnController,
     FileEditingTool fileEditingTool,
     GitTool gitTool,
@@ -49,7 +51,7 @@ class RunnerConfiguration {
     Workspace workspace,
     BangCommandHandler bangCommandHandler
   ) {
-    new GuiRunner(markdownRenderer, systemMetrics, contextEstimator, turnController,
+    new GuiRunner(markdownRenderer, systemMetrics, contextEstimator, modelRegistry, turnController,
       fileEditingTool, gitTool, sessionState, workspace, bangCommandHandler)
   }
 

@@ -1,6 +1,7 @@
 package se.alipsa.lca.tools
 
 import spock.lang.Specification
+import spock.lang.Unroll
 
 import java.net.URI
 import java.net.http.HttpClient
@@ -153,6 +154,108 @@ class ModelRegistrySpec extends Specification {
       ["general.architecture": "unknown", "qwen3.context_length": 131072] as Map<String, Object>) == 131072
   }
 
+  @Unroll
+  def "isRemoteHost('#host') == #expected"() {
+    expect:
+    ModelRegistry.isRemoteHost(host) == expected
+
+    where:
+    host                     || expected
+    "localhost"              || false
+    "LOCALHOST"              || false
+    "127.0.0.1"              || false
+    "127.0.0.2"              || false
+    "127.1.2.3"              || false
+    "127.255.255.255"        || false
+    "::1"                    || false
+    "0:0:0:0:0:0:0:1"        || false
+    "0.0.0.0"                || false
+    null                     || false
+    ""                       || false
+    "192.168.1.50"           || true
+    "ollama.example.com"     || true
+    "host.docker.internal"   || true
+    "127.0.0.1.example.com"  || true
+  }
+
+  def "isRemote reflects the configured base URL's host"() {
+    expect:
+    !new ModelRegistry("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient()).isRemote()
+    new ModelRegistry("http://ollama.example.com:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient()).isRemote()
+  }
+
+  def "loadedModels parses name/size/size_vram, falling back to the model key for the name"() {
+    given:
+    ModelRegistry registry = new PsRegistry(200, '''
+      {"models": [
+        {"name": "mistral:latest", "size": 5137025024, "size_vram": 5137025024},
+        {"model": "qwen3.6:latest", "size": 8000000000}
+      ]}
+    ''')
+
+    when:
+    List<ModelRegistry.LoadedModel> loaded = registry.loadedModels()
+
+    then:
+    loaded.size() == 2
+    loaded[0].name == "mistral:latest"
+    loaded[0].size == 5137025024L
+    loaded[0].sizeVram == 5137025024L
+    loaded[1].name == "qwen3.6:latest"
+    loaded[1].size == 8000000000L
+    loaded[1].sizeVram == 0L
+  }
+
+  def "loadedModels returns empty for zero loaded models"() {
+    expect:
+    new PsRegistry(200, '{"models": []}').loadedModels().isEmpty()
+  }
+
+  def "loadedModels skips non-map entries without throwing"() {
+    given:
+    ModelRegistry registry = new PsRegistry(200, '{"models": ["oops", {"name": "m1", "size": 10}]}')
+
+    expect:
+    registry.loadedModels()*.name == ["m1"]
+  }
+
+  def "loadedModels returns empty on fetch exception"() {
+    given:
+    ModelRegistry registry = new PsRegistry(200, "{}") {
+      @Override
+      protected HttpResponse<String> fetchPs() throws Exception {
+        throw new RuntimeException("fetch failed")
+      }
+    }
+
+    expect:
+    registry.loadedModels().isEmpty()
+  }
+
+  def "loadedModels coalesces concurrent cache-miss callers onto a single fetch"() {
+    given:
+    CountDownLatch releaseFetch = new CountDownLatch(1)
+    AtomicInteger fetchCount = new AtomicInteger(0)
+    ModelRegistry registry = new PsRegistry(200, "{}") {
+      @Override
+      protected HttpResponse<String> fetchPs() throws Exception {
+        fetchCount.incrementAndGet()
+        releaseFetch.await(2, TimeUnit.SECONDS)
+        [statusCode: { -> 200 }, body: { -> '{"models":[{"name":"m1","size":10}]}' }] as HttpResponse
+      }
+    }
+
+    when:
+    List<Thread> callers = (1..5).collect { Thread.start { registry.loadedModels() } }
+    Thread.sleep(200)
+    releaseFetch.countDown()
+    callers.each { it.join(2000) }
+
+    then:
+    fetchCount.get() == 1
+    registry.loadedModels()*.name == ["m1"]
+  }
+
   private static class ShowRegistry extends ModelRegistry {
     private final int status
     private final String body
@@ -165,6 +268,22 @@ class ModelRegistrySpec extends Specification {
 
     @Override
     protected HttpResponse<String> fetchShow(String model) throws Exception {
+      [statusCode: { -> status }, body: { -> body }] as HttpResponse
+    }
+  }
+
+  private static class PsRegistry extends ModelRegistry {
+    private final int status
+    private final String body
+
+    PsRegistry(int status, String body) {
+      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      this.status = status
+      this.body = body
+    }
+
+    @Override
+    protected HttpResponse<String> fetchPs() throws Exception {
       [statusCode: { -> status }, body: { -> body }] as HttpResponse
     }
   }

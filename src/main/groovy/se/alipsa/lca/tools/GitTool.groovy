@@ -1,8 +1,8 @@
 package se.alipsa.lca.tools
 
 import groovy.json.JsonSlurper
-import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.Immutable
 import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -32,6 +32,13 @@ class GitTool {
   private final Object realRootLock = new Object()
   private volatile Path cachedRealRoot = null
   private volatile Path cachedRealRootFor = null
+  // Open-PR check hits GitHub's API via `gh`; cached briefly per branch so polling callers (e.g.
+  // the GUI's header bar, refreshed after every chat turn) don't re-hit it on every single turn.
+  private static final long PR_CACHE_TTL_MILLIS = 30_000L
+  private final Object prCacheLock = new Object()
+  private volatile GitResult cachedPrResult = null
+  private volatile String cachedPrBranch = null
+  private volatile long cachedPrAt = 0L
 
   GitTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -293,6 +300,10 @@ class GitTool {
   /**
    * Open pull requests targeting the current branch, as raw {@code gh pr list --json} output in
    * {@link GitResult#output}. Use {@link #parsePullRequestJson} to turn that into structured data.
+   *
+   * <p>Cached for {@link #PR_CACHE_TTL_MILLIS} per branch — a real network call to GitHub's API,
+   * and callers like the GUI header bar poll this after every chat turn, not just on a branch
+   * switch, so an uncached call would hit GitHub far more often than the branch actually changes.
    */
   GitResult openPullRequestsForCurrentBranch() {
     String branch = currentBranch()
@@ -300,12 +311,26 @@ class GitTool {
       return new GitResult(false, isGitRepo(), 1, "",
         "Not a git repository or current branch could not be determined.")
     }
-    runCommand(List.of(
-      "gh", "pr", "list",
-      "--head", branch,
-      "--state", "open",
-      "--json", "number,title,url,headRefName,state"
-    ))
+    synchronized (prCacheLock) {
+      // Re-measure now here, inside the lock — not before acquiring it (mirrors
+      // ModelRegistry.listModels()/loadedModels()): otherwise time spent waiting for a contended
+      // lock wouldn't count against the TTL, and a caller could be served a result that's
+      // actually already stale by the time it's returned.
+      long now = System.currentTimeMillis()
+      if (cachedPrResult != null && branch == cachedPrBranch && (now - cachedPrAt) < PR_CACHE_TTL_MILLIS) {
+        return cachedPrResult
+      }
+      GitResult result = runCommand(List.of(
+        "gh", "pr", "list",
+        "--head", branch,
+        "--state", "open",
+        "--json", "number,title,url,headRefName,state"
+      ))
+      cachedPrResult = result
+      cachedPrBranch = branch
+      cachedPrAt = System.currentTimeMillis()
+      result
+    }
   }
 
   /** Parses {@code gh pr list --json ...} output into maps; empty on blank or unparsable input. */
@@ -453,7 +478,10 @@ class GitTool {
     }
   }
 
-  @Canonical
+  // Immutable, not just Canonical: openPullRequestsForCurrentBranch() now hands the same cached
+  // instance to every caller within its TTL window, so it must not be mutable — a mutation by
+  // one caller would otherwise corrupt what every other caller (and the cache itself) sees.
+  @Immutable
   @CompileStatic
   static class GitResult {
     boolean success

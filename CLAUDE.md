@@ -24,3 +24,11 @@ The AGENTS.md file contains essential project-specific rules including:
 - The project is language-agnostic in its AI prompts but the codebase itself is Groovy
 - Use British English spelling in documentation
 - Avoid deprecated APIs when possible
+- The project also ships an optional Swing desktop GUI (`lcaGui`, package `se.alipsa.lca.gui`),
+  toggled via `lca.gui.enabled=true` (see `RunnerConfiguration.groovy`, `GuiRunner.groovy`,
+  `docs/gui.md`). The interactive CLI shell is not the only interface — changes to shared
+  tools/agents can affect both.
+- A tool's chat-facing name comes from `@LlmTool(name = ...)`, falling back to the Java method
+  name only when blank. Never assume a tool's chat-facing name equals its Java method name when
+  matching against it elsewhere (e.g. for confirmation gating) — see
+  `CodingAssistantAgent.findLlmToolMethod` and the bug it fixed.

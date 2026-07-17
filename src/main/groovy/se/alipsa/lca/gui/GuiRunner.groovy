@@ -10,6 +10,7 @@ import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
+import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.Workspace
 
 import javax.swing.SwingUtilities
@@ -30,6 +31,7 @@ class GuiRunner implements ApplicationRunner {
   private final MarkdownRenderer markdownRenderer
   private final SystemMetrics systemMetrics
   private final ContextEstimator contextEstimator
+  private final ModelRegistry modelRegistry
   private final GuiTurnController turnController
   private final FileEditingTool fileEditingTool
   private final GitTool gitTool
@@ -41,6 +43,7 @@ class GuiRunner implements ApplicationRunner {
     MarkdownRenderer markdownRenderer,
     SystemMetrics systemMetrics,
     ContextEstimator contextEstimator,
+    ModelRegistry modelRegistry,
     GuiTurnController turnController,
     FileEditingTool fileEditingTool,
     GitTool gitTool,
@@ -51,6 +54,7 @@ class GuiRunner implements ApplicationRunner {
     this.markdownRenderer = markdownRenderer
     this.systemMetrics = systemMetrics
     this.contextEstimator = contextEstimator
+    this.modelRegistry = modelRegistry
     this.turnController = turnController
     this.fileEditingTool = fileEditingTool
     this.gitTool = gitTool
@@ -69,7 +73,7 @@ class GuiRunner implements ApplicationRunner {
         log.warn("Could not install FlatLaf look and feel: {}", e.message)
       }
       ConversationView conversation = new ConversationView(markdownRenderer)
-      FooterBar footer = new FooterBar(systemMetrics, contextEstimator, "default")
+      FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
       Runnable onBaseDirChanged = {
         footer.refreshAsync()
         conversation.addNote("Base dir changed to ${workspace.baseDir}".toString())

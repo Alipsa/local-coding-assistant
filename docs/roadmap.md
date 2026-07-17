@@ -1,8 +1,6 @@
 # Roadmap
 
-If lca i using a remote Ollama model so that inference does not happen the local machine, the memory settings are misleading (unless Ollama reports them back). We need to check the models that are used so we can display memory settings meaningfully.
-
-2. Add support for autocompact of context
+2. Add support for autocompact of context and for manual /compact command
 3. Add RAG or similar capability to learn and remember (RAG support was added in embabel 0.5.0)
     - step 1 implement a memory store
         - memory should be recalled when there are similar things discussed
