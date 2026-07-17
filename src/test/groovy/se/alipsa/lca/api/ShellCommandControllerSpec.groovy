@@ -124,6 +124,28 @@ class ShellCommandControllerSpec extends Specification {
     1 * commands.tree(2, true, 50) >> "tree"
   }
 
+  def "compact endpoint defaults to the default session"() {
+    when:
+    def response = mvc.perform(post("/api/cli/compact")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([:])))
+
+    then:
+    response.andExpect(status().isOk())
+    1 * commands.compact("default") >> "compacted"
+  }
+
+  def "compact endpoint forwards an explicit session"() {
+    when:
+    def response = mvc.perform(post("/api/cli/compact")
+      .contentType(MediaType.APPLICATION_JSON)
+      .content(JsonOutput.toJson([session: "s1"])))
+
+    then:
+    response.andExpect(status().isOk())
+    1 * commands.compact("s1") >> "compacted"
+  }
+
   def "edit endpoint sends prompt when send is true"() {
     when:
     def response = mvc.perform(post("/api/cli/edit")

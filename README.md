@@ -64,6 +64,9 @@ Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode exa
   - `assistant.llm.model`, `assistant.llm.temperature.craft`, `assistant.llm.temperature.review`
   - `assistant.llm.max-tokens`, `assistant.system-prompt`
   - `snippetWordCount`, `reviewWordCount`
+  - `assistant.context.autocompact-enabled` (default `true`), `assistant.context.autocompact-threshold-percent`
+    (default `80`), `assistant.context.autocompact-keep-recent` (default `6`), `assistant.context.compaction-model`
+    (optional override; falls back to the session's craft model)
 
 ## Safety
 - Add a `.aiexclude` file at the project root to block the assistant from reading or modifying sensitive files.
@@ -114,6 +117,8 @@ assistant.intent.confidence-threshold=0.8
   `--headless`, `--enable-web-search`.
 - `/codesearch`: Ripgrep-backed repo search. Options: `--paths`, `--context`, `--limit`, `--pack`,
   `--max-chars`, `--max-tokens`.
+- `/compact`: Summarize and compact conversation history to free up context space. Options: `--session`.
+  Also triggers automatically once context usage crosses a threshold (see Configuration below).
 - `/edit`: Open `$EDITOR` to draft prompts. Options: `--seed`, `--send`, `--session`, `--persona`.
 - `/paste`: Paste multiline input (end with `/end`). Options: `--content`, `--end-marker`, `--send`,
   `--session`, `--persona`.

@@ -87,6 +87,8 @@ class CommandExecutor {
         return executeMcp(args)
       case "reviewlog":
         return executeReviewLog(args)
+      case "compact":
+        return executeCompact(args)
       case "help":
         return shellCommands.help()
       case "health":
@@ -326,6 +328,11 @@ class CommandExecutor {
       parsed.since as String,
       parseBoolean(parsed.noColor) ?: false
     )
+  }
+
+  private String executeCompact(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.compact(parsed.session as String ?: "default")
   }
 
   private String executeMcp(String args) {

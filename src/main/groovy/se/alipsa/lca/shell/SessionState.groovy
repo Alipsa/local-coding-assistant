@@ -190,6 +190,17 @@ class SessionState {
     }
   }
 
+  /** Swaps in a replacement {@link Conversation} for a session, e.g. after {@code ContextCompactor} compacts it. */
+  void replaceConversation(String sessionId, Conversation conversation) {
+    conversations.put(sessionId ?: "default", conversation)
+  }
+
+  /** Replaces a session's plain-text history log wholesale, e.g. after compaction shrinks it. */
+  void replaceHistory(String sessionId, List<String> entries) {
+    List<String> safeEntries = entries ?: List.<String> of()
+    history.put(sessionId ?: "default", new CopyOnWriteArrayList<String>(safeEntries))
+  }
+
   /**
    * Whether the user has previously chosen "yes to all" for a chat-tool confirmation prompt in
    * this session (see {@link se.alipsa.lca.tools.ConfirmingLlmTool}). Once set, remaining

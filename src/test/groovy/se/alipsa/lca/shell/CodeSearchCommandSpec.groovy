@@ -54,6 +54,9 @@ class CodeSearchCommandSpec extends Specification {
     checkHealth() >> new ModelRegistry.Health(true, "ok")
   }
   ShellSettings shellSettings = new ShellSettings(true)
+  // Unstubbed shouldAutoCompact(_) returns false by default (Spock Stub sensible-default for
+  // boolean), so no explicit interaction is needed here.
+  ContextCompactor contextCompactor = Stub()
   @TempDir
   Path tempDir
   ShellCommands commands
@@ -87,6 +90,7 @@ class CodeSearchCommandSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null

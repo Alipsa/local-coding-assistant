@@ -117,7 +117,8 @@ class ResolveModelSpec extends Specification {
       runner,
       commandPolicy,
       registry,
-      agentPlatform
+      agentPlatform,
+      Stub(ContextCompactor)
     )
   }
 
@@ -136,7 +137,8 @@ class ResolveModelSpec extends Specification {
       CommandRunner runner,
       CommandPolicy commandPolicy,
       ModelRegistry registry,
-      AgentPlatform agentPlatform
+      AgentPlatform agentPlatform,
+      ContextCompactor contextCompactor
     ) {
       super(
         agent,
@@ -166,6 +168,7 @@ class ResolveModelSpec extends Specification {
         null,
         null,
         null,
+        contextCompactor,
         80000,
         30000,
         null
