@@ -2,6 +2,7 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -35,6 +36,8 @@ class FileEditingTool {
   private final Path fixedRoot
   private ExclusionPolicy cachedExclusionPolicy
   private Path cachedExclusionRoot
+  private Path cachedRealRoot
+  private Path cachedRealRootFor
 
   FileEditingTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -55,13 +58,28 @@ class FileEditingTool {
     workspace != null ? workspace.baseDir : fixedRoot
   }
 
-  private Path getRealProjectRoot() {
+  /**
+   * The canonicalised project root, cached against the last-observed {@link #getProjectRoot()}
+   * (mirroring {@link #getExclusionPolicy}'s cache) so callers that check it more than once per
+   * operation (e.g. {@link #resolvePath}) get one consistent {@code toRealPath()} syscall instead
+   * of re-resolving — and potentially observing a different root mid-call if the base dir changes
+   * concurrently — on every reference.
+   */
+  @PackageScope
+  synchronized Path getRealProjectRoot() {
     Path root = getProjectRoot()
+    if (cachedRealRoot != null && root == cachedRealRootFor) {
+      return cachedRealRoot
+    }
     try {
-      return root.toRealPath()
+      Path real = root.toRealPath()
+      cachedRealRoot = real
+      cachedRealRootFor = root
+      return real
     } catch (IOException e) {
       // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
-      // non-canonical path but record it: the "inside project root" check below is weaker without it.
+      // non-canonical path but record it: the "inside project root" check below is weaker without
+      // it. Not cached: a transient failure shouldn't stick once the root becomes valid again.
       log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
       return root
     }

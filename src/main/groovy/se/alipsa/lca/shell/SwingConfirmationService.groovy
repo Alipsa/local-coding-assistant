@@ -1,6 +1,7 @@
 package se.alipsa.lca.shell
 
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -31,6 +32,18 @@ class SwingConfirmationService implements ConfirmationService {
   ConfirmationChoice confirm(String prompt) {
     Object[] options = ["Yes", "No", "Yes to all"] as Object[]
     int result = showOptionDialog(prompt?.trim() ?: "Confirm this action?", "Confirm action", options, 1)
+    choiceFor(result)
+  }
+
+  @Override
+  boolean confirmYesNo(String prompt) {
+    Object[] options = ["Yes", "No"] as Object[]
+    showOptionDialog(prompt, "Confirm", options, 1) == 0
+  }
+
+  /** Maps a {@code JOptionPane} option index (or {@code CLOSED_OPTION}) to a choice. */
+  @PackageScope
+  static ConfirmationChoice choiceFor(int result) {
     if (result == 0) {
       return ConfirmationChoice.YES
     }
@@ -38,12 +51,6 @@ class SwingConfirmationService implements ConfirmationService {
       return ConfirmationChoice.ALL
     }
     ConfirmationChoice.NO
-  }
-
-  @Override
-  boolean confirmYesNo(String prompt) {
-    Object[] options = ["Yes", "No"] as Object[]
-    showOptionDialog(prompt, "Confirm", options, 1) == 0
   }
 
   private static int showOptionDialog(String message, String title, Object[] options, int defaultIndex) {
@@ -61,12 +68,27 @@ class SwingConfirmationService implements ConfirmationService {
       } else {
         SwingUtilities.invokeAndWait(task)
       }
+    } catch (InterruptedException e) {
+      // The calling thread was interrupted (e.g. shutdown/cancellation) while waiting for the
+      // EDT to answer. Restore the interrupt flag so callers upstream see it and can unwind,
+      // rather than silently continuing as if the user had answered "No".
+      return failClosed(e, true)
     } catch (Exception e) {
-      // Fail closed (CLOSED_OPTION → NO), but record why so a real dialog/headless failure is
-      // distinguishable from a genuine user "No".
-      log.warn("Confirmation dialog failed to display; treating as declined", e)
-      return JOptionPane.CLOSED_OPTION
+      return failClosed(e, false)
     }
     holder.get()
+  }
+
+  /**
+   * Fail closed (CLOSED_OPTION → NO), recording why so a real dialog/headless failure is
+   * distinguishable from a genuine user "No". Restores the interrupt flag when {@code interrupted}.
+   */
+  @PackageScope
+  static int failClosed(Exception e, boolean interrupted) {
+    if (interrupted) {
+      Thread.currentThread().interrupt()
+    }
+    log.warn("Confirmation dialog failed to display; treating as declined", e)
+    JOptionPane.CLOSED_OPTION
   }
 }

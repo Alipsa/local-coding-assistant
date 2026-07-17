@@ -74,7 +74,7 @@ class GuiRunner implements ApplicationRunner {
       ConversationView conversation = new ConversationView(markdownRenderer)
       FooterBar footer = new FooterBar(systemMetrics, contextEstimator, "default")
       Runnable onBaseDirChanged = {
-        footer.refresh()
+        footer.refreshAsync()
         conversation.addNote("Base dir changed to ${workspace.baseDir}".toString())
       } as Runnable
       Consumer<String> onCommandOutput = { String output ->

@@ -47,6 +47,11 @@ class BangCommandHandler {
     if (!isBang(input)) {
       return ""
     }
+    if (!captureOutput && lineConsumer != null) {
+      // The console path (captureOutput=false) has no way to forward a line consumer — it streams
+      // to stdout instead. Reject the combination loudly rather than silently dropping the consumer.
+      throw new IllegalArgumentException("lineConsumer is only supported when captureOutput is true")
+    }
     String command = strip(input)
     if (command.isEmpty()) {
       return "Usage: ! <shell command>"

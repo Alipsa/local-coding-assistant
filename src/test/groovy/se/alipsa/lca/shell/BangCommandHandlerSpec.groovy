@@ -76,6 +76,16 @@ class BangCommandHandlerSpec extends Specification {
     1 * shellCommands.shellCommandCaptured("ls", "s1", consumer) >> "[exit 0]"
   }
 
+  def "a lineConsumer without captureOutput is rejected rather than silently dropped"() {
+    when:
+    handler.handle("! ls", "s1", false, { String l -> } as java.util.function.Consumer)
+
+    then:
+    thrown(IllegalArgumentException)
+    0 * shellCommands.shellCommand(_, _)
+    0 * shellCommands.shellCommandCaptured(_, _, _)
+  }
+
   def "the streaming overload reports usage for a bare bang without calling the shell"() {
     when:
     String out = handler.handle("!   ", "s1", true, { String l -> } as java.util.function.Consumer)

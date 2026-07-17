@@ -2,6 +2,7 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,6 +28,9 @@ class GitTool {
   // isGitRepo cache uses double-checked locking, which is only correct with volatile fields.
   private volatile Boolean cachedRepoStatus = null
   private volatile Path cachedRepoRoot = null
+  private final Object realRootLock = new Object()
+  private volatile Path cachedRealRoot = null
+  private volatile Path cachedRealRootFor = null
 
   GitTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -47,15 +51,35 @@ class GitTool {
     workspace != null ? workspace.baseDir : fixedRoot
   }
 
-  private Path getRealProjectRoot() {
+  /**
+   * The canonicalised project root, cached against the last-observed {@link #getProjectRoot()}
+   * so callers that check it more than once per operation (e.g. {@link #validatePath}) get one
+   * consistent {@code toRealPath()} syscall instead of re-resolving — and potentially observing a
+   * different root mid-call if the base dir changes concurrently — on every reference.
+   */
+  @PackageScope
+  Path getRealProjectRoot() {
     Path root = getProjectRoot()
-    try {
-      return root.toRealPath()
-    } catch (IOException e) {
-      // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
-      // non-canonical path but record it rather than failing silently.
-      log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
-      return root
+    Path cached = cachedRealRoot
+    if (cached != null && root == cachedRealRootFor) {
+      return cached
+    }
+    synchronized (realRootLock) {
+      if (cachedRealRoot != null && root == cachedRealRootFor) {
+        return cachedRealRoot
+      }
+      try {
+        Path real = root.toRealPath()
+        cachedRealRoot = real
+        cachedRealRootFor = root
+        return real
+      } catch (IOException e) {
+        // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+        // non-canonical path but record it rather than failing silently. Not cached: a transient
+        // failure shouldn't stick once the root becomes valid again.
+        log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
+        return root
+      }
     }
   }
 

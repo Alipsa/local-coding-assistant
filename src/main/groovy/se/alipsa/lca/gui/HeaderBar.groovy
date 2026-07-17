@@ -1,6 +1,7 @@
 package se.alipsa.lca.gui
 
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import se.alipsa.lca.shell.BangCommandHandler
@@ -26,6 +27,7 @@ import java.awt.Dimension
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.function.Consumer
 
 /**
@@ -64,6 +66,8 @@ class HeaderBar extends JPanel {
 
   private final Set<String> localBranches = new LinkedHashSet<>()
   private boolean populating = false
+  // Guards against a slower popup-open's worker overwriting a faster, more recent one's result.
+  private final AtomicInteger populateGeneration = new AtomicInteger(0)
 
   HeaderBar(FileEditingTool fileEditingTool, GitTool gitTool, SessionState sessionState,
             Workspace workspace, BangCommandHandler bangCommandHandler,
@@ -150,9 +154,12 @@ class HeaderBar extends JPanel {
     }
   }
 
-  private void populateBranches() {
+  @PackageScope
+  void populateBranches() {
     // Listing branches shells out to git; run it off the EDT so opening the combo never blocks
-    // the UI, then apply the result back on the EDT in done().
+    // the UI, then apply the result back on the EDT in done(). Each open gets its own generation
+    // so a slower worker from an earlier open can detect it's been superseded and skip applying.
+    int generation = beginPopulateGeneration()
     new SwingWorker<BranchData, Void>() {
       @Override
       protected BranchData doInBackground() {
@@ -161,6 +168,9 @@ class HeaderBar extends JPanel {
 
       @Override
       protected void done() {
+        if (!isCurrentPopulateGeneration(generation)) {
+          return
+        }
         try {
           applyBranchData(get())
         } catch (Exception e) {
@@ -168,6 +178,24 @@ class HeaderBar extends JPanel {
         }
       }
     }.execute()
+  }
+
+  /** Starts a new populate generation, superseding any still-running earlier one. */
+  @PackageScope
+  int beginPopulateGeneration() {
+    populateGeneration.incrementAndGet()
+  }
+
+  /** Whether {@code generation} is still the most recently started populate call. */
+  @PackageScope
+  boolean isCurrentPopulateGeneration(int generation) {
+    generation == populateGeneration.get()
+  }
+
+  /** The combo box's current items, in order — exposed read-only for tests. */
+  @PackageScope
+  List<String> currentBranchItems() {
+    (0..<branchCombo.itemCount).collect { branchCombo.getItemAt(it) }
   }
 
   private BranchData collectBranchData() {

@@ -96,6 +96,35 @@ class ModelRegistrySpec extends Specification {
     registry.contextLength("   ") == null
   }
 
+  def "contextLength prefers the architecture-qualified key for a multi-component model"() {
+    given:
+    // A vision sub-component's context_length would sort first in the map, but the model's own
+    // (general.architecture-qualified) context length is the one that should be reported.
+    String json = '''
+      {"model_info": {
+        "general.architecture": "qwen3",
+        "clip.vision_model.context_length": 4096,
+        "qwen3.context_length": 131072
+      }}
+    '''
+    ModelRegistry registry = new ShowRegistry(200, json)
+
+    expect:
+    registry.contextLength("qwen3-vl:latest") == 131072
+  }
+
+  def "contextLengthFromModelInfo falls back to the first match when general.architecture is absent"() {
+    expect:
+    ModelRegistry.contextLengthFromModelInfo(
+      ["qwen3.architecture": "qwen3", "qwen3.context_length": 131072] as Map<String, Object>) == 131072
+  }
+
+  def "contextLengthFromModelInfo falls back to the first match when the architecture key doesn't resolve"() {
+    expect:
+    ModelRegistry.contextLengthFromModelInfo(
+      ["general.architecture": "unknown", "qwen3.context_length": 131072] as Map<String, Object>) == 131072
+  }
+
   private static class ShowRegistry extends ModelRegistry {
     private final int status
     private final String body

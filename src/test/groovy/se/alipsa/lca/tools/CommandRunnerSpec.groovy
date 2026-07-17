@@ -14,6 +14,24 @@ class CommandRunnerSpec extends Specification {
   @TempDir
   Path tempDir
 
+  def "getRealProjectRoot falls back to the uncanonicalised root when it can't be resolved"() {
+    given:
+    Path missing = tempDir.resolve("does-not-exist")
+    CommandRunner runner = new CommandRunner(missing)
+
+    expect:
+    runner.getRealProjectRoot() == missing
+  }
+
+  def "getRealProjectRoot canonicalises and caches an existing root"() {
+    given:
+    CommandRunner runner = new CommandRunner(tempDir)
+
+    expect:
+    runner.getRealProjectRoot() == tempDir.toRealPath()
+    runner.getRealProjectRoot() == runner.getRealProjectRoot()
+  }
+
   def "run executes command and captures output"() {
     given:
     CommandRunner runner = new CommandRunner(tempDir)

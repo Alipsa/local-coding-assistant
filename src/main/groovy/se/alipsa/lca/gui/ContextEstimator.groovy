@@ -32,12 +32,12 @@ class ContextEstimator {
     SessionState sessionState,
     TokenEstimator tokenEstimator,
     ModelRegistry modelRegistry,
-    @Value('${lca.gui.default-context-window:98304}') int defaultContextWindow
+    @Value('${lca.gui.default-context-window:131072}') int defaultContextWindow
   ) {
     this.sessionState = sessionState
     this.tokenEstimator = tokenEstimator
     this.modelRegistry = modelRegistry
-    this.defaultContextWindow = defaultContextWindow > 0 ? defaultContextWindow : 98304
+    this.defaultContextWindow = defaultContextWindow > 0 ? defaultContextWindow : 131072
   }
 
   int estimatedTokens(String sessionId) {

@@ -17,6 +17,21 @@ class GitToolSpec extends Specification {
     gitTool = new GitTool(tempDir)
   }
 
+  def "getRealProjectRoot falls back to the uncanonicalised root when it can't be resolved"() {
+    given:
+    Path missing = tempDir.resolve("does-not-exist")
+    GitTool tool = new GitTool(missing)
+
+    expect:
+    tool.getRealProjectRoot() == missing
+  }
+
+  def "getRealProjectRoot canonicalises and caches an existing root"() {
+    expect:
+    gitTool.getRealProjectRoot() == tempDir.toRealPath()
+    gitTool.getRealProjectRoot() == gitTool.getRealProjectRoot()
+  }
+
   def "status reports missing repository"() {
     when:
     def status = gitTool.status(false)

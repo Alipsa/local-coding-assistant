@@ -59,4 +59,13 @@ File-backed pages:                           1050019.
     SystemMetrics.pageSizeFromVmStat("no page-size line here") == 4096L
     SystemMetrics.pageSizeFromVmStat(null) == 4096L
   }
+
+  def "a line with more than one number still parses the first one, not a concatenation of both"() {
+    given:
+    // e.g. a hypothetical vm_stat variant reporting a build/version number alongside the page size.
+    String vmStat = "Mach Virtual Memory Statistics: (page size of 4096 bytes, v2 build 12345)"
+
+    expect:
+    SystemMetrics.pageSizeFromVmStat(vmStat) == 4096L
+  }
 }

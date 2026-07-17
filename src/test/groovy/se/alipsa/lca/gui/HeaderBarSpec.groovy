@@ -1,7 +1,13 @@
 package se.alipsa.lca.gui
 
+import se.alipsa.lca.shell.BangCommandHandler
+import se.alipsa.lca.shell.SessionState
+import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.GitTool
+import se.alipsa.lca.tools.Workspace
 import spock.lang.Specification
 import spock.lang.Unroll
+import spock.util.concurrent.PollingConditions
 
 class HeaderBarSpec extends Specification {
 
@@ -82,5 +88,42 @@ class HeaderBarSpec extends Specification {
     'x`touch pwned`'   | false
     '--upload-pack=e'  | true
     'a;b'              | false
+  }
+
+  def "a fresh populateBranches call supersedes the generation an earlier, still-running one captured"() {
+    given:
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), Mock(GitTool), Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+
+    when: "an earlier open's worker captures its generation before a second open starts"
+    int firstGeneration = header.beginPopulateGeneration()
+
+    then:
+    header.isCurrentPopulateGeneration(firstGeneration)
+
+    when: "a second, later open starts before the first worker finishes"
+    int secondGeneration = header.beginPopulateGeneration()
+
+    then: "the first worker's captured generation is now stale and must not apply its result"
+    !header.isCurrentPopulateGeneration(firstGeneration)
+    header.isCurrentPopulateGeneration(secondGeneration)
+  }
+
+  def "populateBranches applies its result once its SwingWorker completes"() {
+    given:
+    GitTool gitTool = Mock(GitTool)
+    gitTool.currentBranch() >> "main"
+    gitTool.listLocalBranches() >> ["main", "feature-a"]
+    gitTool.listRemoteBranches() >> []
+    HeaderBar header = new HeaderBar(
+      Mock(FileEditingTool), gitTool, Mock(SessionState), Mock(Workspace), Mock(BangCommandHandler), null, null)
+
+    when:
+    header.populateBranches()
+
+    then:
+    new PollingConditions(timeout: 2).eventually {
+      header.currentBranchItems().containsAll(["main", "feature-a"])
+    }
   }
 }

@@ -4,6 +4,7 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -162,18 +163,43 @@ class ModelRegistry {
         Map parsed = (Map) new JsonSlurper().parseText(response.body())
         Object infoObj = parsed != null ? parsed.get("model_info") : null
         if (infoObj instanceof Map) {
-          Map<String, Object> info = (Map<String, Object>) infoObj
-          for (Map.Entry<String, Object> entry : info.entrySet()) {
-            String key = entry.key
-            if (key != null && key.endsWith(".context_length") && entry.value instanceof Number) {
-              return ((Number) entry.value).intValue()
-            }
+          Integer length = contextLengthFromModelInfo((Map<String, Object>) infoObj)
+          if (length != null) {
+            return length
           }
         }
       }
       log.debug("No context_length reported for model {} (status {})", model, response.statusCode())
     } catch (Exception e) {
       log.debug("Failed to fetch context length for {}", model, e)
+    }
+    null
+  }
+
+  /**
+   * Reads the {@code context_length} for the model's own architecture out of a {@code model_info}
+   * map. Ollama/GGUF metadata names the primary model via {@code general.architecture} and keys
+   * its context length as {@code "<architecture>.context_length"}; a multi-component model (e.g.
+   * one with a CLIP vision tower) carries additional {@code <component>.context_length} keys for
+   * its sub-components, so picking the first {@code .context_length}-suffixed key found isn't
+   * reliable. Prefer the architecture-qualified key; fall back to the first match when
+   * {@code general.architecture} is absent or doesn't resolve (keeping today's behaviour for
+   * single-component models, which don't have this ambiguity).
+   */
+  @PackageScope
+  static Integer contextLengthFromModelInfo(Map<String, Object> info) {
+    Object architecture = info.get("general.architecture")
+    if (architecture instanceof String) {
+      Object direct = info.get("${architecture}.context_length".toString())
+      if (direct instanceof Number) {
+        return ((Number) direct).intValue()
+      }
+    }
+    for (Map.Entry<String, Object> entry : info.entrySet()) {
+      String key = entry.key
+      if (key != null && key.endsWith(".context_length") && entry.value instanceof Number) {
+        return ((Number) entry.value).intValue()
+      }
     }
     null
   }

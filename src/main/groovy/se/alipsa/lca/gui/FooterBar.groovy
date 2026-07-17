@@ -1,5 +1,6 @@
 package se.alipsa.lca.gui
 
+import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 
 import javax.swing.BorderFactory
@@ -7,6 +8,7 @@ import javax.swing.BoxLayout
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JProgressBar
+import javax.swing.SwingWorker
 import java.awt.Component
 import java.awt.Dimension
 
@@ -49,23 +51,79 @@ class FooterBar extends JPanel {
     refresh()
   }
 
+  /** Synchronous refresh; only cheap enough to call directly during construction. */
   final void refresh() {
+    apply(collectSnapshot())
+  }
+
+  /**
+   * Computes the metrics off the EDT (context estimation and, on the memory side, a possible
+   * {@code vm_stat}/{@code /proc} subprocess spawn) and applies the result on the EDT once done —
+   * so the periodic footer timer never blocks UI event handling. Mirrors the pattern
+   * {@link HeaderBar#populateBranches} uses for git listing.
+   */
+  final void refreshAsync() {
+    new SwingWorker<FooterSnapshot, Void>() {
+      @Override
+      protected FooterSnapshot doInBackground() {
+        collectSnapshot()
+      }
+
+      @Override
+      protected void done() {
+        try {
+          apply(get())
+        } catch (Exception ignored) {
+          contextBar.setString("n/a")
+          memoryBar.setString("n/a")
+        }
+      }
+    }.execute()
+  }
+
+  private FooterSnapshot collectSnapshot() {
+    Integer contextPercent = null
     try {
-      int ctx = contextEstimator.usedPercent(sessionId)
-      contextBar.setValue(ctx)
-      contextBar.setString("${ctx}%")
+      contextPercent = contextEstimator.usedPercent(sessionId)
     } catch (Exception ignored) {
+      // contextPercent stays null; apply() renders "n/a" for it.
+    }
+    Integer memoryPercent = null
+    String memorySummary = null
+    try {
+      memoryPercent = systemMetrics.usedMemoryPercent()
+      memorySummary = systemMetrics.memorySummary()
+    } catch (Exception ignored) {
+      // memoryPercent/memorySummary stay null; apply() renders "n/a" for them.
+    }
+    new FooterSnapshot(contextPercent, memoryPercent, memorySummary)
+  }
+
+  private void apply(FooterSnapshot snapshot) {
+    if (snapshot.contextPercent != null) {
+      contextBar.setValue(snapshot.contextPercent)
+      contextBar.setString("${snapshot.contextPercent}%")
+    } else {
       contextBar.setString("n/a")
     }
-    try {
-      memoryBar.setValue(systemMetrics.usedMemoryPercent())
-      memoryBar.setString(systemMetrics.memorySummary())
-    } catch (Exception ignored) {
+    if (snapshot.memoryPercent != null) {
+      memoryBar.setValue(snapshot.memoryPercent)
+      memoryBar.setString(snapshot.memorySummary)
+    } else {
       memoryBar.setString("n/a")
     }
   }
 
   private static Component separator() {
     new JLabel("     |     ")
+  }
+
+  /** Immutable snapshot collected off the EDT and applied on it; a null field means "failed". */
+  @Canonical
+  @CompileStatic
+  private static class FooterSnapshot {
+    Integer contextPercent
+    Integer memoryPercent
+    String memorySummary
   }
 }

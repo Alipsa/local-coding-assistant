@@ -2,6 +2,7 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -41,6 +42,8 @@ class CommandRunner {
   @Nullable
   private final Workspace workspace
   private final Path fixedRoot
+  private Path cachedRealRoot
+  private Path cachedRealRootFor
 
   CommandRunner() {
     this(Paths.get(".").toAbsolutePath().normalize())
@@ -61,13 +64,27 @@ class CommandRunner {
     workspace != null ? workspace.baseDir : fixedRoot
   }
 
-  private Path getRealProjectRoot() {
+  /**
+   * The canonicalised project root, cached against the last-observed {@link #getProjectRoot()} so
+   * a single command execution (which reads it from both {@link #createLogPath} and
+   * {@link #startProcess}) gets one consistent {@code toRealPath()} syscall instead of
+   * re-resolving it for each.
+   */
+  @PackageScope
+  synchronized Path getRealProjectRoot() {
     Path root = getProjectRoot()
+    if (cachedRealRoot != null && root == cachedRealRootFor) {
+      return cachedRealRoot
+    }
     try {
-      return root.toRealPath()
+      Path real = root.toRealPath()
+      cachedRealRoot = real
+      cachedRealRootFor = root
+      return real
     } catch (IOException e) {
       // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
-      // non-canonical path but record it rather than failing silently.
+      // non-canonical path but record it rather than failing silently. Not cached: a transient
+      // failure shouldn't stick once the root becomes valid again.
       log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
       return root
     }

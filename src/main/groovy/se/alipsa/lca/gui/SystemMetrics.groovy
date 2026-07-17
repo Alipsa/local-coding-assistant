@@ -10,6 +10,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Locale
+import java.util.regex.Matcher
+import java.util.regex.Pattern
 
 /**
  * Best-effort host memory metrics for the GUI footer.
@@ -154,8 +156,14 @@ class SystemMetrics {
     0L
   }
 
+  private static final Pattern DIGITS = Pattern.compile("\\d+")
+
+  /** The first run of digits in {@code text}, e.g. {@code 16384} from "page size of 16384 bytes". */
   private static long firstLong(String text) {
-    String digits = text.replaceAll("[^0-9]", "")
-    digits.isEmpty() ? 0L : Long.parseLong(digits)
+    if (text == null) {
+      return 0L
+    }
+    Matcher matcher = DIGITS.matcher(text)
+    matcher.find() ? Long.parseLong(matcher.group()) : 0L
   }
 }

@@ -1260,7 +1260,11 @@ Try:
       return new ShellExecution(blocked, blocked)
     }
     boolean streaming = lineConsumer != null
-    StringBuilder captured = streaming ? null : new StringBuilder()
+    // Only the shellCommandCaptured(cmd, session) path (streamToConsole=false, no lineConsumer)
+    // ever reads .captured; the plain console path (shellCommand(), streamToConsole=true) only
+    // reads .summary, so skip building a full-body string nobody will look at.
+    boolean needsCaptured = !streaming && !streamToConsole
+    StringBuilder captured = needsCaptured ? new StringBuilder() : null
     CommandRunner.OutputListener listener = { String stream, String line ->
       if (streamToConsole) {
         if ("ERR" == stream) {
@@ -1272,7 +1276,7 @@ Try:
       }
       if (streaming) {
         lineConsumer.accept(line)
-      } else {
+      } else if (needsCaptured) {
         synchronized (captured) {
           int remaining = DIRECT_SHELL_MAX_OUTPUT_CHARS - captured.length()
           if (remaining > 0) {
@@ -1304,9 +1308,10 @@ Try:
       String footer = shellFooter(result)
       return new ShellExecution(footer, footer)
     }
+    String directResult = formatDirectShellResult(trimmed, result)
     new ShellExecution(
-      formatDirectShellResult(trimmed, result),
-      formatCapturedShellResult(trimmed, result, captured.toString())
+      directResult,
+      needsCaptured ? formatCapturedShellResult(trimmed, result, captured.toString()) : null
     )
   }
 

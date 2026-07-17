@@ -50,7 +50,7 @@ class LcaMainFrame extends JFrame {
     setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
     buildLayout()
     bindKeys()
-    metricsTimer = new Timer(2000, { footerBar.refresh() } as ActionListener)
+    metricsTimer = new Timer(2000, { footerBar.refreshAsync() } as ActionListener)
     metricsTimer.start()
     setSize(1100, 800)
     setLocationRelativeTo(null)
@@ -156,7 +156,7 @@ class LcaMainFrame extends JFrame {
       if (result?.action == GuiAction.CLEAR) {
         conversationView.clear()
       }
-      footerBar.refresh()
+      footerBar.refreshAsync()
       headerBar.refresh()
       setBusy(false)
       inputArea.requestFocusInWindow()
