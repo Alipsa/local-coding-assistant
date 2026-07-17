@@ -161,6 +161,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   private final ConfirmationService confirmationService
   private final LocalOnlyState localOnlyState
   private final SessionState sessionState
+  private volatile List<Tool> discoveredLlmTools
 
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
@@ -442,13 +443,38 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
    * that one chat session.
    */
   List<Tool> buildLlmTools(String sessionId) {
-    MethodToolFactory factory = (MethodToolFactory) Tool.getDeclaredField("Companion").get(null)
-    List<Tool> tools = factory.safelyFromInstance(this, new ObjectMapper())
-    tools.collect { Tool tool -> withConfirmationIfRequired(tool, sessionId) }
+    discoverLlmTools().collect { Tool tool -> withConfirmationIfRequired(tool, sessionId) }
+  }
+
+  /**
+   * Reflective tool discovery is invariant for a given instance — only the confirmation
+   * wrapping in {@link #buildLlmTools(String)} varies per chat turn/session — so the scan is
+   * done once and cached rather than repeated on every {@code buildLlmTools} call.
+   */
+  private synchronized List<Tool> discoverLlmTools() {
+    if (discoveredLlmTools == null) {
+      MethodToolFactory factory = (MethodToolFactory) Tool.getDeclaredField("Companion").get(null)
+      discoveredLlmTools = factory.safelyFromInstance(this, new ObjectMapper())
+    }
+    discoveredLlmTools
+  }
+
+  /**
+   * Finds the method on {@code owner} whose {@code @LlmTool} name — its {@code name()} attribute
+   * if set, else its Java method name, matching Embabel's own {@code JavaMethodTool} fallback —
+   * equals {@code toolName}. Matching on the annotation's own name (rather than assuming the
+   * Java method name equals the tool name) keeps this correct even if a future {@code @LlmTool}
+   * is given a name that diverges from its method, e.g. a snake_case LLM-facing alias.
+   */
+  static Method findLlmToolMethod(Class<?> owner, String toolName) {
+    owner.declaredMethods.find { Method candidate ->
+      LlmTool llmTool = candidate.getAnnotation(LlmTool)
+      llmTool != null && (llmTool.name() ?: candidate.name) == toolName
+    }
   }
 
   private Tool withConfirmationIfRequired(Tool tool, String sessionId) {
-    Method method = this.class.declaredMethods.find { it.name == tool.definition.name }
+    Method method = findLlmToolMethod(this.class, tool.definition.name)
     RequiresConfirmation annotation = method?.getAnnotation(RequiresConfirmation)
     annotation == null ? tool :
       new ConfirmingLlmTool(tool, annotation.message(), confirmationService, sessionState, sessionId)

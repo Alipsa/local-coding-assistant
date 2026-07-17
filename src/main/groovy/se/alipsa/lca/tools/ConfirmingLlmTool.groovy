@@ -58,6 +58,11 @@ class ConfirmingLlmTool implements DelegatingTool {
   }
 
   @Override
+  Tool.Metadata getMetadata() {
+    delegate.metadata
+  }
+
+  @Override
   Tool.Result call(String input) {
     call(input, ToolCallContext.EMPTY)
   }

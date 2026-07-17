@@ -288,6 +288,26 @@ class CodingAssistantAgentSpec extends Specification {
     !(byName["fileContext"] instanceof ConfirmingLlmTool)
   }
 
+  def "findLlmToolMethod matches by the @LlmTool name attribute, not the Java method name"() {
+    expect: "a tool name equal to the annotation's declared name() resolves, even though it diverges from the method name"
+    CodingAssistantAgent.findLlmToolMethod(DivergentNameFixture, "delete_file")?.name == "deleteFile"
+
+    and: "the bare Java method name no longer resolves anything, since it is not the tool's name"
+    CodingAssistantAgent.findLlmToolMethod(DivergentNameFixture, "deleteFile") == null
+
+    and: "a tool with no name() attribute still falls back to the Java method name"
+    CodingAssistantAgent.findLlmToolMethod(DivergentNameFixture, "writeFile")?.name == "writeFile"
+  }
+
+  static class DivergentNameFixture {
+    @com.embabel.agent.api.annotation.LlmTool(name = "delete_file", description = "Delete a file.")
+    @RequiresConfirmation(message = "delete?")
+    void deleteFile() {}
+
+    @com.embabel.agent.api.annotation.LlmTool(description = "Write a file.")
+    void writeFile() {}
+  }
+
   def "buildLlmTools' confirmation wrapper actually blocks the underlying call"() {
     given:
     List<Tool> tools = agent.buildLlmTools("session-1")
