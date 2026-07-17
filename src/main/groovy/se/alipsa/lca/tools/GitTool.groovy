@@ -1,8 +1,8 @@
 package se.alipsa.lca.tools
 
 import groovy.json.JsonSlurper
-import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.Immutable
 import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -311,8 +311,12 @@ class GitTool {
       return new GitResult(false, isGitRepo(), 1, "",
         "Not a git repository or current branch could not be determined.")
     }
-    long now = System.currentTimeMillis()
     synchronized (prCacheLock) {
+      // Re-measure now here, inside the lock — not before acquiring it (mirrors
+      // ModelRegistry.listModels()/loadedModels()): otherwise time spent waiting for a contended
+      // lock wouldn't count against the TTL, and a caller could be served a result that's
+      // actually already stale by the time it's returned.
+      long now = System.currentTimeMillis()
       if (cachedPrResult != null && branch == cachedPrBranch && (now - cachedPrAt) < PR_CACHE_TTL_MILLIS) {
         return cachedPrResult
       }
@@ -474,7 +478,10 @@ class GitTool {
     }
   }
 
-  @Canonical
+  // Immutable, not just Canonical: openPullRequestsForCurrentBranch() now hands the same cached
+  // instance to every caller within its TTL window, so it must not be mutable — a mutation by
+  // one caller would otherwise corrupt what every other caller (and the cache itself) sees.
+  @Immutable
   @CompileStatic
   static class GitResult {
     boolean success
