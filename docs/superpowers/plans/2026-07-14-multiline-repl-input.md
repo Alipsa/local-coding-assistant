@@ -1,5 +1,12 @@
 # Multi-line REPL Input Implementation Plan
 
+Recap: so far we have done:
+- Branch feature/multiline-repl-input has 3 commits: the design spec, its revision, and the implementation plan (docs/superpowers/plans/2026-07-14-multiline-repl-input.md).
+- Still uncommitted on this branch: the earlier lca>  prompt-spacing fix in application.properties (from the start of today's session).
+- There's also an untracked docs/gui.md I didn't create — leaving it alone since it's not part of this work.
+- Nothing implemented yet — we stopped right at the execution-choice decision (subagent-driven vs. inline) for the 6-task plan.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make pasting or composing multi-line text at the `lca>` prompt work as one input instead of being fragmented line-by-line, both when the terminal delivers a paste atomically and when it doesn't.
