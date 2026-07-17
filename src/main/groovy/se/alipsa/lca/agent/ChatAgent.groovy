@@ -81,7 +81,7 @@ Notes:
         .withLlm(options)
         .withPromptContributor(template.persona)
         .withSystemPrompt(systemPrompt)
-        .withTools(codingAssistantAgent.buildLlmTools())
+        .withTools(codingAssistantAgent.buildLlmTools(conversation.id))
 
       if (promptRunner.supportsThinking()) {
         ThinkingResponse<AssistantMessage> thinkingResponse = promptRunner
@@ -99,7 +99,7 @@ Notes:
         .withLlm(options)
         .withPromptContributor(template.persona)
         .withSystemPrompt(systemPrompt)
-        .withTools(codingAssistantAgent.buildLlmTools())
+        .withTools(codingAssistantAgent.buildLlmTools(conversation.id))
         .respond(conversation.messages)
     }
 

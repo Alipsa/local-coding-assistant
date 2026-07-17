@@ -29,6 +29,7 @@ class SessionState {
   private final Map<String, Conversation> conversations = new ConcurrentHashMap<>()
   private final Map<String, ToolSummary> toolSummaries = new ConcurrentHashMap<>()
   private final Map<String, Deque<String>> recentFilePaths = new ConcurrentHashMap<>()
+  private final Set<String> toolConfirmationAllowAll = ConcurrentHashMap.newKeySet()
   private final String defaultModel
   private final double defaultCraftTemperature
   private final double defaultReviewTemperature
@@ -187,6 +188,22 @@ class SessionState {
     conversations.computeIfAbsent(key) {
       new InMemoryConversation(new ArrayList<>(), key)
     }
+  }
+
+  /**
+   * Whether the user has previously chosen "yes to all" for a chat-tool confirmation prompt in
+   * this session (see {@link se.alipsa.lca.tools.ConfirmingLlmTool}). Once set, remaining
+   * confirmation-gated tool calls in the same session skip prompting, mirroring
+   * {@code ShellCommands.applyAllConfirmed} — but scoped to this one session/conversation rather
+   * than the whole running process, and reset on restart since nothing here is persisted.
+   */
+  boolean isToolConfirmationAllowedForAll(String sessionId) {
+    toolConfirmationAllowAll.contains(normaliseSession(sessionId))
+  }
+
+  /** Records that the user chose "yes to all" for chat-tool confirmations in this session. */
+  void allowAllToolConfirmations(String sessionId) {
+    toolConfirmationAllowAll.add(normaliseSession(sessionId))
   }
 
   void storeToolSummary(String sessionId, ToolSummary summary) {

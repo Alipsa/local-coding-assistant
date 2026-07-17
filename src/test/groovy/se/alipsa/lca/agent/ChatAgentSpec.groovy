@@ -19,7 +19,7 @@ class ChatAgentSpec extends Specification {
     runner.withTools(_) >> runner
     runner.respond(_ as List) >> new AssistantMessage("ok")
     CodingAssistantAgent codingAssistant = Mock()
-    codingAssistant.buildLlmTools() >> []
+    codingAssistant.buildLlmTools(_ as String) >> []
     ChatAgent agent = new ChatAgent(200, codingAssistant)
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
@@ -44,7 +44,7 @@ class ChatAgentSpec extends Specification {
     runner.withTools(_) >> runner
     runner.respond(_ as List) >> new AssistantMessage("ok")
     CodingAssistantAgent codingAssistant = Mock()
-    codingAssistant.buildLlmTools() >> []
+    codingAssistant.buildLlmTools(_ as String) >> []
     ChatAgent agent = new ChatAgent(200, codingAssistant)
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")

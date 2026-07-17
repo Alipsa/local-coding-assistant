@@ -272,4 +272,16 @@ class SessionStateSpec extends Specification {
     then:
     paths.isEmpty()
   }
+
+  def "tool confirmation allow-all is off by default and scoped per session"() {
+    expect:
+    !state.isToolConfirmationAllowedForAll("s1")
+
+    when:
+    state.allowAllToolConfirmations("s1")
+
+    then:
+    state.isToolConfirmationAllowedForAll("s1")
+    !state.isToolConfirmationAllowedForAll("s2")
+  }
 }

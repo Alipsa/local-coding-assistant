@@ -437,18 +437,21 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
    * instead of {@code withToolObject(this)}. Built via {@code Tool.Companion}, the same reflective
    * entry point {@code withToolObject} itself uses, so this only ever exposes {@code @LlmTool}
    * methods. Methods also carrying {@link RequiresConfirmation} are wrapped in a
-   * {@link ConfirmingLlmTool} that blocks on {@link ConfirmationService} before delegating.
+   * {@link ConfirmingLlmTool} that blocks on {@link ConfirmationService} before delegating, scoped
+   * to the given {@code sessionId} so a "yes to all" choice only skips prompting for the rest of
+   * that one chat session.
    */
-  List<Tool> buildLlmTools() {
+  List<Tool> buildLlmTools(String sessionId) {
     MethodToolFactory factory = (MethodToolFactory) Tool.getDeclaredField("Companion").get(null)
     List<Tool> tools = factory.safelyFromInstance(this, new ObjectMapper())
-    tools.collect { Tool tool -> withConfirmationIfRequired(tool) }
+    tools.collect { Tool tool -> withConfirmationIfRequired(tool, sessionId) }
   }
 
-  private Tool withConfirmationIfRequired(Tool tool) {
+  private Tool withConfirmationIfRequired(Tool tool, String sessionId) {
     Method method = this.class.declaredMethods.find { it.name == tool.definition.name }
     RequiresConfirmation annotation = method?.getAnnotation(RequiresConfirmation)
-    annotation == null ? tool : new ConfirmingLlmTool(tool, annotation.message(), confirmationService)
+    annotation == null ? tool :
+      new ConfirmingLlmTool(tool, annotation.message(), confirmationService, sessionState, sessionId)
   }
 
   protected String buildCraftCodePrompt(

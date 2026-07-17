@@ -22,9 +22,10 @@ class CodingAssistantAgentSpec extends Specification {
   GitTool gitTool = Mock(GitTool)
   ConfirmationService confirmationService = Mock(ConfirmationService)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
-  SessionState sessionState = Stub(SessionState) {
+  SessionState sessionState = Mock(SessionState) {
     getWebSearchFetcher(_) >> "htmlunit"
     getWebSearchFallbackFetcher(_) >> "jsoup"
+    isToolConfirmationAllowedForAll(_) >> false
   }
   CodingAssistantAgent agent = new CodingAssistantAgent(
     220,
@@ -270,7 +271,7 @@ class CodingAssistantAgentSpec extends Specification {
 
   def "buildLlmTools wraps confirmation-required tools but leaves read-only tools alone"() {
     when:
-    List<Tool> tools = agent.buildLlmTools()
+    List<Tool> tools = agent.buildLlmTools("session-1")
     Map<String, Tool> byName = tools.collectEntries { [(it.definition.name): it] }
 
     then:
@@ -289,7 +290,7 @@ class CodingAssistantAgentSpec extends Specification {
 
   def "buildLlmTools' confirmation wrapper actually blocks the underlying call"() {
     given:
-    List<Tool> tools = agent.buildLlmTools()
+    List<Tool> tools = agent.buildLlmTools("session-1")
     Tool writeFileTool = tools.find { it.definition.name == "writeFile" }
 
     when:
@@ -306,6 +307,45 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.YES
     1 * fileEditingTool.writeFile("a.txt", "x") >> "written"
+  }
+
+  def "buildLlmTools' confirmation wrapper honours session-scoped allow-all"() {
+    given:
+    List<Tool> tools = agent.buildLlmTools("session-allow-all")
+    Tool writeFileTool = tools.find { it.definition.name == "writeFile" }
+    Tool deleteFileTool = tools.find { it.definition.name == "deleteFile" }
+
+    when: "the user picks ALL on the first confirmation-gated call"
+    writeFileTool.call('{"filePath":"a.txt","content":"x"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.ALL
+    1 * fileEditingTool.writeFile("a.txt", "x") >> "written"
+    1 * sessionState.allowAllToolConfirmations("session-allow-all")
+
+    when: "a later confirmation-gated call in the same session is made"
+    sessionState.isToolConfirmationAllowedForAll("session-allow-all") >> true
+    deleteFileTool.call('{"filePath":"a.txt"}')
+
+    then: "it is not prompted again"
+    0 * confirmationService.confirm(_)
+    1 * fileEditingTool.deleteFile("a.txt") >> "deleted"
+  }
+
+  def "buildLlmTools' confirmation wrapper still prompts a different session"() {
+    given:
+    List<Tool> firstSessionTools = agent.buildLlmTools("session-a")
+    Tool firstSessionWriteFile = firstSessionTools.find { it.definition.name == "writeFile" }
+    firstSessionWriteFile.call('{"filePath":"a.txt","content":"x"}')
+    List<Tool> secondSessionTools = agent.buildLlmTools("session-b")
+    Tool secondSessionWriteFile = secondSessionTools.find { it.definition.name == "writeFile" }
+
+    when:
+    secondSessionWriteFile.call('{"filePath":"b.txt","content":"y"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.YES
+    1 * fileEditingTool.writeFile("b.txt", "y") >> "written"
   }
 
   def "searchFiles delegates"() {
