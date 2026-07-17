@@ -74,7 +74,10 @@ class ConversationView extends JPanel {
     if (!blockOpen) {
       beginBlock()
     }
-    liveBlock.append(MarkdownRenderer.escapeHtml(line ?: "")).append("\n")
+    // AnsiHtml runs after escapeHtml, on the already-escaped text — so streamed shell/command
+    // output that colorizes itself (e.g. colored git/grep output) shows color instead of raw
+    // escape-code garbage, without the escaping pass mangling the tags it inserts.
+    liveBlock.append(AnsiHtml.translate(MarkdownRenderer.escapeHtml(line ?: ""))).append("\n")
     renderCoalesced()
   }
 
@@ -109,7 +112,7 @@ class ConversationView extends JPanel {
     if (text == null || text.trim().isEmpty()) {
       return
     }
-    body.append("<div class='note'>${MarkdownRenderer.escapeHtml(text)}</div>")
+    body.append("<div class='note'>${AnsiHtml.translate(MarkdownRenderer.escapeHtml(text))}</div>")
     render()
   }
 

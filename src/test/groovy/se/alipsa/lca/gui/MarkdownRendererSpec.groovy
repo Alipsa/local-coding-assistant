@@ -39,4 +39,30 @@ class MarkdownRendererSpec extends Specification {
     expect:
     MarkdownRenderer.escapeHtml("<a> & <b>") == "&lt;a&gt; &amp; &lt;b&gt;"
   }
+
+  // Mirrors AnsiHtml.ESC: built from its numeric code point rather than an invisible literal
+  // control byte in the test source, which is unreviewable in a diff.
+  private static final String ESC = String.valueOf((char) 27)
+
+  def "a colorized severity label in a list item renders as HTML color, not raw escape codes"() {
+    when:
+    String html = renderer.renderBody("- [${ESC}[31mHIGH${ESC}[0m] some/file.sql:64")
+
+    then:
+    html.contains('<font color="#e06c75">HIGH</font>')
+    !html.contains(ESC)
+  }
+
+  def "a colorized label inside a fenced code block still renders as HTML color"() {
+    // Raw HTML embedded in Markdown source is NOT honoured inside a code fence, so this only
+    // works because AnsiHtml runs on the rendered HTML, after flexmark has already emitted the
+    // <pre><code> block -- not on the Markdown source before parsing.
+    when:
+    String html = renderer.renderBody("```\n[${ESC}[31mHIGH${ESC}[0m]\n```")
+
+    then:
+    html.contains("<pre")
+    html.contains('<font color="#e06c75">HIGH</font>')
+    !html.contains(ESC)
+  }
 }
