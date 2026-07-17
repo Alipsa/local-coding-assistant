@@ -7,8 +7,36 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class ModelRegistrySpec extends Specification {
+
+  def "listModels coalesces concurrent cache-miss callers onto a single fetch"() {
+    given:
+    CountDownLatch releaseFetch = new CountDownLatch(1)
+    AtomicInteger fetchCount = new AtomicInteger(0)
+    ModelRegistry registry = new ShowRegistry(200, "{}") {
+      @Override
+      protected HttpResponse<String> fetchTags() throws Exception {
+        fetchCount.incrementAndGet()
+        releaseFetch.await(2, TimeUnit.SECONDS)
+        [statusCode: { -> 200 }, body: { -> '{"models":[{"name":"m1"}]}' }] as HttpResponse
+      }
+    }
+
+    when:
+    List<Thread> callers = (1..5).collect { Thread.start { registry.listModels() } }
+    // Give every caller a chance to reach (and block on) the synchronized fetch before releasing it.
+    Thread.sleep(200)
+    releaseFetch.countDown()
+    callers.each { it.join(2000) }
+
+    then:
+    fetchCount.get() == 1
+    registry.listModels() == ["m1"]
+  }
 
   def "health returns reachable only for 2xx"() {
     given:
@@ -69,6 +97,76 @@ class ModelRegistrySpec extends Specification {
 
     expect:
     !registry.checkHealth().reachable
+  }
+
+  def "contextLength reads model_info context_length"() {
+    given:
+    String json = '{"model_info": {"qwen3.architecture": "qwen3", "qwen3.context_length": 131072}}'
+    ModelRegistry registry = new ShowRegistry(200, json)
+
+    expect:
+    registry.contextLength("qwen3.6-128k:latest") == 131072
+  }
+
+  def "contextLength returns null when not reported"() {
+    given:
+    ModelRegistry registry = new ShowRegistry(200, '{"model_info": {"general.name": "x"}}')
+
+    expect:
+    registry.contextLength("m") == null
+  }
+
+  def "contextLength returns null for blank model"() {
+    given:
+    ModelRegistry registry = new ShowRegistry(200, '{}')
+
+    expect:
+    registry.contextLength("   ") == null
+  }
+
+  def "contextLength prefers the architecture-qualified key for a multi-component model"() {
+    given:
+    // A vision sub-component's context_length would sort first in the map, but the model's own
+    // (general.architecture-qualified) context length is the one that should be reported.
+    String json = '''
+      {"model_info": {
+        "general.architecture": "qwen3",
+        "clip.vision_model.context_length": 4096,
+        "qwen3.context_length": 131072
+      }}
+    '''
+    ModelRegistry registry = new ShowRegistry(200, json)
+
+    expect:
+    registry.contextLength("qwen3-vl:latest") == 131072
+  }
+
+  def "contextLengthFromModelInfo falls back to the first match when general.architecture is absent"() {
+    expect:
+    ModelRegistry.contextLengthFromModelInfo(
+      ["qwen3.architecture": "qwen3", "qwen3.context_length": 131072] as Map<String, Object>) == 131072
+  }
+
+  def "contextLengthFromModelInfo falls back to the first match when the architecture key doesn't resolve"() {
+    expect:
+    ModelRegistry.contextLengthFromModelInfo(
+      ["general.architecture": "unknown", "qwen3.context_length": 131072] as Map<String, Object>) == 131072
+  }
+
+  private static class ShowRegistry extends ModelRegistry {
+    private final int status
+    private final String body
+
+    ShowRegistry(int status, String body) {
+      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      this.status = status
+      this.body = body
+    }
+
+    @Override
+    protected HttpResponse<String> fetchShow(String model) throws Exception {
+      [statusCode: { -> status }, body: { -> body }] as HttpResponse
+    }
   }
 
   private static class FakeRegistry extends ModelRegistry {

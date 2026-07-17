@@ -2,8 +2,11 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.nio.file.Files
@@ -27,26 +30,68 @@ class FileEditingTool {
   private static final String BACKUP_ROOT = ".lca/backups"
   private static final int PREVIEW_LIMIT = 800
 
-  private final Path projectRoot
-  private final Path realProjectRoot
-  private final ExclusionPolicy exclusionPolicy
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
+  private ExclusionPolicy cachedExclusionPolicy
+  private Path cachedExclusionRoot
+  private Path cachedRealRoot
+  private Path cachedRealRootFor
 
   FileEditingTool() {
-    this(Paths.get(".").toAbsolutePath())
+    this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   FileEditingTool(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
-    try {
-      this.realProjectRoot = this.projectRoot.toRealPath()
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to resolve project root path", e)
-    }
-    this.exclusionPolicy = new ExclusionPolicy(this.projectRoot)
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  FileEditingTool(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
   }
 
   Path getProjectRoot() {
-    projectRoot
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  /**
+   * The canonicalised project root, cached against the last-observed {@link #getProjectRoot()}
+   * (mirroring {@link #getExclusionPolicy}'s cache) so callers that check it more than once per
+   * operation (e.g. {@link #resolvePath}) get one consistent {@code toRealPath()} syscall instead
+   * of re-resolving — and potentially observing a different root mid-call if the base dir changes
+   * concurrently — on every reference.
+   */
+  @PackageScope
+  synchronized Path getRealProjectRoot() {
+    Path root = getProjectRoot()
+    if (cachedRealRoot != null && root == cachedRealRootFor) {
+      return cachedRealRoot
+    }
+    try {
+      Path real = root.toRealPath()
+      cachedRealRoot = real
+      cachedRealRootFor = root
+      return real
+    } catch (IOException e) {
+      // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+      // non-canonical path but record it: the "inside project root" check below is weaker without
+      // it. Not cached: a transient failure shouldn't stick once the root becomes valid again.
+      log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
+      return root
+    }
+  }
+
+  private synchronized ExclusionPolicy getExclusionPolicy() {
+    Path root = getProjectRoot()
+    if (cachedExclusionPolicy == null || root != cachedExclusionRoot) {
+      cachedExclusionPolicy = new ExclusionPolicy(root)
+      cachedExclusionRoot = root
+    }
+    cachedExclusionPolicy
   }
 
   String writeFile(String filePath, String content) {

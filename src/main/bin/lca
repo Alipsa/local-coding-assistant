@@ -7,7 +7,7 @@ JAR_PREFIX="local-coding-assistant"
 JAR_PATTERN="${JAR_PREFIX}-*-exec.jar"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 BASE_MODELS="qwen3.6:35b-a3b gpt-oss:20b"
-CUSTOM_MODELS="qwen3.6:35b-a3b|qwen3.6-96k|98304 gpt-oss:20b|gpt-oss-96k|98304"
+CUSTOM_MODELS="qwen3.6:35b-a3b|qwen3.6-128k|131072 gpt-oss:20b|gpt-oss-64k|65536"
 MODEL_STATE_DIR="${HOME}/.lca/model_state"
 
 die() {
@@ -19,6 +19,7 @@ usage() {
   cat <<'EOF'
 Usage:
   lca                         Run the local coding assistant (download if missing)
+  lca gui                     Run the Swing GUI instead of the REPL (see also: lcaGui)
   lca update                  Pull base models and rebuild custom models if changed
   lca upgrade                 Download the latest release if newer than the local jar
   lca upgrade --include <dir> Check for newer jars in <dir> before downloading
@@ -311,6 +312,20 @@ run_programme() {
   exec java -Dorg.jline.terminal.dumb=false -Djline.terminal=unix -jar "$jar_path" "$@"
 }
 
+run_gui() {
+  ensure_prerequisites
+  echo "Starting local coding assistant (GUI)..."
+  require_command java
+
+  local jar_path
+  if jar_path="$(find_latest_local_jar)"; then
+    exec java -Djava.awt.headless=false -Dlca.gui.enabled=true -Dlca.repl.enabled=false -jar "$jar_path" "$@"
+  fi
+  fetch_release_info
+  jar_path="$(download_latest_release)"
+  exec java -Djava.awt.headless=false -Dlca.gui.enabled=true -Dlca.repl.enabled=false -jar "$jar_path" "$@"
+}
+
 find_newest_jar_in_dir() {
   local search_dir="$1"
   if [ ! -d "$search_dir" ]; then
@@ -481,6 +496,10 @@ case "${1:-}" in
   install)
     shift
     install_local_jar "$@"
+    ;;
+  gui)
+    shift
+    run_gui "$@"
     ;;
   -h|--help|help)
     usage

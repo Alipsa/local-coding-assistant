@@ -17,6 +17,21 @@ class GitToolSpec extends Specification {
     gitTool = new GitTool(tempDir)
   }
 
+  def "getRealProjectRoot falls back to the uncanonicalised root when it can't be resolved"() {
+    given:
+    Path missing = tempDir.resolve("does-not-exist")
+    GitTool tool = new GitTool(missing)
+
+    expect:
+    tool.getRealProjectRoot() == missing
+  }
+
+  def "getRealProjectRoot canonicalises and caches an existing root"() {
+    expect:
+    gitTool.getRealProjectRoot() == tempDir.toRealPath()
+    gitTool.getRealProjectRoot() == gitTool.getRealProjectRoot()
+  }
+
   def "status reports missing repository"() {
     when:
     def status = gitTool.status(false)
@@ -325,6 +340,85 @@ six
     then:
     !result.success
     result.error.contains("PR number must be positive")
+  }
+
+  def "currentBranch returns null when not a repository"() {
+    expect:
+    gitTool.currentBranch() == null
+  }
+
+  def "currentBranch reports the checked-out branch"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "hello\n")
+    runGit("add", "a.txt")
+    runGit("commit", "-m", "init")
+    runGit("branch", "-m", "feature-xyz")
+
+    expect:
+    gitTool.currentBranch() == "feature-xyz"
+  }
+
+  def "listLocalBranches returns the local branch names"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "hello\n")
+    runGit("add", "a.txt")
+    runGit("commit", "-m", "init")
+    runGit("branch", "-m", "main")
+    runGit("branch", "feature-a")
+    runGit("branch", "feature-b")
+
+    expect:
+    gitTool.listLocalBranches().toSet() == ["main", "feature-a", "feature-b"].toSet()
+  }
+
+  def "listLocalBranches returns an empty list when not a repository"() {
+    expect:
+    gitTool.listLocalBranches().isEmpty()
+  }
+
+  def "listRemoteBranches returns tracking branches and excludes HEAD"() {
+    given:
+    Path originDir = Files.createTempDirectory("gittool-origin")
+    runGitIn(originDir, "init")
+    runGitIn(originDir, "config", "user.name", "Origin User")
+    runGitIn(originDir, "config", "user.email", "origin@example.com")
+    Files.writeString(originDir.resolve("a.txt"), "hello\n")
+    runGitIn(originDir, "add", "a.txt")
+    runGitIn(originDir, "commit", "-m", "init")
+    runGitIn(originDir, "branch", "-m", "main")
+    runGitIn(originDir, "branch", "release-1")
+
+    and:
+    initRepo()
+    runGit("remote", "add", "origin", originDir.toString())
+    runGit("fetch", "origin")
+
+    when:
+    List<String> remotes = gitTool.listRemoteBranches()
+
+    then:
+    remotes.contains("origin/main")
+    remotes.contains("origin/release-1")
+    remotes.every { !it.endsWith("/HEAD") }
+
+    cleanup:
+    originDir.toFile().deleteDir()
+  }
+
+  private void runGitIn(Path dir, String... args) {
+    List<String> command = new ArrayList<>()
+    command.add("git")
+    command.addAll(List.of(args))
+    ProcessBuilder pb = new ProcessBuilder(command)
+    pb.directory(dir.toFile())
+    pb.redirectErrorStream(true)
+    Process process = pb.start()
+    int exit = process.waitFor()
+    if (exit != 0) {
+      throw new IllegalStateException("Git command failed: ${command.join(' ')} (exit ${exit})")
+    }
   }
 
   private void initRepo() {

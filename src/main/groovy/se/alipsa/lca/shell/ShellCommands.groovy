@@ -66,6 +66,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Properties
 import java.util.Locale
+import java.util.function.Consumer
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Component("lcaShellCommands")
@@ -338,6 +339,23 @@ Do not execute any commands.
     this.prContextBudget = prContextBudget
     this.reviewContextBudget = reviewContextBudget > 0 ? reviewContextBudget : 30000
     this.reviewModel = (reviewModel != null && reviewModel.trim()) ? reviewModel.trim() : null
+  }
+
+  // Injected by Spring; the console impl wins for the REPL, the Swing impl (@Primary) for the GUI.
+  // Field injection avoids threading a new parameter through the constructor and its many tests;
+  // when unset (unit tests without a context) we fall back to a plain console prompt.
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private ConfirmationService confirmationService
+  private ConfirmationService fallbackConfirmationService
+
+  private ConfirmationService resolveConfirmationService() {
+    if (confirmationService != null) {
+      return confirmationService
+    }
+    if (fallbackConfirmationService == null) {
+      fallbackConfirmationService = new ConsoleConfirmationService()
+    }
+    fallbackConfirmationService
   }
 
   @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
@@ -1023,11 +1041,11 @@ Try:
     }
     boolean shouldConfirm = confirm && !applyAllConfirmed
     if (shouldConfirm) {
-      ConfirmChoice choice = confirmAction("Apply patch with git apply${cached ? ' --cached' : ''}?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Apply patch with git apply${cached ? ' --cached' : ''}?")
+      if (choice == ConfirmationChoice.NO) {
         return "Git apply canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1057,11 +1075,11 @@ Try:
     boolean shouldConfirm = confirm && !applyAllConfirmed
     if (shouldConfirm) {
       String targetLabel = hunkMode ? "hunks from ${file}" : "${paths.size()} file(s)"
-      ConfirmChoice choice = confirmAction("Stage ${targetLabel}?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Stage ${targetLabel}?")
+      if (choice == ConfirmationChoice.NO) {
         return "Staging canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1135,11 +1153,11 @@ Try:
       return "Not a git repository."
     }
     if (confirm && !applyAllConfirmed) {
-      ConfirmChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
-      if (choice != ConfirmChoice.YES && choice != ConfirmChoice.ALL) {
+      ConfirmationChoice choice = confirmAction("Run git push${force ? ' --force-with-lease' : ''}?")
+      if (choice != ConfirmationChoice.YES && choice != ConfirmationChoice.ALL) {
         return "Push canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1208,17 +1226,66 @@ Try:
     @ShellOption(defaultValue = DEFAULT_SESSION, help = "Session id for history logging") String session
   ) {
     // Intentionally no confirmation prompt to mirror a direct shell mode; rely on CommandPolicy for guardrails.
+    // Streams output live to the console (REPL); returns a concise summary.
+    executeShell(command, session, true).summary
+  }
+
+  /**
+   * Same as {@link #shellCommand} but returns the captured output text instead of streaming it
+   * to the console. Used by the GUI, where stdout is not visible to the user.
+   */
+  String shellCommandCaptured(String command, String session) {
+    executeShell(command, session, false, null).captured
+  }
+
+  /**
+   * Same as {@link #shellCommandCaptured(String, String)} but forwards each output line to
+   * {@code lineConsumer} as it arrives, instead of returning the full captured body. Used by the
+   * GUI to stream output live; returns only the footer once the command completes.
+   */
+  String shellCommandCaptured(String command, String session, Consumer<String> lineConsumer) {
+    executeShell(command, session, false, lineConsumer).captured
+  }
+
+  private ShellExecution executeShell(String command, String session, boolean streamToConsole) {
+    executeShell(command, session, streamToConsole, null)
+  }
+
+  private ShellExecution executeShell(String command, String session, boolean streamToConsole,
+                                      Consumer<String> lineConsumer) {
     String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
     if (!decision.allowed) {
-      return decision.message ?: "Command blocked by policy."
+      String blocked = decision.message ?: "Command blocked by policy."
+      return new ShellExecution(blocked, blocked)
     }
+    boolean streaming = lineConsumer != null
+    // Only the shellCommandCaptured(cmd, session) path (streamToConsole=false, no lineConsumer)
+    // ever reads .captured; the plain console path (shellCommand(), streamToConsole=true) only
+    // reads .summary, so skip building a full-body string nobody will look at.
+    boolean needsCaptured = !streaming && !streamToConsole
+    StringBuilder captured = needsCaptured ? new StringBuilder() : null
     CommandRunner.OutputListener listener = { String stream, String line ->
-      if ("ERR" == stream) {
-        System.err.println(line)
-        System.err.flush()
-      } else {
-        println(line)
+      if (streamToConsole) {
+        if ("ERR" == stream) {
+          System.err.println(line)
+          System.err.flush()
+        } else {
+          println(line)
+        }
+      }
+      if (streaming) {
+        lineConsumer.accept(line)
+      } else if (needsCaptured) {
+        synchronized (captured) {
+          int remaining = DIRECT_SHELL_MAX_OUTPUT_CHARS - captured.length()
+          if (remaining > 0) {
+            // Clamp precisely to the cap, truncating mid-line if this line would overrun it,
+            // mirroring CommandRunner.StreamCollector.appendVisible.
+            String chunk = line + System.lineSeparator()
+            captured.append(chunk, 0, Math.min(remaining, chunk.length()))
+          }
+        }
       }
     } as CommandRunner.OutputListener
     CommandRunner.CommandResult result = commandRunner.runStreaming(
@@ -1234,7 +1301,66 @@ Try:
       "Exit ${result?.timedOut ? 'timeout' : result?.exitCode}; ${summary}"
     )
     appendShellCommandToConversation(session, trimmed, result)
-    return formatDirectShellResult(trimmed, result)
+    if (streaming) {
+      // The body has already been delivered line-by-line via lineConsumer; do not build the
+      // full-body captured/summary strings that nobody would read. Return just the footer so the
+      // caller can close the streamed block.
+      String footer = shellFooter(result)
+      return new ShellExecution(footer, footer)
+    }
+    String directResult = formatDirectShellResult(trimmed, result)
+    new ShellExecution(
+      directResult,
+      needsCaptured ? formatCapturedShellResult(trimmed, result, captured.toString()) : null
+    )
+  }
+
+  static String shellHeader(String command) {
+    '$ ' + command
+  }
+
+  static String shellFooter(CommandRunner.CommandResult result) {
+    if (result == null) {
+      return "(no result)"
+    }
+    StringBuilder builder = new StringBuilder("[exit ")
+    if (result.timedOut) {
+      builder.append("timeout")
+    } else {
+      builder.append(result.exitCode)
+    }
+    builder.append(result.success ? "]" : " — failed]")
+    if (result.truncated) {
+      builder.append(" (output truncated)")
+    } else if (result.readError) {
+      builder.append(" (output incomplete — read error)")
+    }
+    builder.toString()
+  }
+
+  private static String formatCapturedShellResult(String command, CommandRunner.CommandResult result, String output) {
+    StringBuilder builder = new StringBuilder()
+    builder.append(shellHeader(command)).append("\n")
+    if (result == null) {
+      return builder.append("(no result)").toString()
+    }
+    String out = output != null ? output.stripTrailing() : ""
+    if (!out.isEmpty()) {
+      builder.append(out).append("\n")
+    }
+    builder.append(shellFooter(result))
+    builder.toString().stripTrailing()
+  }
+
+  @CompileStatic
+  private static class ShellExecution {
+    final String summary
+    final String captured
+
+    ShellExecution(String summary, String captured) {
+      this.summary = summary
+      this.captured = captured
+    }
   }
 
   @ShellMethod(
@@ -1259,11 +1385,11 @@ Try:
       String prompt = agentRequested
         ? "> Agent wants to run: '${trimmed}'. Allow?"
         : "Run command '${trimmed}'?"
-      ConfirmChoice choice = confirmAction(prompt)
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction(prompt)
+      if (choice == ConfirmationChoice.NO) {
         return "Command canceled."
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1309,11 +1435,11 @@ Try:
       }
       printProgressDone("Edit preview")
       println(previewText)
-      ConfirmChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Apply patch to ${preview.fileResults.size()} file(s)?")
+      if (choice == ConfirmationChoice.NO) {
         return formatSection("Edit Result", "Patch application canceled.")
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -1355,11 +1481,11 @@ Try:
       }
       printProgressDone("Edit preview")
       println(previewText)
-      ConfirmChoice choice = confirmAction("Apply blocks to ${filePath}?")
-      if (choice == ConfirmChoice.NO) {
+      ConfirmationChoice choice = confirmAction("Apply blocks to ${filePath}?")
+      if (choice == ConfirmationChoice.NO) {
         return formatSection("Edit Result", "Block application canceled.")
       }
-      if (choice == ConfirmChoice.ALL) {
+      if (choice == ConfirmationChoice.ALL) {
         applyAllConfirmed = true
       }
     }
@@ -2251,6 +2377,8 @@ ${rendered}
     builder.append(result.success ? " (success)" : " (failed)")
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(maxOutputChars).append(" characters.")
+    } else if (result.readError) {
+      builder.append("\nOutput incomplete: reading the command output failed.")
     }
     if (result.output != null && result.output.trim()) {
       builder.append("\nOutput:\n").append(result.output.trim())
@@ -2276,6 +2404,8 @@ ${rendered}
     builder.append(result.success ? " (success)" : " (failed)")
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
+    } else if (result.readError) {
+      builder.append("\nOutput incomplete: reading the command output failed.")
     }
     builder.append("\nOutput: streamed to console.")
     if (result.logPath != null) {
@@ -2324,6 +2454,8 @@ ${rendered}
     builder.append(result.success ? " (success)" : " (failed)")
     if (result.truncated) {
       builder.append("\nOutput truncated to ").append(DIRECT_SHELL_MAX_OUTPUT_CHARS).append(" characters.")
+    } else if (result.readError) {
+      builder.append("\nOutput incomplete: reading the command output failed.")
     }
     String outputSummary = summarizeOutput(result.output, 20, DIRECT_SHELL_CONVERSATION_MAX_CHARS)
     builder.append("\nOutput:\n").append(outputSummary)
@@ -2628,37 +2760,25 @@ ${rendered}
   }
 
   @CompileStatic
-  protected ConfirmChoice confirmAction(String prompt) {
+  protected ConfirmationChoice confirmAction(String prompt) {
     if (batchMode) {
       if (assumeYes) {
-        return ConfirmChoice.ALL
+        return ConfirmationChoice.ALL
       }
       throw new IllegalStateException(
         "Confirmation required in batch mode. Re-run with --yes to auto-confirm."
       )
     }
-    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
-    print("${prompt.trim()} [y/N/a]: ")
-    String response = reader.readLine()
-    String normalized = response != null ? response.trim().toLowerCase() : ""
-    if ("a" == normalized) {
-      return ConfirmChoice.ALL
-    }
-    if ("y" == normalized) {
-      return ConfirmChoice.YES
-    }
-    ConfirmChoice.NO
+    resolveConfirmationService().confirm(prompt)
   }
 
   private boolean promptDisableLocalOnly(String sessionId) {
     if (batchMode) {
       return false
     }
-    print("Web search is disabled in local-only mode. Would you like to temporarily disable local-only mode for this session? (y/n): ")
-    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
-    String response = reader.readLine()
-    String normalised = response != null ? response.trim().toLowerCase(Locale.UK) : ""
-    if (normalised == "y" || normalised == "yes") {
+    boolean disable = resolveConfirmationService().confirmYesNo(
+      "Web search is disabled in local-only mode. Would you like to temporarily disable local-only mode for this session? (y/n): ")
+    if (disable) {
       sessionState.setLocalOnlyOverride(sessionId, false)
       println("Local-only mode disabled for this session, searching the web...")
       return true
@@ -2673,13 +2793,6 @@ ${rendered}
     if (assumeYes) {
       this.applyAllConfirmed = true
     }
-  }
-
-  @CompileStatic
-  protected static enum ConfirmChoice {
-    YES,
-    NO,
-    ALL
   }
 
   @Canonical

@@ -1,8 +1,10 @@
 package se.alipsa.lca.tools
 
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -21,6 +23,7 @@ class ModelRegistry {
 
   private static final Logger log = LoggerFactory.getLogger(ModelRegistry)
   private final URI tagsUri
+  private final URI showUri
   private final HttpClient client
   private final Duration timeout
   private final String baseUrl
@@ -44,6 +47,7 @@ class ModelRegistry {
     this.baseUrl = baseUrl
     String normalized = baseUrl?.endsWith("/") ? baseUrl[0..-2] : baseUrl
     this.tagsUri = URI.create("${normalized}/api/tags")
+    this.showUri = URI.create("${normalized}/api/show")
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : 4000L
     this.timeout = Duration.ofMillis(effectiveTimeout)
     this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
@@ -64,45 +68,45 @@ class ModelRegistry {
     if (current != null && (now - currentAt) < cacheTtlMillis) {
       return List.copyOf(current)
     }
-    // double-check after potential fetch to avoid redundant requests
+    // Hold the lock across the fetch itself (mirroring checkHealth()), not just the freshness
+    // check: otherwise concurrent callers past a stale cache would each fire their own request
+    // instead of coalescing onto one.
     synchronized (this) {
       if (cachedModels != null && (nowMillis() - cachedAt) < cacheTtlMillis) {
         return List.copyOf(cachedModels)
       }
-    }
-    try {
-      HttpResponse<String> response = fetchTags()
-      if (response.statusCode() >= 200 && response.statusCode() < 300) {
-        Map parsed = (Map) new JsonSlurper().parseText(response.body())
-        Object modelsObj = parsed != null ? parsed.get("models") : null
-        if (modelsObj instanceof List) {
-          List<?> rawModels = (List<?>) modelsObj
-          List<String> models = rawModels.collect { Object it ->
-            if (it instanceof Map && ((Map) it).containsKey("name")) {
-              Object name = ((Map) it).get("name")
-              return name != null ? name.toString() : null
-            }
-            it != null ? it.toString() : null
-          }.findAll { it } as List<String>
-          synchronized (this) {
+      try {
+        HttpResponse<String> response = fetchTags()
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+          Map parsed = (Map) new JsonSlurper().parseText(response.body())
+          Object modelsObj = parsed != null ? parsed.get("models") : null
+          if (modelsObj instanceof List) {
+            List<?> rawModels = (List<?>) modelsObj
+            List<String> models = rawModels.collect { Object it ->
+              if (it instanceof Map && ((Map) it).containsKey("name")) {
+                Object name = ((Map) it).get("name")
+                return name != null ? name.toString() : null
+              }
+              it != null ? it.toString() : null
+            }.findAll { it } as List<String>
             cachedModels = models
-            cachedAt = now
+            cachedAt = nowMillis()
+            return List.copyOf(models)
           }
-          return List.copyOf(models)
         }
+        log.debug("Unexpected response listing models: status {}", response.statusCode())
+      } catch (Exception e) {
+        log.debug("Failed to list models from {}", tagsUri, e)
       }
-      log.debug("Unexpected response listing models: status {}", response.statusCode())
-    } catch (Exception e) {
-      log.debug("Failed to list models from {}", tagsUri, e)
-    }
-    if (current != null) {
-      boolean stale = (now - currentAt) >= cacheTtlMillis
-      if (stale) {
-        log.info("Returning stale model cache due to fetch failure; cache age={}ms", now - currentAt)
+      if (cachedModels != null) {
+        boolean stale = (nowMillis() - cachedAt) >= cacheTtlMillis
+        if (stale) {
+          log.info("Returning stale model cache due to fetch failure; cache age={}ms", nowMillis() - cachedAt)
+        }
+        return List.copyOf(cachedModels)
       }
-      return List.copyOf(current)
+      List.of()
     }
-    List.of()
   }
 
   boolean isModelAvailable(String modelName) {
@@ -141,6 +145,73 @@ class ModelRegistry {
         return health
       }
     }
+  }
+
+  /**
+   * The context-window size (in tokens) reported by Ollama for the given model, or
+   * {@code null} when the model is unknown, unreachable, or does not advertise a
+   * context length. Reads the {@code model_info.*.context_length} value from
+   * {@code POST /api/show}.
+   */
+  Integer contextLength(String model) {
+    if (model == null || model.trim().isEmpty()) {
+      return null
+    }
+    try {
+      HttpResponse<String> response = fetchShow(model.trim())
+      if (response.statusCode() >= 200 && response.statusCode() < 300) {
+        Map parsed = (Map) new JsonSlurper().parseText(response.body())
+        Object infoObj = parsed != null ? parsed.get("model_info") : null
+        if (infoObj instanceof Map) {
+          Integer length = contextLengthFromModelInfo((Map<String, Object>) infoObj)
+          if (length != null) {
+            return length
+          }
+        }
+      }
+      log.debug("No context_length reported for model {} (status {})", model, response.statusCode())
+    } catch (Exception e) {
+      log.debug("Failed to fetch context length for {}", model, e)
+    }
+    null
+  }
+
+  /**
+   * Reads the {@code context_length} for the model's own architecture out of a {@code model_info}
+   * map. Ollama/GGUF metadata names the primary model via {@code general.architecture} and keys
+   * its context length as {@code "<architecture>.context_length"}; a multi-component model (e.g.
+   * one with a CLIP vision tower) carries additional {@code <component>.context_length} keys for
+   * its sub-components, so picking the first {@code .context_length}-suffixed key found isn't
+   * reliable. Prefer the architecture-qualified key; fall back to the first match when
+   * {@code general.architecture} is absent or doesn't resolve (keeping today's behaviour for
+   * single-component models, which don't have this ambiguity).
+   */
+  @PackageScope
+  static Integer contextLengthFromModelInfo(Map<String, Object> info) {
+    Object architecture = info.get("general.architecture")
+    if (architecture instanceof String) {
+      Object direct = info.get("${architecture}.context_length".toString())
+      if (direct instanceof Number) {
+        return ((Number) direct).intValue()
+      }
+    }
+    for (Map.Entry<String, Object> entry : info.entrySet()) {
+      String key = entry.key
+      if (key != null && key.endsWith(".context_length") && entry.value instanceof Number) {
+        return ((Number) entry.value).intValue()
+      }
+    }
+    null
+  }
+
+  protected HttpResponse<String> fetchShow(String model) throws Exception {
+    String body = JsonOutput.toJson([name: model])
+    HttpRequest request = HttpRequest.newBuilder(showUri)
+      .timeout(timeout)
+      .header("Content-Type", "application/json")
+      .POST(HttpRequest.BodyPublishers.ofString(body))
+      .build()
+    client.send(request, HttpResponse.BodyHandlers.ofString())
   }
 
   protected HttpResponse<String> fetchTags() throws Exception {

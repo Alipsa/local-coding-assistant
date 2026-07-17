@@ -18,6 +18,7 @@ import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.intent.IntentCommandRouter
 import se.alipsa.lca.intent.IntentRoutingOutcome
 import se.alipsa.lca.intent.IntentRoutingPlan
+import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.CommandInputNormaliser
 
 import java.nio.file.Paths
@@ -36,6 +37,7 @@ class JLineRepl {
   private final IntentCommandRouter intentRouter
   private final CommandExecutor commandExecutor
   private final CommandInputNormaliser commandInputNormaliser
+  private final BangCommandHandler bangCommandHandler
   private final Terminal terminal
   private final LineReader lineReader
   private final String prompt
@@ -47,6 +49,7 @@ class JLineRepl {
     IntentCommandRouter intentRouter,
     CommandExecutor commandExecutor,
     CommandInputNormaliser commandInputNormaliser,
+    BangCommandHandler bangCommandHandler,
     Terminal terminal,
     @Value('${lca.repl.prompt:lca> }') String prompt,
     @Value('${lca.repl.history-file:#{null}}') String historyFile,
@@ -55,6 +58,7 @@ class JLineRepl {
     this.intentRouter = intentRouter
     this.commandExecutor = commandExecutor
     this.commandInputNormaliser = commandInputNormaliser
+    this.bangCommandHandler = bangCommandHandler
     this.terminal = terminal
     this.prompt = prompt
     this.secondOpinionThreshold = secondOpinionThreshold
@@ -138,6 +142,16 @@ class JLineRepl {
     String trimmed = raw.trim()
 
     if (handleBuiltInCommand(trimmed)) {
+      return
+    }
+
+    if (bangCommandHandler.isBang(trimmed)) {
+      // Shell command: output streams live to the console; print the concise summary.
+      String summary = bangCommandHandler.handle(trimmed, "default", false)
+      if (summary != null && !summary.trim().isEmpty()) {
+        terminal.writer().println(summary)
+        terminal.writer().flush()
+      }
       return
     }
 

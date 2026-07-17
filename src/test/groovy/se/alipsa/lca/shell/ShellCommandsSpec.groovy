@@ -34,6 +34,7 @@ import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.SastTool
+import spock.lang.Requires
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -95,6 +96,9 @@ class ShellCommandsSpec extends Specification {
   @TempDir
   Path tempDir
   ShellCommands commands
+  // Backed by a real CommandRunner (runs actual `bash -lc`), used by the streaming
+  // shellCommandCaptured tests below; guarded with @Requires since it needs a real shell.
+  ShellCommands shellCommands
 
   def setup() {
     agentPlatform.agents() >> [chatAgent, reviewAgent]
@@ -117,6 +121,39 @@ class ShellCommandsSpec extends Specification {
       agentPlatform,
       contextRepository,
       tempDir.resolve("reviews.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+      ,
+      Mock(se.alipsa.lca.validation.RequestValidator),
+      Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
+      null,
+      null,
+      null,
+      80000,
+      30000,
+      null
+    )
+    shellCommands = new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser),
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      new se.alipsa.lca.tools.CommandRunner(tempDir),
+      commandPolicy,
+      modelRegistry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("reviews-streaming.log").toString(),
       null,
       null,
       shellSettings,
@@ -591,9 +628,9 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
+      protected ConfirmationChoice confirmAction(String prompt) {
         confirmations++
-        ConfirmChoice.ALL
+        ConfirmationChoice.ALL
       }
     }
 
@@ -837,8 +874,8 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
-        ConfirmChoice.NO
+      protected ConfirmationChoice confirmAction(String prompt) {
+        ConfirmationChoice.NO
       }
     }
 
@@ -933,7 +970,7 @@ class ShellCommandsSpec extends Specification {
       30000,
       null
     ) {
-      ConfirmChoice exposeConfirmAction(String prompt) {
+      ConfirmationChoice exposeConfirmAction(String prompt) {
         super.confirmAction(prompt)
       }
     }
@@ -944,7 +981,7 @@ class ShellCommandsSpec extends Specification {
     def result = staging.stage(["file.txt"], null, null, true)
 
     then:
-    choice == ShellCommands.ConfirmChoice.ALL
+    choice == ConfirmationChoice.ALL
     1 * repoGit.stageFiles(["file.txt"]) >> new GitTool.GitResult(true, true, 0, "ok", "")
     result.contains("Stage succeeded")
   }
@@ -1143,8 +1180,8 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
-        ConfirmChoice.YES
+      protected ConfirmationChoice confirmAction(String prompt) {
+        ConfirmationChoice.YES
       }
 
       @Override
@@ -1200,8 +1237,8 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
-        ConfirmChoice.YES
+      protected ConfirmationChoice confirmAction(String prompt) {
+        ConfirmationChoice.YES
       }
     }
 
@@ -1259,9 +1296,9 @@ class ShellCommandsSpec extends Specification {
       null
     ) {
       @Override
-      protected ConfirmChoice confirmAction(String prompt) {
+      protected ConfirmationChoice confirmAction(String prompt) {
         prompts.add(prompt)
-        ConfirmChoice.YES
+        ConfirmationChoice.YES
       }
     }
 
@@ -1836,6 +1873,83 @@ class ShellCommandsSpec extends Specification {
     then:
     rendered.contains(rawText)
     !rendered.contains("## Findings\n\n- None")
+  }
+
+  def "shellHeader renders the command with a prompt prefix"() {
+    expect:
+    ShellCommands.shellHeader("git status") == '$ git status'
+  }
+
+  def "shellFooter renders exit status and truncation"() {
+    given:
+    def ok = new se.alipsa.lca.tools.CommandRunner.CommandResult(
+      exitCode: 0, success: true, timedOut: false, truncated: false)
+    def failTrunc = new se.alipsa.lca.tools.CommandRunner.CommandResult(
+      exitCode: 2, success: false, timedOut: false, truncated: true)
+    def timedOut = new se.alipsa.lca.tools.CommandRunner.CommandResult(
+      exitCode: -1, success: false, timedOut: true, truncated: false)
+
+    expect:
+    ShellCommands.shellFooter(ok) == '[exit 0]'
+    ShellCommands.shellFooter(failTrunc) == '[exit 2 — failed] (output truncated)'
+    ShellCommands.shellFooter(timedOut) == '[exit timeout — failed]'
+  }
+
+  @Requires({ os.macOs || os.linux })
+  def "shellCommandCaptured streams each line to the consumer and returns only the footer"() {
+    given:
+    List<String> lines = []
+
+    when:
+    String footer = shellCommands.shellCommandCaptured("printf 'a\\nb\\nc\\n'", "default",
+      { String line -> lines << line } as java.util.function.Consumer)
+
+    then:
+    lines == ["a", "b", "c"]
+    footer.startsWith("[exit 0]")
+    !footer.contains("\$ printf")   // body/header are NOT in the streamed return value
+  }
+
+  @Requires({ os.macOs || os.linux })
+  def "non-streaming shellCommandCaptured still includes header, body and footer"() {
+    when:
+    String captured = shellCommands.shellCommandCaptured("printf 'x\\n'", "default")
+
+    then:
+    captured.contains('$ printf')
+    captured.contains("x")
+    captured.contains("[exit 0]")
+  }
+
+  @Requires({ os.macOs || os.linux })
+  def "streams lines from both stdout and stderr to the consumer"() {
+    given:
+    List<String> lines = Collections.synchronizedList([] as List<String>)
+
+    when:
+    // o1/o2 on stdout, e1/e2 on stderr — read by two separate threads inside CommandRunner.
+    shellCommands.shellCommandCaptured("printf 'o1\\no2\\n'; printf 'e1\\ne2\\n' 1>&2", "default",
+      { String line -> lines << line } as java.util.function.Consumer)
+
+    then:
+    // Every line from each stream is delivered (set membership); per-stream order is preserved;
+    // cross-stream interleaving order is unspecified, so it is NOT asserted.
+    lines.toSet() == ["o1", "o2", "e1", "e2"].toSet()
+    lines.indexOf("o1") < lines.indexOf("o2")
+    lines.indexOf("e1") < lines.indexOf("e2")
+  }
+
+  @Requires({ os.macOs || os.linux })
+  def "non-streaming captured buffer is clamped mid-line to the char cap"() {
+    when:
+    // A single newline-free line far larger than the 8000-char cap; the old length-checked
+    // append would have forwarded the whole line, overshooting the cap ~2.5x.
+    String captured = shellCommands.shellCommandCaptured(
+      "awk 'BEGIN{for(i=0;i<20000;i++)printf \"A\"}'", "default")
+
+    then:
+    // header ("$ awk ...\n") + body (<= 8000) + footer ("[exit 0]"); comfortably under 2x the cap.
+    captured.length() <= 8000 + 200
   }
 
   private ShellCommands commitCommandsFor(GitTool repoGit) {

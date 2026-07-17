@@ -5,16 +5,13 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.stereotype.Component
 
 /**
- * Starts the JLine REPL after Spring context is loaded.
- * Only runs when lca.repl.enabled=true (default).
+ * Starts the JLine REPL after Spring context is loaded. Registered as a {@code @Bean} (see
+ * {@code RunnerConfiguration}) when {@code lca.repl.enabled=true} (default) and no
+ * {@code GuiRunner} bean is present.
  */
-@Component
 @CompileStatic
-@ConditionalOnProperty(name = "lca.repl.enabled", havingValue = "true", matchIfMissing = true)
 class ReplRunner implements ApplicationRunner {
 
   private static final Logger log = LoggerFactory.getLogger(ReplRunner)

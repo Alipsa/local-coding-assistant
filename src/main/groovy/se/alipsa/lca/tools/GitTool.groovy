@@ -2,8 +2,11 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.nio.file.Files
@@ -15,22 +18,68 @@ import java.nio.file.Paths
 class GitTool {
 
   private static final Logger log = LoggerFactory.getLogger(GitTool)
-  private final Path projectRoot
-  private final Path realProjectRoot
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
   // Not thread-safe; create separate instances per thread/session.
   private final Object repoCheckLock = new Object()
-  private Boolean cachedRepoStatus = null
+  // volatile: this bean is a GUI-shared singleton read from the EDT and the turn worker, and the
+  // isGitRepo cache uses double-checked locking, which is only correct with volatile fields.
+  private volatile Boolean cachedRepoStatus = null
+  private volatile Path cachedRepoRoot = null
+  private final Object realRootLock = new Object()
+  private volatile Path cachedRealRoot = null
+  private volatile Path cachedRealRootFor = null
 
   GitTool() {
     this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   GitTool(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
-    try {
-      this.realProjectRoot = this.projectRoot.toRealPath()
-    } catch (IOException e) {
-      this.realProjectRoot = this.projectRoot
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  GitTool(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
+  }
+
+  Path getProjectRoot() {
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  /**
+   * The canonicalised project root, cached against the last-observed {@link #getProjectRoot()}
+   * so callers that check it more than once per operation (e.g. {@link #validatePath}) get one
+   * consistent {@code toRealPath()} syscall instead of re-resolving — and potentially observing a
+   * different root mid-call if the base dir changes concurrently — on every reference.
+   */
+  @PackageScope
+  Path getRealProjectRoot() {
+    Path root = getProjectRoot()
+    Path cached = cachedRealRoot
+    if (cached != null && root == cachedRealRootFor) {
+      return cached
+    }
+    synchronized (realRootLock) {
+      if (cachedRealRoot != null && root == cachedRealRootFor) {
+        return cachedRealRoot
+      }
+      try {
+        Path real = root.toRealPath()
+        cachedRealRoot = real
+        cachedRealRootFor = root
+        return real
+      } catch (IOException e) {
+        // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+        // non-canonical path but record it rather than failing silently. Not cached: a transient
+        // failure shouldn't stick once the root becomes valid again.
+        log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
+        return root
+      }
     }
   }
 
@@ -149,16 +198,60 @@ class GitTool {
     runGitWithInput(List.of("apply", "--cached", "--unidiff-zero"), patch)
   }
 
+  /**
+   * The current branch name, or {@code null} when this is not a git repository or the
+   * branch cannot be determined. Returns the literal {@code "HEAD"} when the repository
+   * is in a detached-HEAD state, mirroring {@code git rev-parse --abbrev-ref HEAD}.
+   */
+  String currentBranch() {
+    if (!isGitRepo()) {
+      return null
+    }
+    GitResult result = runGit(List.of("rev-parse", "--abbrev-ref", "HEAD"))
+    if (result.success && result.output != null && !result.output.trim().isEmpty()) {
+      return result.output.trim()
+    }
+    null
+  }
+
+  /** Local branch names (short), e.g. {@code ["main", "feature/x"]}. Empty when not a repo. */
+  List<String> listLocalBranches() {
+    branchList(List.of("branch", "--format=%(refname:short)"))
+  }
+
+  /**
+   * Remote-tracking branch names, e.g. {@code ["origin/main", "origin/feature/x"]}, excluding
+   * each remote's {@code <remote>/HEAD} pointer. Empty when not a repo.
+   */
+  List<String> listRemoteBranches() {
+    branchList(List.of("branch", "-r", "--format=%(refname:short)")).findAll { !it.endsWith("/HEAD") }
+  }
+
+  private List<String> branchList(List<String> args) {
+    if (!isGitRepo()) {
+      return List.of()
+    }
+    GitResult result = runGit(args)
+    if (!result.success || result.output == null) {
+      return List.of()
+    }
+    result.output.readLines()
+      .collect { it.trim() }
+      .findAll { !it.isEmpty() }
+  }
+
   boolean isGitRepo() {
-    if (cachedRepoStatus != null) {
+    Path root = getProjectRoot()
+    if (cachedRepoStatus != null && root == cachedRepoRoot) {
       return cachedRepoStatus.booleanValue()
     }
     synchronized (repoCheckLock) {
-      if (cachedRepoStatus != null) {
+      if (cachedRepoStatus != null && root == cachedRepoRoot) {
         return cachedRepoStatus.booleanValue()
       }
       GitResult result = runGitNoCheck(List.of("rev-parse", "--is-inside-work-tree"))
       cachedRepoStatus = result.success && result.output?.toLowerCase()?.contains("true")
+      cachedRepoRoot = root
       return cachedRepoStatus
     }
   }

@@ -2,8 +2,10 @@
 set -e
 echo "Building project..."
 mvn -q compile -DskipTests package
-echo "Copy lca to .local/bin"
+echo "Copy lca and lcaGui to .local/bin"
 cp src/main/bin/lca $HOME/.local/bin/ 2>/dev/null || true
+cp src/main/bin/lcaGui $HOME/.local/bin/ 2>/dev/null || true
+chmod +x $HOME/.local/bin/lca $HOME/.local/bin/lcaGui 2>/dev/null || true
 
 FULL_NAME=$(ls -S target/*.jar | grep -vE ".original|javadoc|sources|groovydoc" | head -n 1 | xargs basename)
 

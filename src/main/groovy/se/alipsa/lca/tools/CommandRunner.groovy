@@ -2,8 +2,11 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.LogSanitizer
 
@@ -35,19 +38,55 @@ class CommandRunner {
     .ofPattern("yyyyMMddHHmmssSSS")
     .withZone(ZoneId.systemDefault())
 
-  private final Path projectRoot
-  private final Path realProjectRoot
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
+  private Path cachedRealRoot
+  private Path cachedRealRootFor
 
   CommandRunner() {
     this(Paths.get(".").toAbsolutePath().normalize())
   }
 
   CommandRunner(Path projectRoot) {
-    this.projectRoot = projectRoot.toAbsolutePath().normalize()
+    this.fixedRoot = projectRoot.toAbsolutePath().normalize()
+    this.workspace = null
+  }
+
+  @Autowired
+  CommandRunner(Workspace workspace) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
+  }
+
+  Path getProjectRoot() {
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  /**
+   * The canonicalised project root, cached against the last-observed {@link #getProjectRoot()} so
+   * a single command execution (which reads it from both {@link #createLogPath} and
+   * {@link #startProcess}) gets one consistent {@code toRealPath()} syscall instead of
+   * re-resolving it for each.
+   */
+  @PackageScope
+  synchronized Path getRealProjectRoot() {
+    Path root = getProjectRoot()
+    if (cachedRealRoot != null && root == cachedRealRootFor) {
+      return cachedRealRoot
+    }
     try {
-      this.realProjectRoot = this.projectRoot.toRealPath()
+      Path real = root.toRealPath()
+      cachedRealRoot = real
+      cachedRealRootFor = root
+      return real
     } catch (IOException e) {
-      throw new IllegalStateException("Failed to resolve project root path", e)
+      // Canonicalisation failed (e.g. base dir removed after a runtime switch). Fall back to the
+      // non-canonical path but record it rather than failing silently. Not cached: a transient
+      // failure shouldn't stick once the root becomes valid again.
+      log.warn("Could not canonicalise project root {}; using it uncanonicalised: {}", root, e.message)
+      return root
     }
   }
 
@@ -59,7 +98,7 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
-    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
+    runInternal(command, { Path root -> startProcess(root, command) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
   }
 
   /**
@@ -74,7 +113,7 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
-    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars, listener)
+    runInternal(command, { Path root -> startProcess(root, command) } as ProcessStarter, timeoutMillis, maxOutputChars, listener)
   }
 
   /**
@@ -90,7 +129,7 @@ class CommandRunner {
       }
     }
     String commandLabel = formatCommand(commandArgs)
-    runInternal(commandLabel, { startProcess(commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
+    runInternal(commandLabel, { Path root -> startProcess(root, commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
   }
 
   private CommandResult runInternal(
@@ -103,9 +142,12 @@ class CommandRunner {
     String sanitizedCommand = LogSanitizer.sanitize(commandLabel)
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_TIMEOUT_MILLIS
     int outputLimit = maxOutputChars > 0 ? maxOutputChars : DEFAULT_OUTPUT_LIMIT
+    // One snapshot for this whole command execution, so the log path and the process's working
+    // directory can't diverge if the workspace base dir changes mid-call.
+    Path realRoot = getRealProjectRoot()
     Path logPath
     try {
-      logPath = createLogPath()
+      logPath = createLogPath(realRoot)
     } catch (IOException e) {
       logPath = null
       log.debug("Failed to prepare log path for command {}", sanitizedCommand, e)
@@ -117,7 +159,7 @@ class CommandRunner {
     try {
       logWriter = prepareWriter(logPath)
       writeHeader(logWriter, sanitizedCommand, started)
-      process = starter.start()
+      process = starter.start(realRoot)
       AtomicInteger remaining = new AtomicInteger(outputLimit)
       AtomicInteger remainingLogCapacity = new AtomicInteger(outputLimit)
       StringBuffer visibleOutput = new StringBuffer()
@@ -160,17 +202,30 @@ class CommandRunner {
       }
       writeFooter(logWriter, started, Instant.now(), exitCode, timedOut)
       boolean truncated = outCollector.truncated || errCollector.truncated
+      boolean readError = outCollector.readError || errCollector.readError
       return new CommandResult(
         !timedOut && exitCode == 0,
         timedOut,
         exitCode,
         visibleOutput.toString().stripTrailing(),
         truncated,
-        logPath
+        logPath,
+        readError
       )
     } catch (IOException e) {
+      // The process failed to start (e.g. missing interpreter, unreadable base dir) or its
+      // streams failed. On the streaming path nothing has been delivered yet, so surface the
+      // reason to the listener too — otherwise the caller only sees an unexplained failed exit.
       log.warn("Command execution failed: {}", sanitizedCommand, e)
-      return new CommandResult(false, timedOut, -1, e.message ?: e.class.simpleName, false, logPath)
+      String message = e.message ?: e.class.simpleName
+      if (listener != null) {
+        try {
+          listener.onLine("ERR", message)
+        } catch (Exception le) {
+          log.warn("Output listener failed while reporting a start failure: {}", le.getMessage())
+        }
+      }
+      return new CommandResult(false, timedOut, -1, message, false, logPath, true)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt()
       return new CommandResult(false, timedOut, -1, "Interrupted while running command", false, logPath)
@@ -182,22 +237,22 @@ class CommandRunner {
     }
   }
 
-  protected Path createLogPath() throws IOException {
-    Path dir = realProjectRoot.resolve(".lca/run-logs")
+  protected Path createLogPath(Path realRoot) throws IOException {
+    Path dir = realRoot.resolve(".lca/run-logs")
     Files.createDirectories(dir)
     dir.resolve("run-${LOG_TIME.format(Instant.now())}.log")
   }
 
-  protected Process startProcess(String command) throws IOException {
+  protected Process startProcess(Path realRoot, String command) throws IOException {
     ProcessBuilder pb = new ProcessBuilder(List.of("bash", "-lc", command))
-    pb.directory(realProjectRoot.toFile())
+    pb.directory(realRoot.toFile())
     pb.redirectErrorStream(false)
     pb.start()
   }
 
-  protected Process startProcess(List<String> commandArgs) throws IOException {
+  protected Process startProcess(Path realRoot, List<String> commandArgs) throws IOException {
     ProcessBuilder pb = new ProcessBuilder(new ArrayList<>(commandArgs))
-    pb.directory(realProjectRoot.toFile())
+    pb.directory(realRoot.toFile())
     pb.redirectErrorStream(false)
     pb.start()
   }
@@ -275,7 +330,7 @@ class CommandRunner {
 
   @CompileStatic
   private static interface ProcessStarter {
-    Process start() throws IOException
+    Process start(Path realRoot) throws IOException
   }
 
   @Canonical
@@ -285,8 +340,16 @@ class CommandRunner {
     boolean timedOut
     int exitCode
     String output
+    /** Output was cut short because it reached the character budget. */
     boolean truncated
     Path logPath
+    /**
+     * Output is incomplete or absent because the command couldn't be run to completion — it
+     * failed to start, or reading its output stream failed partway through — as opposed to being
+     * cut short by the character budget ({@link #truncated}).
+     * Last field so the generated telescoping constructors keep the shorter positional form valid.
+     */
+    boolean readError
   }
 
   @FunctionalInterface
@@ -315,6 +378,7 @@ class CommandRunner {
     private final AtomicInteger remainingLogCapacity
     private final OutputListener listener
     volatile boolean truncated = false
+    volatile boolean readError = false
 
     StreamCollector(
       InputStream stream,
@@ -359,8 +423,10 @@ class CommandRunner {
           appendVisible(formatted)
         }
       } catch (IOException e) {
+        // Reading the stream failed part-way. This is distinct from hitting the output budget:
+        // record it separately so the caller can report "read error" rather than "truncated".
         log.warn("Stream reading interrupted for label '{}': {}", label, e.getMessage())
-        truncated = true
+        readError = true
       }
     }
 

@@ -2,6 +2,8 @@ package se.alipsa.lca.tools
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.lang.Nullable
 import org.springframework.stereotype.Component
 
 import java.nio.file.Path
@@ -11,19 +13,44 @@ import java.nio.file.Paths
 @CompileStatic
 class TreeTool {
 
+  // When a Workspace is present the base dir is read live; otherwise fixedRoot is used (tests).
+  @Nullable
+  private final Workspace workspace
+  private final Path fixedRoot
   private final GitTool gitTool
-  private final ExclusionPolicy exclusionPolicy
+  private ExclusionPolicy cachedExclusionPolicy
+  private Path cachedExclusionRoot
 
   TreeTool() {
     this(Paths.get(".").toAbsolutePath().normalize(), new GitTool())
   }
 
   TreeTool(Path projectRoot, GitTool gitTool) {
-    Path root = projectRoot != null
+    this.fixedRoot = projectRoot != null
       ? projectRoot.toAbsolutePath().normalize()
       : Paths.get(".").toAbsolutePath().normalize()
-    this.gitTool = gitTool != null ? gitTool : new GitTool(root)
-    this.exclusionPolicy = new ExclusionPolicy(root)
+    this.workspace = null
+    this.gitTool = gitTool != null ? gitTool : new GitTool(this.fixedRoot)
+  }
+
+  @Autowired
+  TreeTool(Workspace workspace, GitTool gitTool) {
+    this.workspace = workspace
+    this.fixedRoot = Paths.get(".").toAbsolutePath().normalize()
+    this.gitTool = gitTool
+  }
+
+  private Path getProjectRoot() {
+    workspace != null ? workspace.baseDir : fixedRoot
+  }
+
+  private synchronized ExclusionPolicy getExclusionPolicy() {
+    Path root = getProjectRoot()
+    if (cachedExclusionPolicy == null || root != cachedExclusionRoot) {
+      cachedExclusionPolicy = new ExclusionPolicy(root)
+      cachedExclusionRoot = root
+    }
+    cachedExclusionPolicy
   }
 
   TreeResult buildTree(int maxDepth, boolean directoriesOnly, int maxEntries) {
@@ -38,6 +65,7 @@ class TreeTool {
       return new TreeResult(false, result.repoPresent, false, 0, "", message)
     }
     List<String> files = result.output?.readLines()?.findAll { it != null && !it.trim().isEmpty() } ?: List.of()
+    ExclusionPolicy exclusionPolicy = getExclusionPolicy()
     files = files.findAll { String path -> !exclusionPolicy.isExcludedRelative(path) }
     TreeNode root = new TreeNode(".", true)
     boolean truncatedBuild = false
