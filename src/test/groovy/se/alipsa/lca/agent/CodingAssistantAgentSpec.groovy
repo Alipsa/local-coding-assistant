@@ -2,6 +2,7 @@ package se.alipsa.lca.agent
 
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.api.common.PromptRunner
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.domain.io.UserInput
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
@@ -241,6 +242,25 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     1 * fileEditingTool.applySearchReplaceBlocks("f", "blocks", true) >> srResult
     result.is(srResult)
+  }
+
+  def "chat-facing methods are actually discoverable as Embabel LLM tools"() {
+    // Regression guard: withToolObject(agent) only exposes methods annotated @LlmTool (Embabel's
+    // MethodToolFactory), NOT @Action (the goal/planning-graph annotation). An @Action-only method
+    // silently contributes zero tools to chat instead of failing loudly, so this exercises the real
+    // Embabel entry point rather than trusting the annotation is present.
+    when:
+    // Tool.Companion is ambiguous to Groovy's dynamic dispatch (it collides with the nested
+    // Tool$Companion class of the same simple name), so fetch the singleton via reflection instead.
+    def companion = Tool.getDeclaredField("Companion").get(null)
+    List<Tool> tools = companion.safelyFromInstance(agent, new com.fasterxml.jackson.databind.ObjectMapper())
+    Set<String> toolNames = tools.collect { it.definition.name }.toSet()
+
+    then:
+    toolNames.containsAll([
+      "writeFile", "replace", "deleteFile", "applyPatch", "replaceRange", "fileContext",
+      "revertFromBackup", "applySearchReplaceBlocks", "search", "searchFiles", "checkOpenPullRequests"
+    ])
   }
 
   def "searchFiles delegates"() {

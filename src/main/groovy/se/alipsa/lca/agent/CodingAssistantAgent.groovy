@@ -4,6 +4,7 @@ import com.embabel.agent.api.annotation.AchievesGoal
 import com.embabel.agent.api.annotation.Action
 import com.embabel.agent.api.annotation.Agent
 import com.embabel.agent.api.annotation.Export
+import com.embabel.agent.api.annotation.LlmTool
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.domain.library.HasContent
@@ -296,26 +297,31 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Write content to a file. This will overwrite the file if it exists.")
+  @LlmTool(name = "writeFile", description = "Write content to a file. This will overwrite the file if it exists.")
   String writeFile(String filePath, String content) {
     fileEditingAgent.writeFile(filePath, content)
   }
 
   @Action(description = "Replace content in a file.")
+  @LlmTool(name = "replace", description = "Replace content in a file.")
   String replace(String filePath, String oldString, String newString) {
     fileEditingAgent.replace(filePath, oldString, newString)
   }
 
   @Action(description = "Delete a file.")
+  @LlmTool(name = "deleteFile", description = "Delete a file.")
   String deleteFile(String filePath) {
     fileEditingAgent.deleteFile(filePath)
   }
 
   @Action(description = "Apply a unified diff patch with backup and conflict detection.")
+  @LlmTool(name = "applyPatch", description = "Apply a unified diff patch with backup and conflict detection.")
   FileEditingTool.PatchResult applyPatch(String patchText, boolean dryRun) {
     fileEditingAgent.applyPatch(patchText, dryRun)
   }
 
   @Action(description = "Replace a specific line range in a file.")
+  @LlmTool(name = "replaceRange", description = "Replace a specific line range in a file.")
   FileEditingTool.EditResult replaceRange(
     String filePath,
     int startLine,
@@ -327,6 +333,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Show file context around a line range or symbol to guide edits.")
+  @LlmTool(name = "fileContext", description = "Show file context around a line range or symbol to guide edits.")
   FileEditingTool.TargetedEditContext fileContext(
     String filePath,
     Integer startLine,
@@ -345,11 +352,13 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Restore a file from the most recent patch backup.")
+  @LlmTool(name = "revertFromBackup", description = "Restore a file from the most recent patch backup.")
   FileEditingTool.EditResult revertFromBackup(String filePath, boolean dryRun) {
     fileEditingAgent.revertLatestBackup(filePath, dryRun)
   }
 
   @Action(description = "Apply Search-and-Replace blocks to a file with backups.")
+  @LlmTool(name = "applySearchReplaceBlocks", description = "Apply Search-and-Replace blocks to a file with backups.")
   FileEditingTool.SearchReplaceResult applySearchReplaceBlocks(String filePath, String blocksText, boolean dryRun) {
     fileEditingAgent.applySearchReplaceBlocks(filePath, blocksText, dryRun)
   }
@@ -360,6 +369,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Search the web for a given query with options")
+  @LlmTool(name = "search", description = "Search the web for a given query with options")
   @JsonDeserialize(as = ArrayList.class, contentAs = WebSearchTool.SearchResult.class)
   List<WebSearchTool.SearchResult> search(String query, WebSearchTool.SearchOptions options) {
     WebSearchTool.SearchOptions input = options ?: new WebSearchTool.SearchOptions()
@@ -378,12 +388,17 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   }
 
   @Action(description = "Search repository files for a pattern.")
+  @LlmTool(name = "searchFiles", description = "Search repository files for a pattern.")
   @JsonDeserialize(as = ArrayList.class, contentAs = CodeSearchTool.SearchHit.class)
   List<CodeSearchTool.SearchHit> searchFiles(String query, List<String> paths, int contextLines, int limit) {
     codeSearchTool.search(query, paths, contextLines, limit)
   }
 
   @Action(description = "Check for open GitHub pull requests targeting the current git branch.")
+  @LlmTool(
+    name = "checkOpenPullRequests",
+    description = "Check for open GitHub pull requests targeting the current git branch."
+  )
   PullRequestSummary checkOpenPullRequests() {
     GitTool.GitResult result = gitTool.openPullRequestsForCurrentBranch()
     if (!result.success) {
