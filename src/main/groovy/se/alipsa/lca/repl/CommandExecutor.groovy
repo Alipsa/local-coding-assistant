@@ -202,7 +202,7 @@ class CommandExecutor {
 
   private String executeRun(String args) {
     Map<String, Object> parsed = parseArgs(args)
-    String command = extractPromptValue(parsed)
+    String command = parsed.command as String ?: parsed.cmd as String ?: extractPromptValue(parsed)
     shellCommands.runCommand(
       command,
       parseLong(parsed.timeout) ?: 60000L,
