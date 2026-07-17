@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.lang.NonNull
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.shell.SessionState
@@ -90,6 +91,25 @@ class CodingAssistantAgent {
 
   @Canonical
   @CompileStatic
+  static class PullRequestInfo {
+    int number
+    String title
+    String url
+    String headRefName
+    String state
+  }
+
+  @Canonical
+  @CompileStatic
+  static class PullRequestSummary {
+    boolean success
+    boolean repoPresent
+    List<PullRequestInfo> pullRequests
+    String error
+  }
+
+  @Canonical
+  @CompileStatic
   static class ReviewedCodeSnippet implements HasContent, Timestamped {
     CodeSnippet codeSnippet
     String review
@@ -130,6 +150,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   private final FileEditingTool fileEditingAgent
   private final WebSearchTool webSearchAgent
   private final CodeSearchTool codeSearchTool
+  private final GitTool gitTool
   private final LocalOnlyState localOnlyState
   private final SessionState sessionState
 
@@ -144,6 +165,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     FileEditingTool fileEditingAgent,
     WebSearchTool webSearchAgent,
     CodeSearchTool codeSearchTool,
+    GitTool gitTool,
     LocalOnlyState localOnlyState,
     SessionState sessionState
   ) {
@@ -159,6 +181,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.fileEditingAgent = fileEditingAgent
     this.webSearchAgent = webSearchAgent
     this.codeSearchTool = codeSearchTool
+    this.gitTool = gitTool
     this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
     this.sessionState = Objects.requireNonNull(sessionState, "sessionState must not be null")
   }
@@ -358,6 +381,24 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   @JsonDeserialize(as = ArrayList.class, contentAs = CodeSearchTool.SearchHit.class)
   List<CodeSearchTool.SearchHit> searchFiles(String query, List<String> paths, int contextLines, int limit) {
     codeSearchTool.search(query, paths, contextLines, limit)
+  }
+
+  @Action(description = "Check for open GitHub pull requests targeting the current git branch.")
+  PullRequestSummary checkOpenPullRequests() {
+    GitTool.GitResult result = gitTool.openPullRequestsForCurrentBranch()
+    if (!result.success) {
+      return new PullRequestSummary(false, result.repoPresent, List.of(), result.error)
+    }
+    List<PullRequestInfo> prs = GitTool.parsePullRequestJson(result.output).collect { Map entry ->
+      new PullRequestInfo(
+        entry.number instanceof Number ? ((Number) entry.number).intValue() : 0,
+        entry.title?.toString() ?: "",
+        entry.url?.toString() ?: "",
+        entry.headRefName?.toString() ?: "",
+        entry.state?.toString() ?: ""
+      )
+    }
+    new PullRequestSummary(true, true, prs, null)
   }
 
   protected String buildCraftCodePrompt(

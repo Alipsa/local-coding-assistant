@@ -4,6 +4,7 @@ import com.embabel.agent.api.common.Ai
 import com.embabel.agent.api.common.PromptRunner
 import com.embabel.agent.domain.io.UserInput
 import se.alipsa.lca.tools.FileEditingTool
+import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.LocalOnlyState
@@ -14,6 +15,7 @@ class CodingAssistantAgentSpec extends Specification {
 
   FileEditingTool fileEditingTool = Mock(FileEditingTool)
   CodeSearchTool codeSearchTool = Mock(CodeSearchTool)
+  GitTool gitTool = Mock(GitTool)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
   SessionState sessionState = Stub(SessionState) {
     getWebSearchFetcher(_) >> "htmlunit"
@@ -30,6 +32,7 @@ class CodingAssistantAgentSpec extends Specification {
     fileEditingTool,
     webSearchTool,
     codeSearchTool,
+    gitTool,
     new LocalOnlyState(false),
     sessionState
   )
@@ -252,6 +255,39 @@ class CodingAssistantAgentSpec extends Specification {
     result == hits
   }
 
+  def "checkOpenPullRequests delegates to GitTool and maps a successful result"() {
+    given:
+    def ghResult = new GitTool.GitResult(true, true, 0,
+      '[{"number":42,"title":"Fix bug","url":"https://github.com/x/y/pull/42",' +
+        '"headRefName":"feature/x","state":"OPEN"}]',
+      "")
+
+    when:
+    def result = agent.checkOpenPullRequests()
+
+    then:
+    1 * gitTool.openPullRequestsForCurrentBranch() >> ghResult
+    result.success
+    result.pullRequests.size() == 1
+    result.pullRequests[0].number == 42
+    result.pullRequests[0].title == "Fix bug"
+  }
+
+  def "checkOpenPullRequests surfaces a failure without pull requests"() {
+    given:
+    def ghResult = new GitTool.GitResult(false, true, 1, "",
+      "GitHub CLI (gh) is required for PR reviews. Install it from https://cli.github.com/")
+
+    when:
+    def result = agent.checkOpenPullRequests()
+
+    then:
+    1 * gitTool.openPullRequestsForCurrentBranch() >> ghResult
+    !result.success
+    result.pullRequests.isEmpty()
+    result.error.contains("GitHub CLI")
+  }
+
   def "local-only mode skips web search"() {
     given:
     WebSearchTool searchTool = Mock(WebSearchTool)
@@ -266,6 +302,7 @@ class CodingAssistantAgentSpec extends Specification {
       fileEditingTool,
       searchTool,
       codeSearchTool,
+      gitTool,
       new LocalOnlyState(true),
       sessionState
     )
