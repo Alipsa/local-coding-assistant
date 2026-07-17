@@ -21,7 +21,6 @@ import groovy.transform.CompileStatic;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent
-import org.springframework.context.ApplicationEvent
 import org.springframework.context.ApplicationListener
 import org.springframework.core.env.ConfigurableEnvironment
 
@@ -37,17 +36,12 @@ class LocalCodingAssistantApplication {
         // env vars, application.properties, profiles — the same sources GuiRunner's and
         // SwingConfirmationService's @ConditionalOnProperty(lca.gui.enabled) read) before
         // deciding, so this check can't disagree with theirs.
-        //
-        // Registered against the broad ApplicationEvent type and filtered manually below: Spring
-        // resolves which specific event type a listener wants via reflection on its declared
-        // generic type, which a Groovy-closure-coerced ApplicationListener doesn't expose, so a
-        // listener declared for ApplicationEnvironmentPreparedEvent specifically would otherwise
-        // still receive earlier events (e.g. ApplicationStartingEvent) and blow up.
-        app.addListeners({ ApplicationEvent event ->
-            if (event instanceof ApplicationEnvironmentPreparedEvent) {
-                configureHeadless(((ApplicationEnvironmentPreparedEvent) event).environment)
+        app.addListeners(new ApplicationListener<ApplicationEnvironmentPreparedEvent>() {
+            @Override
+            void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
+                configureHeadless(event.environment)
             }
-        } as ApplicationListener<ApplicationEvent>)
+        })
         app.run(args)
     }
 
