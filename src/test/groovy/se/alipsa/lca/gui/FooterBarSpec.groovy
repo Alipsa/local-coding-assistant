@@ -183,4 +183,21 @@ class FooterBarSpec extends Specification {
       memoryText(footer) == "4 / 8 Gb"
     }
   }
+
+  def "a remote Ollama never samples local host memory, since it would be discarded anyway"() {
+    given:
+    modelRegistry.isRemote() >> true
+    modelRegistry.loadedModels() >> [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 0L)]
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      memoryText(footer)?.contains("(Ollama)")
+    }
+    0 * systemMetrics.usedMemoryPercent()
+    0 * systemMetrics.memorySummary()
+  }
 }

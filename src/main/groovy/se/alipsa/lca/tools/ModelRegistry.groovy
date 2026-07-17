@@ -24,8 +24,11 @@ class ModelRegistry {
 
   private static final Logger log = LoggerFactory.getLogger(ModelRegistry)
   private static final Set<String> LOOPBACK_HOSTS = Set.of(
-    "localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1", "0.0.0.0"
+    "localhost", "::1", "0:0:0:0:0:0:0:1", "0.0.0.0"
   )
+  // The entire 127.0.0.0/8 range is loopback (RFC 5735), not just 127.0.0.1 — anchored so a
+  // hostname that merely starts with "127." (e.g. a subdomain) doesn't false-match.
+  private static final java.util.regex.Pattern LOOPBACK_IPV4_RANGE = ~/^127(\.\d{1,3}){3}$/
   private final URI tagsUri
   private final URI showUri
   private final URI psUri
@@ -139,7 +142,9 @@ class ModelRegistry {
     if (host == null || host.trim().isEmpty()) {
       return false
     }
-    !LOOPBACK_HOSTS.contains(host.toLowerCase(Locale.ROOT))
+    String normalized = host.toLowerCase(Locale.ROOT)
+    boolean loopback = LOOPBACK_HOSTS.contains(normalized) || LOOPBACK_IPV4_RANGE.matcher(normalized).matches()
+    !loopback
   }
 
   /**

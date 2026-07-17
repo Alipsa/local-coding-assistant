@@ -164,6 +164,9 @@ class ModelRegistrySpec extends Specification {
     "localhost"              || false
     "LOCALHOST"              || false
     "127.0.0.1"              || false
+    "127.0.0.2"              || false
+    "127.1.2.3"              || false
+    "127.255.255.255"        || false
     "::1"                    || false
     "0:0:0:0:0:0:0:1"        || false
     "0.0.0.0"                || false
@@ -172,6 +175,7 @@ class ModelRegistrySpec extends Specification {
     "192.168.1.50"           || true
     "ollama.example.com"     || true
     "host.docker.internal"   || true
+    "127.0.0.1.example.com"  || true
   }
 
   def "isRemote reflects the configured base URL's host"() {

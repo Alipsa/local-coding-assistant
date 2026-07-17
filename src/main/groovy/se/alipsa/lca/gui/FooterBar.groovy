@@ -120,18 +120,10 @@ class FooterBar extends JPanel {
     } catch (Exception ignored) {
       // contextPercent stays null; apply() renders "n/a" for it.
     }
-    Integer memoryPercent = null
-    String memorySummary = null
-    try {
-      memoryPercent = systemMetrics.usedMemoryPercent()
-      memorySummary = systemMetrics.memorySummary()
-    } catch (Exception ignored) {
-      // memoryPercent/memorySummary stay null; apply() renders "n/a" for them.
-    }
-    // Two SEPARATE try/catch blocks below, deliberately: a loadedModels() failure while remote
-    // is true must degrade to "n/a" (via memoryDisplayFor), never fall back to the local stats
-    // above — showing local numbers for a remote Ollama server is the exact bug being fixed, and
-    // merging these into one catch would silently reintroduce it on a transient connectivity blip.
+    // remote is I/O-free (fixed at ModelRegistry construction), so it's resolved first: local
+    // host memory is only sampled when it would actually be shown — memoryDisplayFor() discards
+    // it entirely when remote, so sampling it unconditionally on every 2s footer tick would be
+    // wasted vm_stat/proc work in the (now more common) remote-Ollama case.
     boolean remote = false
     try {
       remote = modelRegistry != null && modelRegistry.isRemote()
@@ -139,6 +131,20 @@ class FooterBar extends JPanel {
       // remote stays false: isRemote() is I/O-free and shouldn't throw; degrade toward today's
       // local-stats display if it somehow does.
     }
+    Integer memoryPercent = null
+    String memorySummary = null
+    if (!remote) {
+      try {
+        memoryPercent = systemMetrics.usedMemoryPercent()
+        memorySummary = systemMetrics.memorySummary()
+      } catch (Exception ignored) {
+        // memoryPercent/memorySummary stay null; apply() renders "n/a" for them.
+      }
+    }
+    // A SEPARATE try/catch from isRemote() above, deliberately: a loadedModels() failure while
+    // remote is true must degrade to "n/a" (via memoryDisplayFor), never fall back to local
+    // stats — showing local numbers for a remote Ollama server is the exact bug being fixed, and
+    // merging these into one catch would silently reintroduce it on a transient connectivity blip.
     List<ModelRegistry.LoadedModel> loaded = List.of()
     try {
       loaded = modelRegistry != null ? modelRegistry.loadedModels() : List.of()

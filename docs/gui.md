@@ -8,7 +8,7 @@
 - The layout should be roughly like this:
 
 |--------------------------------------------------------------------------------------------------------------------------------------------------------
-| Base dir: ~/project/dbt-mcp   |   branch:ALE-1044-return-table-id   |   Main Model: qwen3.6:35b-a3b   |   Small model: gpt-oss:20b                    |
+| Base dir: ~/project/dbt-mcp     branch: ALE-1044-return-table-id  PR #7     Main Model: qwen3.6:35b-a3b     Small model: gpt-oss:20b                   |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------
 | (user input)                                                                                                                                          |
 |                                                                                                                                                       |
@@ -54,7 +54,7 @@
 |                                                                                                                                                       |
 |                                                                                                                                                       |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------
-| Context: [░░░░░░░░░░] 8%   |   Autocompact: [███░░░░░░░] 36%   |   Main memory:  43 / 64 Gb   |   GPU memory: 18 / 52 Gb                              |
+| Context: [░░░░░░░░░░] 8%     Autocompact: [███░░░░░░░] 36%     Main memory:  43 / 64 Gb     GPU memory: 18 / 52 Gb                                   |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------
 
 - llm responses should be formatted in a similar style to OpenCode (use colour, font and space to make the conversation clear)

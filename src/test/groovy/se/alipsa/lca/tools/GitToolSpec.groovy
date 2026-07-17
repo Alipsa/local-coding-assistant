@@ -367,6 +367,38 @@ six
     result.error != null && !result.error.isEmpty()
   }
 
+  def "openPullRequestsForCurrentBranch caches its result for the same branch within the TTL"() {
+    given: "a repeated call would otherwise re-hit gh/GitHub on every poll, e.g. after every chat turn"
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "hello\n")
+    runGit("add", "a.txt")
+    runGit("commit", "-m", "init")
+
+    when:
+    def first = gitTool.openPullRequestsForCurrentBranch()
+    def second = gitTool.openPullRequestsForCurrentBranch()
+
+    then: "the exact same result instance is reused, proving the second call didn't re-fetch"
+    first.is(second)
+  }
+
+  def "openPullRequestsForCurrentBranch does not reuse the cache across a branch switch"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "hello\n")
+    runGit("add", "a.txt")
+    runGit("commit", "-m", "init")
+    runGit("branch", "-m", "main")
+
+    when:
+    def onMain = gitTool.openPullRequestsForCurrentBranch()
+    runGit("checkout", "-b", "feature-x")
+    def onFeature = gitTool.openPullRequestsForCurrentBranch()
+
+    then:
+    !onMain.is(onFeature)
+  }
+
   def "parsePullRequestJson parses a gh pr list JSON array"() {
     given:
     String json = '[{"number":7,"title":"Add feature","url":"https://example/pull/7",' +

@@ -95,7 +95,7 @@ class HeaderBar extends JPanel {
     add(spacer())
     add(new JLabel("branch: "))
     add(branchCombo)
-    add(Box.createHorizontalStrut(8))
+    add(Box.createHorizontalStrut(SEGMENT_GAP))
     add(pullRequestLabel)
     add(spacer())
     add(mainModelLabel)
