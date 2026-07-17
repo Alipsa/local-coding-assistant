@@ -4,6 +4,9 @@ import com.embabel.agent.api.common.Ai
 import com.embabel.agent.api.common.PromptRunner
 import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.domain.io.UserInput
+import se.alipsa.lca.shell.ConfirmationChoice
+import se.alipsa.lca.shell.ConfirmationService
+import se.alipsa.lca.tools.ConfirmingLlmTool
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
 import se.alipsa.lca.tools.WebSearchTool
@@ -17,6 +20,7 @@ class CodingAssistantAgentSpec extends Specification {
   FileEditingTool fileEditingTool = Mock(FileEditingTool)
   CodeSearchTool codeSearchTool = Mock(CodeSearchTool)
   GitTool gitTool = Mock(GitTool)
+  ConfirmationService confirmationService = Mock(ConfirmationService)
   WebSearchTool webSearchTool = Stub(WebSearchTool)
   SessionState sessionState = Stub(SessionState) {
     getWebSearchFetcher(_) >> "htmlunit"
@@ -34,6 +38,7 @@ class CodingAssistantAgentSpec extends Specification {
     webSearchTool,
     codeSearchTool,
     gitTool,
+    confirmationService,
     new LocalOnlyState(false),
     sessionState
   )
@@ -263,6 +268,46 @@ class CodingAssistantAgentSpec extends Specification {
     ])
   }
 
+  def "buildLlmTools wraps confirmation-required tools but leaves read-only tools alone"() {
+    when:
+    List<Tool> tools = agent.buildLlmTools()
+    Map<String, Tool> byName = tools.collectEntries { [(it.definition.name): it] }
+
+    then:
+    byName["writeFile"] instanceof ConfirmingLlmTool
+    byName["deleteFile"] instanceof ConfirmingLlmTool
+    byName["applyPatch"] instanceof ConfirmingLlmTool
+    byName["replaceRange"] instanceof ConfirmingLlmTool
+    byName["applySearchReplaceBlocks"] instanceof ConfirmingLlmTool
+    byName["revertFromBackup"] instanceof ConfirmingLlmTool
+    byName["replace"] instanceof ConfirmingLlmTool
+    !(byName["searchFiles"] instanceof ConfirmingLlmTool)
+    !(byName["search"] instanceof ConfirmingLlmTool)
+    !(byName["checkOpenPullRequests"] instanceof ConfirmingLlmTool)
+    !(byName["fileContext"] instanceof ConfirmingLlmTool)
+  }
+
+  def "buildLlmTools' confirmation wrapper actually blocks the underlying call"() {
+    given:
+    List<Tool> tools = agent.buildLlmTools()
+    Tool writeFileTool = tools.find { it.definition.name == "writeFile" }
+
+    when:
+    def declined = writeFileTool.call('{"filePath":"a.txt","content":"x"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.NO
+    0 * fileEditingTool.writeFile(_, _)
+    declined != null
+
+    when:
+    writeFileTool.call('{"filePath":"a.txt","content":"x"}')
+
+    then:
+    1 * confirmationService.confirm(_ as String) >> ConfirmationChoice.YES
+    1 * fileEditingTool.writeFile("a.txt", "x") >> "written"
+  }
+
   def "searchFiles delegates"() {
     given:
     def hits = List.of(new CodeSearchTool.SearchHit("p", 1, 1, "snippet"))
@@ -323,6 +368,7 @@ class CodingAssistantAgentSpec extends Specification {
       searchTool,
       codeSearchTool,
       gitTool,
+      confirmationService,
       new LocalOnlyState(true),
       sessionState
     )
