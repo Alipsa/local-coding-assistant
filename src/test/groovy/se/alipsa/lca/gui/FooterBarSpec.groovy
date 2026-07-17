@@ -1,5 +1,6 @@
 package se.alipsa.lca.gui
 
+import se.alipsa.lca.shell.ContextCompactor
 import se.alipsa.lca.tools.ModelRegistry
 import spock.lang.Specification
 import spock.lang.Unroll
@@ -13,6 +14,9 @@ class FooterBarSpec extends Specification {
   SystemMetrics systemMetrics = Mock()
   ContextEstimator contextEstimator = Mock()
   ModelRegistry modelRegistry = Mock()
+  // Unstubbed isAutocompactEnabled() returns false by default (Mock sensible-default for
+  // boolean), so existing tests that don't care about autocompact need no explicit interaction.
+  ContextCompactor contextCompactor = Mock()
   PollingConditions conditions = new PollingConditions(timeout: 2)
 
   private static String contextText(FooterBar footer) {
@@ -25,6 +29,12 @@ class FooterBarSpec extends Specification {
 
   private static List<JProgressBar> progressBars(FooterBar footer) {
     footer.components.findAll { it instanceof JProgressBar } as List<JProgressBar>
+  }
+
+  private static String autocompactText(FooterBar footer) {
+    ((JLabel) footer.components.find {
+      it instanceof JLabel && ((JLabel) it).text?.startsWith("Autocompact:")
+    })?.text
   }
 
   def "construction fetches a slow metric off the calling thread, then the result arrives asynchronously"() {
@@ -45,7 +55,7 @@ class FooterBarSpec extends Specification {
     systemMetrics.memorySummary() >> "4 / 8 Gb"
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
 
     then: "the slow metric is fetched off the calling thread, not blocking construction"
     conditions.eventually {
@@ -67,7 +77,7 @@ class FooterBarSpec extends Specification {
     systemMetrics.memorySummary() >> "2 / 8 Gb"
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
     footer.refreshAsync()
 
     then:
@@ -79,7 +89,7 @@ class FooterBarSpec extends Specification {
 
   def "a fresh refreshAsync call supersedes the generation an earlier, still-running one captured"() {
     given:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
 
     when: "an earlier tick's worker captures its generation before a second tick starts"
     int firstGeneration = footer.beginRefreshGeneration()
@@ -97,7 +107,7 @@ class FooterBarSpec extends Specification {
 
   def "the footer bar no longer shows pipe separators between segments"() {
     given:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
 
     expect:
     footer.components.findAll { it instanceof JLabel }.every { !((JLabel) it).text?.contains("|") }
@@ -139,7 +149,7 @@ class FooterBarSpec extends Specification {
     modelRegistry.loadedModels() >> []
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
     footer.refreshAsync()
 
     then:
@@ -157,7 +167,7 @@ class FooterBarSpec extends Specification {
     modelRegistry.loadedModels() >> [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 3_000_000_000L)]
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
     footer.refreshAsync()
 
     then:
@@ -175,7 +185,7 @@ class FooterBarSpec extends Specification {
     modelRegistry.loadedModels() >> []
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
     footer.refreshAsync()
 
     then:
@@ -184,13 +194,57 @@ class FooterBarSpec extends Specification {
     }
   }
 
+  @Unroll
+  def "autocompactLabelFor(enabled=#enabled, progress=#progress) == '#expected'"() {
+    expect:
+    FooterBar.autocompactLabelFor(enabled, progress) == expected
+
+    where:
+    enabled | progress || expected
+    false   | null     || "Autocompact: disabled"
+    false   | 42       || "Autocompact: disabled"
+    true    | null     || "Autocompact: n/a"
+    true    | 42       || "Autocompact: 42%"
+    true    | 100      || "Autocompact: 100%"
+  }
+
+  def "the footer shows autocompact progress when enabled"() {
+    given:
+    contextCompactor.isAutocompactEnabled() >> true
+    contextCompactor.autocompactProgressPercent("default") >> 55
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      autocompactText(footer) == "Autocompact: 55%"
+    }
+  }
+
+  def "the footer shows autocompact as disabled when turned off via config"() {
+    given:
+    contextCompactor.isAutocompactEnabled() >> false
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      autocompactText(footer) == "Autocompact: disabled"
+    }
+    0 * contextCompactor.autocompactProgressPercent(_)
+  }
+
   def "a remote Ollama never samples local host memory, since it would be discarded anyway"() {
     given:
     modelRegistry.isRemote() >> true
     modelRegistry.loadedModels() >> [new ModelRegistry.LoadedModel("m1", 5_000_000_000L, 0L)]
 
     when:
-    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
     footer.refreshAsync()
 
     then:
