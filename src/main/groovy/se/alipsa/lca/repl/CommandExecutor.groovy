@@ -85,6 +85,8 @@ class CommandExecutor {
         return executeCodeSearch(args)
       case "mcp":
         return executeMcp(args)
+      case "reviewlog":
+        return executeReviewLog(args)
       case "help":
         return shellCommands.help()
       case "health":
@@ -122,7 +124,7 @@ class CommandExecutor {
       parsed.maxTokens as Integer,
       parsed.systemPrompt as String,
       parseBoolean(parsed.autoSave) ?: false,
-      parseBoolean(parsed.'show-reasoning') ?: parseBoolean(parsed.'with-thinking') ?: false
+      parseBoolean(parsed.showReasoning) ?: parseBoolean(parsed.withThinking) ?: false
     )
   }
 
@@ -137,7 +139,7 @@ class CommandExecutor {
       parsed.reviewTemperature as Double,
       parsed.maxTokens as Integer,
       parsed.systemPrompt as String,
-      parseBoolean(parsed.'show-reasoning') ?: parseBoolean(parsed.'with-thinking') ?: false
+      parseBoolean(parsed.showReasoning) ?: parseBoolean(parsed.withThinking) ?: false
     )
   }
 
@@ -152,7 +154,7 @@ class CommandExecutor {
       parsed.maxTokens as Integer,
       parseBoolean(parsed.autoSave) ?: false,
       parseBoolean(parsed.skipValidation) ?: false,
-      parseBoolean(parsed.'show-reasoning') ?: parseBoolean(parsed.'with-thinking') ?: false
+      parseBoolean(parsed.showReasoning) ?: parseBoolean(parsed.withThinking) ?: false
     )
   }
 
@@ -176,7 +178,7 @@ class CommandExecutor {
       parsed.systemPrompt as String,
       paths,
       parseBoolean(parsed.staged) ?: false,
-      ReviewSeverity.LOW, // minSeverity
+      parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
       parseBoolean(parsed.noColor) ?: false,
       parseBoolean(parsed.logReview) ?: true,
       parseBoolean(parsed.security) ?: false,
@@ -310,7 +312,19 @@ class CommandExecutor {
       parseBoolean(parsed.pack) ?: false,
       parseInt(parsed.maxChars) ?: 8000,
       parseInt(parsed.maxTokens) ?: 0,
-      parseBoolean(parsed.'case-insensitive') ?: parseBoolean(parsed.i) ?: false
+      parseBoolean(parsed.caseInsensitive) ?: parseBoolean(parsed.i) ?: false
+    )
+  }
+
+  private String executeReviewLog(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.reviewLog(
+      parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
+      parsed.pathFilter as String,
+      parseInt(parsed.limit) ?: 5,
+      parseInt(parsed.page) ?: 1,
+      parsed.since as String,
+      parseBoolean(parsed.noColor) ?: false
     )
   }
 
@@ -338,8 +352,12 @@ class CommandExecutor {
     }
 
     // Pattern to match --flag value or --flag "value with spaces and newlines"
-    // Use [\s\S] instead of . to match newlines inside quotes
-    Pattern flagPattern = Pattern.compile(/--(\w+)(?:\s+(?:"([\s\S]*?)"|'([\s\S]*?)'|(\S+)))?/)
+    // Use [\s\S] instead of . to match newlines inside quotes. Flag names may contain hyphens
+    // (e.g. --no-color, --min-severity); toCamelCase() normalizes them to the map keys the
+    // callers below actually read. The unquoted value alternative excludes anything starting
+    // with "--" so a boolean flag immediately followed by another flag (e.g.
+    // "--no-color --min-severity HIGH") doesn't swallow that next flag as its own value.
+    Pattern flagPattern = Pattern.compile(/--([\w-]+)(?:\s+(?:"([\s\S]*?)"|'([\s\S]*?)'|(?!--)(\S+)))?/)
 
     Matcher matcher = flagPattern.matcher(args)
     int lastEnd = 0
@@ -354,7 +372,7 @@ class CommandExecutor {
         }
       }
 
-      String flag = matcher.group(1)
+      String flag = toCamelCase(matcher.group(1))
       String value = matcher.group(2) ?: matcher.group(3) ?: matcher.group(4)
 
       if (value != null) {
@@ -402,6 +420,25 @@ class CommandExecutor {
     return words ? words.join(" ") : ""
   }
 
+  /** Normalizes a kebab-case CLI flag name (e.g. {@code no-color}) to the camelCase map key
+   * every {@code executeXxx} method reads (e.g. {@code noColor}). A no-op for flags with no
+   * hyphen, so already-camelCase flags like {@code --maxTokens} are unaffected. */
+  private static String toCamelCase(String kebab) {
+    if (!kebab.contains("-")) {
+      return kebab
+    }
+    String[] parts = kebab.split("-")
+    StringBuilder camel = new StringBuilder(parts[0])
+    for (int i = 1; i < parts.length; i++) {
+      String part = parts[i]
+      if (part.isEmpty()) {
+        continue
+      }
+      camel.append(part.substring(0, 1).toUpperCase()).append(part.substring(1))
+    }
+    camel.toString()
+  }
+
   private PersonaMode parsePersona(String value) {
     if (value == null) return null
     try {
@@ -436,6 +473,16 @@ class CommandExecutor {
     } catch (NumberFormatException e) {
       log.warn("Invalid long: {}", value)
       return null
+    }
+  }
+
+  private ReviewSeverity parseSeverity(Object value, ReviewSeverity fallback) {
+    if (value == null) return fallback
+    try {
+      return ReviewSeverity.valueOf(value.toString().toUpperCase())
+    } catch (IllegalArgumentException e) {
+      log.warn("Invalid severity: {}", value)
+      return fallback
     }
   }
 }
