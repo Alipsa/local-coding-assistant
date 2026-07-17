@@ -47,7 +47,11 @@ class MarkdownRenderer {
    * composing into a larger transcript document. A {@code null} input renders an empty string.
    */
   String renderBody(String markdown) {
-    markdown == null ? "" : renderer.render(parser.parse(markdown))
+    // AnsiHtml runs last, on the already-rendered HTML — not on the Markdown source — so it
+    // works correctly even when the colorized text ends up inside a fenced code block (raw HTML
+    // in Markdown source wouldn't be honoured there, but a real <font> tag in the rendered HTML
+    // still is).
+    markdown == null ? "" : AnsiHtml.translate(renderer.render(parser.parse(markdown)))
   }
 
   /** The CSS used by {@link #toHtml}, exposed so the transcript view can reuse it. */
