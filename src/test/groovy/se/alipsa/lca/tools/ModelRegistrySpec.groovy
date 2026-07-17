@@ -7,8 +7,36 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class ModelRegistrySpec extends Specification {
+
+  def "listModels coalesces concurrent cache-miss callers onto a single fetch"() {
+    given:
+    CountDownLatch releaseFetch = new CountDownLatch(1)
+    AtomicInteger fetchCount = new AtomicInteger(0)
+    ModelRegistry registry = new ShowRegistry(200, "{}") {
+      @Override
+      protected HttpResponse<String> fetchTags() throws Exception {
+        fetchCount.incrementAndGet()
+        releaseFetch.await(2, TimeUnit.SECONDS)
+        [statusCode: { -> 200 }, body: { -> '{"models":[{"name":"m1"}]}' }] as HttpResponse
+      }
+    }
+
+    when:
+    List<Thread> callers = (1..5).collect { Thread.start { registry.listModels() } }
+    // Give every caller a chance to reach (and block on) the synchronized fetch before releasing it.
+    Thread.sleep(200)
+    releaseFetch.countDown()
+    callers.each { it.join(2000) }
+
+    then:
+    fetchCount.get() == 1
+    registry.listModels() == ["m1"]
+  }
 
   def "health returns reachable only for 2xx"() {
     given:

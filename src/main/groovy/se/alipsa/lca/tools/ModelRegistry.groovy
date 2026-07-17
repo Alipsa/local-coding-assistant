@@ -68,45 +68,45 @@ class ModelRegistry {
     if (current != null && (now - currentAt) < cacheTtlMillis) {
       return List.copyOf(current)
     }
-    // double-check after potential fetch to avoid redundant requests
+    // Hold the lock across the fetch itself (mirroring checkHealth()), not just the freshness
+    // check: otherwise concurrent callers past a stale cache would each fire their own request
+    // instead of coalescing onto one.
     synchronized (this) {
       if (cachedModels != null && (nowMillis() - cachedAt) < cacheTtlMillis) {
         return List.copyOf(cachedModels)
       }
-    }
-    try {
-      HttpResponse<String> response = fetchTags()
-      if (response.statusCode() >= 200 && response.statusCode() < 300) {
-        Map parsed = (Map) new JsonSlurper().parseText(response.body())
-        Object modelsObj = parsed != null ? parsed.get("models") : null
-        if (modelsObj instanceof List) {
-          List<?> rawModels = (List<?>) modelsObj
-          List<String> models = rawModels.collect { Object it ->
-            if (it instanceof Map && ((Map) it).containsKey("name")) {
-              Object name = ((Map) it).get("name")
-              return name != null ? name.toString() : null
-            }
-            it != null ? it.toString() : null
-          }.findAll { it } as List<String>
-          synchronized (this) {
+      try {
+        HttpResponse<String> response = fetchTags()
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+          Map parsed = (Map) new JsonSlurper().parseText(response.body())
+          Object modelsObj = parsed != null ? parsed.get("models") : null
+          if (modelsObj instanceof List) {
+            List<?> rawModels = (List<?>) modelsObj
+            List<String> models = rawModels.collect { Object it ->
+              if (it instanceof Map && ((Map) it).containsKey("name")) {
+                Object name = ((Map) it).get("name")
+                return name != null ? name.toString() : null
+              }
+              it != null ? it.toString() : null
+            }.findAll { it } as List<String>
             cachedModels = models
-            cachedAt = now
+            cachedAt = nowMillis()
+            return List.copyOf(models)
           }
-          return List.copyOf(models)
         }
+        log.debug("Unexpected response listing models: status {}", response.statusCode())
+      } catch (Exception e) {
+        log.debug("Failed to list models from {}", tagsUri, e)
       }
-      log.debug("Unexpected response listing models: status {}", response.statusCode())
-    } catch (Exception e) {
-      log.debug("Failed to list models from {}", tagsUri, e)
-    }
-    if (current != null) {
-      boolean stale = (now - currentAt) >= cacheTtlMillis
-      if (stale) {
-        log.info("Returning stale model cache due to fetch failure; cache age={}ms", now - currentAt)
+      if (cachedModels != null) {
+        boolean stale = (nowMillis() - cachedAt) >= cacheTtlMillis
+        if (stale) {
+          log.info("Returning stale model cache due to fetch failure; cache age={}ms", nowMillis() - cachedAt)
+        }
+        return List.copyOf(cachedModels)
       }
-      return List.copyOf(current)
+      List.of()
     }
-    List.of()
   }
 
   boolean isModelAvailable(String modelName) {

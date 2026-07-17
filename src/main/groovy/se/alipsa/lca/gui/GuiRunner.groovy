@@ -6,8 +6,6 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.stereotype.Component
 import se.alipsa.lca.shell.BangCommandHandler
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
@@ -19,13 +17,12 @@ import java.util.function.Consumer
 
 /**
  * Launches the Swing GUI once the Spring context is ready, mirroring {@code ReplRunner} but
- * for the GUI. Only active when {@code lca.gui.enabled=true} (the {@code lcaGui} launcher sets
- * this and disables the REPL). Does not call {@code System.exit}; the running web server and
- * the AWT thread keep the JVM alive, and the window's close handler exits.
+ * for the GUI. Registered as a {@code @Bean} (see {@code RunnerConfiguration}) only when
+ * {@code lca.gui.enabled=true}, which also structurally suppresses {@code ReplRunner}. Does not
+ * call {@code System.exit}; the running web server and the AWT thread keep the JVM alive, and
+ * the window's close handler exits.
  */
-@Component
 @CompileStatic
-@ConditionalOnProperty(name = "lca.gui.enabled", havingValue = "true")
 class GuiRunner implements ApplicationRunner {
 
   private static final Logger log = LoggerFactory.getLogger(GuiRunner)

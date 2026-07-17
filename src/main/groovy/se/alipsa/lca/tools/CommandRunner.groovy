@@ -98,7 +98,7 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
-    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
+    runInternal(command, { Path root -> startProcess(root, command) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
   }
 
   /**
@@ -113,7 +113,7 @@ class CommandRunner {
     if (command == null || command.trim().isEmpty()) {
       return new CommandResult(false, false, 1, "No command provided.", false, null)
     }
-    runInternal(command, { startProcess(command) } as ProcessStarter, timeoutMillis, maxOutputChars, listener)
+    runInternal(command, { Path root -> startProcess(root, command) } as ProcessStarter, timeoutMillis, maxOutputChars, listener)
   }
 
   /**
@@ -129,7 +129,7 @@ class CommandRunner {
       }
     }
     String commandLabel = formatCommand(commandArgs)
-    runInternal(commandLabel, { startProcess(commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
+    runInternal(commandLabel, { Path root -> startProcess(root, commandArgs) } as ProcessStarter, timeoutMillis, maxOutputChars, null)
   }
 
   private CommandResult runInternal(
@@ -142,9 +142,12 @@ class CommandRunner {
     String sanitizedCommand = LogSanitizer.sanitize(commandLabel)
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : DEFAULT_TIMEOUT_MILLIS
     int outputLimit = maxOutputChars > 0 ? maxOutputChars : DEFAULT_OUTPUT_LIMIT
+    // One snapshot for this whole command execution, so the log path and the process's working
+    // directory can't diverge if the workspace base dir changes mid-call.
+    Path realRoot = getRealProjectRoot()
     Path logPath
     try {
-      logPath = createLogPath()
+      logPath = createLogPath(realRoot)
     } catch (IOException e) {
       logPath = null
       log.debug("Failed to prepare log path for command {}", sanitizedCommand, e)
@@ -156,7 +159,7 @@ class CommandRunner {
     try {
       logWriter = prepareWriter(logPath)
       writeHeader(logWriter, sanitizedCommand, started)
-      process = starter.start()
+      process = starter.start(realRoot)
       AtomicInteger remaining = new AtomicInteger(outputLimit)
       AtomicInteger remainingLogCapacity = new AtomicInteger(outputLimit)
       StringBuffer visibleOutput = new StringBuffer()
@@ -234,22 +237,22 @@ class CommandRunner {
     }
   }
 
-  protected Path createLogPath() throws IOException {
-    Path dir = realProjectRoot.resolve(".lca/run-logs")
+  protected Path createLogPath(Path realRoot) throws IOException {
+    Path dir = realRoot.resolve(".lca/run-logs")
     Files.createDirectories(dir)
     dir.resolve("run-${LOG_TIME.format(Instant.now())}.log")
   }
 
-  protected Process startProcess(String command) throws IOException {
+  protected Process startProcess(Path realRoot, String command) throws IOException {
     ProcessBuilder pb = new ProcessBuilder(List.of("bash", "-lc", command))
-    pb.directory(realProjectRoot.toFile())
+    pb.directory(realRoot.toFile())
     pb.redirectErrorStream(false)
     pb.start()
   }
 
-  protected Process startProcess(List<String> commandArgs) throws IOException {
+  protected Process startProcess(Path realRoot, List<String> commandArgs) throws IOException {
     ProcessBuilder pb = new ProcessBuilder(new ArrayList<>(commandArgs))
-    pb.directory(realProjectRoot.toFile())
+    pb.directory(realRoot.toFile())
     pb.redirectErrorStream(false)
     pb.start()
   }
@@ -327,7 +330,7 @@ class CommandRunner {
 
   @CompileStatic
   private static interface ProcessStarter {
-    Process start() throws IOException
+    Process start(Path realRoot) throws IOException
   }
 
   @Canonical
@@ -341,7 +344,9 @@ class CommandRunner {
     boolean truncated
     Path logPath
     /**
-     * Output is incomplete because reading the process stream failed, not because of the budget.
+     * Output is incomplete or absent because the command couldn't be run to completion — it
+     * failed to start, or reading its output stream failed partway through — as opposed to being
+     * cut short by the character budget ({@link #truncated}).
      * Last field so the generated telescoping constructors keep the shorter positional form valid.
      */
     boolean readError

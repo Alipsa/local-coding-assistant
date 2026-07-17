@@ -4,6 +4,7 @@ import spock.lang.Specification
 import spock.lang.Unroll
 
 import javax.swing.JOptionPane
+import javax.swing.SwingUtilities
 
 class SwingConfirmationServiceSpec extends Specification {
 
@@ -39,5 +40,71 @@ class SwingConfirmationServiceSpec extends Specification {
     then:
     result == JOptionPane.CLOSED_OPTION
     !Thread.currentThread().isInterrupted()
+  }
+
+  @Unroll
+  def "stripYesNoSuffix removes a trailing #description"() {
+    expect:
+    SwingConfirmationService.stripYesNoSuffix(input) == expected
+
+    where:
+    description             | input                                    || expected
+    "(y/n): style suffix"   | "Really do this? (y/n): "                || "Really do this?"
+    "[y/n] bracket suffix"  | "Really do this? [y/n]"                  || "Really do this?"
+    "mixed-case suffix"     | "Proceed? (Y/N):"                        || "Proceed?"
+    "no suffix at all"      | "Just a plain question?"                 || "Just a plain question?"
+    "null prompt"           | null                                      || null
+  }
+
+  def "confirm invoked already on the EDT runs the dialog directly, without invokeAndWait"() {
+    given:
+    RecordingConfirmationService service = new RecordingConfirmationService(stubResult: 0)
+
+    when:
+    ConfirmationChoice choice = null
+    SwingUtilities.invokeAndWait {
+      choice = service.confirm("Proceed?")
+    }
+
+    then:
+    choice == ConfirmationChoice.YES
+    service.dialogRanOnEdt == [true]
+  }
+
+  def "confirm invoked off the EDT hands the dialog to the EDT via invokeAndWait"() {
+    given:
+    RecordingConfirmationService service = new RecordingConfirmationService(stubResult: 1)
+
+    when: "called directly from this (non-EDT) test thread"
+    ConfirmationChoice choice = service.confirm("Proceed?")
+
+    then:
+    choice == ConfirmationChoice.NO
+    service.dialogRanOnEdt == [true]
+  }
+
+  def "confirmYesNo strips the trailing (y/n) suffix before showing the dialog"() {
+    given:
+    RecordingConfirmationService service = new RecordingConfirmationService(stubResult: 0)
+
+    when:
+    boolean result = service.confirmYesNo("Really? (y/n): ")
+
+    then:
+    result
+    service.lastMessage == "Really?"
+  }
+
+  private static class RecordingConfirmationService extends SwingConfirmationService {
+    int stubResult
+    List<Boolean> dialogRanOnEdt = []
+    String lastMessage
+
+    @Override
+    protected int showRealDialog(String message, String title, Object[] options, int defaultIndex) {
+      dialogRanOnEdt << SwingUtilities.isEventDispatchThread()
+      lastMessage = message
+      stubResult
+    }
   }
 }

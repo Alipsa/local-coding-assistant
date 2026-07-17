@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component
 import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.regex.Pattern
 
 /**
  * Swing-backed {@link ConfirmationService} used by the GUI. Shows a modal dialog on the
@@ -27,6 +28,9 @@ import java.util.concurrent.atomic.AtomicInteger
 class SwingConfirmationService implements ConfirmationService {
 
   private static final Logger log = LoggerFactory.getLogger(SwingConfirmationService)
+  // Matches a trailing console-style "(y/n): " (or "[y/n]", extra spacing, no colon, etc.) so it
+  // isn't echoed verbatim next to the dialog's own Yes/No buttons.
+  private static final Pattern YES_NO_SUFFIX = Pattern.compile(/(?i)\s*[\(\[]\s*y\s*\/\s*n\s*[\)\]]\s*:?\s*$/)
 
   @Override
   ConfirmationChoice confirm(String prompt) {
@@ -38,7 +42,13 @@ class SwingConfirmationService implements ConfirmationService {
   @Override
   boolean confirmYesNo(String prompt) {
     Object[] options = ["Yes", "No"] as Object[]
-    showOptionDialog(prompt, "Confirm", options, 1) == 0
+    showOptionDialog(stripYesNoSuffix(prompt), "Confirm", options, 1) == 0
+  }
+
+  /** Strips a trailing console-style "(y/n): " suffix, cosmetically confusing next to real buttons. */
+  @PackageScope
+  static String stripYesNoSuffix(String prompt) {
+    prompt == null ? prompt : YES_NO_SUFFIX.matcher(prompt).replaceFirst("")
   }
 
   /** Maps a {@code JOptionPane} option index (or {@code CLOSED_OPTION}) to a choice. */
@@ -53,14 +63,10 @@ class SwingConfirmationService implements ConfirmationService {
     ConfirmationChoice.NO
   }
 
-  private static int showOptionDialog(String message, String title, Object[] options, int defaultIndex) {
+  private int showOptionDialog(String message, String title, Object[] options, int defaultIndex) {
     AtomicInteger holder = new AtomicInteger(JOptionPane.CLOSED_OPTION)
     Runnable task = {
-      int choice = JOptionPane.showOptionDialog(
-        null, message, title,
-        JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
-        null, options, options[defaultIndex])
-      holder.set(choice)
+      holder.set(showRealDialog(message, title, options, defaultIndex))
     } as Runnable
     try {
       if (SwingUtilities.isEventDispatchThread()) {
@@ -77,6 +83,18 @@ class SwingConfirmationService implements ConfirmationService {
       return failClosed(e, false)
     }
     holder.get()
+  }
+
+  /**
+   * Isolates the actual modal dialog call as a seam: tests override this to return a canned
+   * option index instead of a real {@code JOptionPane} popping up, letting them exercise the
+   * EDT-detection/{@code invokeAndWait} branching in {@link #showOptionDialog} deterministically.
+   */
+  protected int showRealDialog(String message, String title, Object[] options, int defaultIndex) {
+    JOptionPane.showOptionDialog(
+      null, message, title,
+      JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+      null, options, options[defaultIndex])
   }
 
   /**

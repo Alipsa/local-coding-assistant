@@ -2,6 +2,7 @@ package se.alipsa.lca.gui
 
 import com.sun.management.OperatingSystemMXBean
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import org.springframework.stereotype.Component
 
 import java.lang.management.ManagementFactory
@@ -10,6 +11,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -33,6 +35,9 @@ class SystemMetrics {
 
   private static final double BYTES_PER_GB = 1024.0d * 1024.0d * 1024.0d
   private static final long AVAILABLE_CACHE_MILLIS = 1500L
+  // vm_stat runs once and exits near-instantly; this is a safety bound against a hung/runaway
+  // process, not a tuning knob.
+  private static final long VM_STAT_TIMEOUT_MILLIS = 2000L
 
   private final OperatingSystemMXBean osBean =
     (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean()
@@ -92,13 +97,36 @@ class SystemMetrics {
   private static Long macAvailableViaVmStat() {
     try {
       Process process = new ProcessBuilder("vm_stat").redirectErrorStream(true).start()
-      String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
-      process.waitFor()
-      long pageSize = pageSizeFromVmStat(out)
-      long pages = availablePagesFromVmStat(out)
-      pages > 0L ? Long.valueOf(pages * pageSize) : null
+      try {
+        String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+        awaitVmStat(process)
+        long pageSize = pageSizeFromVmStat(out)
+        long pages = availablePagesFromVmStat(out)
+        pages > 0L ? Long.valueOf(pages * pageSize) : null
+      } catch (Exception e) {
+        process.destroyForcibly()
+        null
+      }
     } catch (Exception ignored) {
       null
+    }
+  }
+
+  /**
+   * Bounds vm_stat's exit wait to {@link #VM_STAT_TIMEOUT_MILLIS} and force-kills it if that
+   * elapses or the wait is interrupted. On interrupt, restores the flag rather than swallowing
+   * it: this runs on a SwingWorker pool thread, so losing it would make the interrupt vanish for
+   * whichever unrelated task the pooled thread picks up next.
+   */
+  @PackageScope
+  static void awaitVmStat(Process process) {
+    try {
+      if (!process.waitFor(VM_STAT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+        process.destroyForcibly()
+      }
+    } catch (InterruptedException e) {
+      process.destroyForcibly()
+      Thread.currentThread().interrupt()
     }
   }
 

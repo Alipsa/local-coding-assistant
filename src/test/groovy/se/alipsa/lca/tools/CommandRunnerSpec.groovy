@@ -14,6 +14,36 @@ class CommandRunnerSpec extends Specification {
   @TempDir
   Path tempDir
 
+  def "the log path and process working directory stay consistent even if the workspace root changes mid-call"() {
+    given:
+    Workspace workspace = new Workspace()
+    workspace.changeBaseDir(tempDir.toString())
+    Path originalRoot = tempDir.toRealPath()
+    Path otherRoot = Files.createTempDirectory("other-root")
+    List<Path> observedRoots = []
+    CommandRunner runner = new CommandRunner(workspace) {
+      @Override
+      protected Process startProcess(Path realRoot, String command) {
+        observedRoots << realRoot
+        // Simulate a GUI-driven base dir switch landing between createLogPath() and
+        // startProcess() within the same runInternal() call.
+        workspace.changeBaseDir(otherRoot.toString())
+        super.startProcess(realRoot, command)
+      }
+    }
+
+    when:
+    CommandRunner.CommandResult result = runner.run("echo hi", 2000L, 200)
+
+    then:
+    result.success
+    observedRoots == [originalRoot]
+    result.logPath.toString().startsWith(originalRoot.toString())
+
+    cleanup:
+    otherRoot?.toFile()?.deleteDir()
+  }
+
   def "getRealProjectRoot falls back to the uncanonicalised root when it can't be resolved"() {
     given:
     Path missing = tempDir.resolve("does-not-exist")
@@ -122,7 +152,7 @@ class CommandRunnerSpec extends Specification {
     given:
     CommandRunner runner = new CommandRunner(tempDir) {
       @Override
-      protected Process startProcess(String command) throws IOException {
+      protected Process startProcess(Path realRoot, String command) throws IOException {
         throw new IOException("Cannot run program: boom")
       }
     }
@@ -146,7 +176,7 @@ class CommandRunnerSpec extends Specification {
     given:
     CommandRunner runner = new CommandRunner(tempDir) {
       @Override
-      protected Process startProcess(String command) {
+      protected Process startProcess(Path realRoot, String command) {
         new ReadFailProcess()
       }
     }
@@ -174,7 +204,7 @@ class CommandRunnerSpec extends Specification {
     given:
     CommandRunner runner = new CommandRunner(tempDir) {
       @Override
-      protected Path createLogPath() throws IOException {
+      protected Path createLogPath(Path realRoot) throws IOException {
         throw new IOException("no log")
       }
     }
@@ -210,7 +240,7 @@ class CommandRunnerSpec extends Specification {
     FakeProcess fake = new FakeProcess()
     CommandRunner runner = new CommandRunner(tempDir) {
       @Override
-      protected Process startProcess(String command) {
+      protected Process startProcess(Path realRoot, String command) {
         fake
       }
     }

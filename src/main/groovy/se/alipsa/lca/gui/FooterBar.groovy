@@ -2,6 +2,7 @@ package se.alipsa.lca.gui
 
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
@@ -11,6 +12,7 @@ import javax.swing.JProgressBar
 import javax.swing.SwingWorker
 import java.awt.Component
 import java.awt.Dimension
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The bottom metrics strip. Context-window usage and host RAM are live (best-effort);
@@ -28,6 +30,9 @@ class FooterBar extends JPanel {
   private final JProgressBar memoryBar = new JProgressBar(0, 100)
   private final JLabel autoCompactLabel = new JLabel("Autocompact: n/a")
   private final JLabel gpuLabel = new JLabel("GPU memory: n/a")
+  // Guards against a slower earlier refreshAsync() tick overwriting a fresher one's result —
+  // mirrors HeaderBar.populateBranches()'s generation counter for the same race.
+  private final AtomicInteger refreshGeneration = new AtomicInteger(0)
 
   FooterBar(SystemMetrics systemMetrics, ContextEstimator contextEstimator, String sessionId) {
     this.systemMetrics = systemMetrics
@@ -37,6 +42,8 @@ class FooterBar extends JPanel {
     setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8))
     contextBar.setStringPainted(true)
     memoryBar.setStringPainted(true)
+    contextBar.setString("n/a")
+    memoryBar.setString("n/a")
     contextBar.setMaximumSize(new Dimension(160, 18))
     memoryBar.setMaximumSize(new Dimension(200, 18))
     add(new JLabel("Context: "))
@@ -48,12 +55,10 @@ class FooterBar extends JPanel {
     add(memoryBar)
     add(separator())
     add(gpuLabel)
-    refresh()
-  }
-
-  /** Synchronous refresh; only cheap enough to call directly during construction. */
-  final void refresh() {
-    apply(collectSnapshot())
+    // Never fetch synchronously here: on a cache miss, contextEstimator.usedPercent() chains
+    // into a real HTTP call to Ollama (default 4s timeout), which would block the EDT — and the
+    // very first refresh, right after construction, is a guaranteed cache miss.
+    refreshAsync()
   }
 
   /**
@@ -63,6 +68,7 @@ class FooterBar extends JPanel {
    * {@link HeaderBar#populateBranches} uses for git listing.
    */
   final void refreshAsync() {
+    int generation = beginRefreshGeneration()
     new SwingWorker<FooterSnapshot, Void>() {
       @Override
       protected FooterSnapshot doInBackground() {
@@ -71,6 +77,9 @@ class FooterBar extends JPanel {
 
       @Override
       protected void done() {
+        if (!isCurrentRefreshGeneration(generation)) {
+          return
+        }
         try {
           apply(get())
         } catch (Exception ignored) {
@@ -79,6 +88,18 @@ class FooterBar extends JPanel {
         }
       }
     }.execute()
+  }
+
+  /** Starts a new refresh generation, superseding any still-running earlier one. */
+  @PackageScope
+  int beginRefreshGeneration() {
+    refreshGeneration.incrementAndGet()
+  }
+
+  /** Whether {@code generation} is still the most recently started refresh call. */
+  @PackageScope
+  boolean isCurrentRefreshGeneration(int generation) {
+    generation == refreshGeneration.get()
   }
 
   private FooterSnapshot collectSnapshot() {

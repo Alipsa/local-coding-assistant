@@ -2,6 +2,8 @@ package se.alipsa.lca.gui
 
 import spock.lang.Specification
 
+import java.util.concurrent.TimeUnit
+
 class SystemMetricsSpec extends Specification {
 
   SystemMetrics metrics = new SystemMetrics()
@@ -67,5 +69,97 @@ File-backed pages:                           1050019.
 
     expect:
     SystemMetrics.pageSizeFromVmStat(vmStat) == 4096L
+  }
+
+  def "awaitVmStat force-kills a process that doesn't exit within the timeout"() {
+    given:
+    FakeProcess process = new FakeProcess(false, null)
+
+    when:
+    SystemMetrics.awaitVmStat(process)
+
+    then:
+    process.destroyForciblyCalled
+  }
+
+  def "awaitVmStat force-kills and restores the interrupt flag when the wait itself is interrupted"() {
+    given:
+    FakeProcess process = new FakeProcess(false, new InterruptedException("simulated"))
+
+    when:
+    SystemMetrics.awaitVmStat(process)
+
+    then:
+    process.destroyForciblyCalled
+    Thread.currentThread().isInterrupted()
+
+    cleanup:
+    // Don't let the restored flag leak into whichever test runs next on this thread.
+    Thread.interrupted()
+  }
+
+  def "awaitVmStat leaves a normally-exiting process alone"() {
+    given:
+    FakeProcess process = new FakeProcess(true, null)
+
+    when:
+    SystemMetrics.awaitVmStat(process)
+
+    then:
+    !process.destroyForciblyCalled
+  }
+
+  private static class FakeProcess extends Process {
+    private final boolean exitsInTime
+    private final Exception waitForException
+    boolean destroyForciblyCalled = false
+
+    FakeProcess(boolean exitsInTime, Exception waitForException) {
+      this.exitsInTime = exitsInTime
+      this.waitForException = waitForException
+    }
+
+    @Override
+    OutputStream getOutputStream() {
+      OutputStream.nullOutputStream()
+    }
+
+    @Override
+    InputStream getInputStream() {
+      InputStream.nullInputStream()
+    }
+
+    @Override
+    InputStream getErrorStream() {
+      InputStream.nullInputStream()
+    }
+
+    @Override
+    int waitFor() throws InterruptedException {
+      throw new UnsupportedOperationException("not used by awaitVmStat")
+    }
+
+    @Override
+    boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException {
+      if (waitForException instanceof InterruptedException) {
+        throw (InterruptedException) waitForException
+      }
+      exitsInTime
+    }
+
+    @Override
+    int exitValue() {
+      throw new IllegalThreadStateException("still running")
+    }
+
+    @Override
+    void destroy() {
+    }
+
+    @Override
+    Process destroyForcibly() {
+      destroyForciblyCalled = true
+      this
+    }
   }
 }
