@@ -96,18 +96,32 @@ class SystemMetrics {
 
   private static Long macAvailableViaVmStat() {
     try {
-      Process process = new ProcessBuilder("vm_stat").redirectErrorStream(true).start()
-      try {
-        String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
-        awaitVmStat(process)
-        long pageSize = pageSizeFromVmStat(out)
-        long pages = availablePagesFromVmStat(out)
-        pages > 0L ? Long.valueOf(pages * pageSize) : null
-      } catch (Exception e) {
-        process.destroyForcibly()
-        null
-      }
+      parseAvailable(new ProcessBuilder("vm_stat").redirectErrorStream(true).start())
     } catch (Exception ignored) {
+      null
+    }
+  }
+
+  /**
+   * Bounds the wait BEFORE reading any output: vm_stat's output is tiny (well under a pipe
+   * buffer's worth), so it can't itself block on a full pipe waiting for us to drain it — meaning
+   * it's safe to wait first and only read once we know the process actually exited. Reading first
+   * blocks on {@code readAllBytes()} until the process closes its stdout, which for a truly hung
+   * process never happens, so the bounded {@link #awaitVmStat} below would never get a chance to
+   * run.
+   */
+  @PackageScope
+  static Long parseAvailable(Process process) {
+    try {
+      if (!awaitVmStat(process)) {
+        return null
+      }
+      String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+      long pageSize = pageSizeFromVmStat(out)
+      long pages = availablePagesFromVmStat(out)
+      pages > 0L ? Long.valueOf(pages * pageSize) : null
+    } catch (Exception e) {
+      process.destroyForcibly()
       null
     }
   }
@@ -117,16 +131,22 @@ class SystemMetrics {
    * elapses or the wait is interrupted. On interrupt, restores the flag rather than swallowing
    * it: this runs on a SwingWorker pool thread, so losing it would make the interrupt vanish for
    * whichever unrelated task the pooled thread picks up next.
+   *
+   * @return {@code true} if the process exited within the timeout; {@code false} if it had to be
+   *         force-killed (timeout or interrupt), in which case its output must not be trusted/read.
    */
   @PackageScope
-  static void awaitVmStat(Process process) {
+  static boolean awaitVmStat(Process process) {
     try {
-      if (!process.waitFor(VM_STAT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
-        process.destroyForcibly()
+      if (process.waitFor(VM_STAT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+        return true
       }
+      process.destroyForcibly()
+      return false
     } catch (InterruptedException e) {
       process.destroyForcibly()
       Thread.currentThread().interrupt()
+      return false
     }
   }
 

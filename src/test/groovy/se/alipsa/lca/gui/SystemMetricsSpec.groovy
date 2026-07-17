@@ -2,6 +2,7 @@ package se.alipsa.lca.gui
 
 import spock.lang.Specification
 
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 class SystemMetricsSpec extends Specification {
@@ -71,25 +72,27 @@ File-backed pages:                           1050019.
     SystemMetrics.pageSizeFromVmStat(vmStat) == 4096L
   }
 
-  def "awaitVmStat force-kills a process that doesn't exit within the timeout"() {
+  def "awaitVmStat force-kills and reports timeout for a process that doesn't exit within the timeout"() {
     given:
     FakeProcess process = new FakeProcess(false, null)
 
     when:
-    SystemMetrics.awaitVmStat(process)
+    boolean exited = SystemMetrics.awaitVmStat(process)
 
     then:
+    !exited
     process.destroyForciblyCalled
   }
 
-  def "awaitVmStat force-kills and restores the interrupt flag when the wait itself is interrupted"() {
+  def "awaitVmStat force-kills, reports timeout, and restores the interrupt flag when the wait itself is interrupted"() {
     given:
     FakeProcess process = new FakeProcess(false, new InterruptedException("simulated"))
 
     when:
-    SystemMetrics.awaitVmStat(process)
+    boolean exited = SystemMetrics.awaitVmStat(process)
 
     then:
+    !exited
     process.destroyForciblyCalled
     Thread.currentThread().isInterrupted()
 
@@ -98,15 +101,53 @@ File-backed pages:                           1050019.
     Thread.interrupted()
   }
 
-  def "awaitVmStat leaves a normally-exiting process alone"() {
+  def "awaitVmStat reports success and leaves a normally-exiting process alone"() {
     given:
     FakeProcess process = new FakeProcess(true, null)
 
     when:
-    SystemMetrics.awaitVmStat(process)
+    boolean exited = SystemMetrics.awaitVmStat(process)
 
     then:
+    exited
     !process.destroyForciblyCalled
+  }
+
+  def "parseAvailable never reads output from a process that didn't exit within the timeout"() {
+    given:
+    // Regression guard for the exact bug this round's review caught: output used to be read
+    // BEFORE the bounded wait, so a process that hangs without closing stdout blocked forever on
+    // that read and the timeout never got a chance to fire. A stream that fails the test if
+    // touched proves parseAvailable now checks awaitVmStat's result first.
+    FakeProcess process = new FakeProcess(false, null) {
+      @Override
+      InputStream getInputStream() {
+        throw new AssertionError("output must not be read when the process didn't exit in time")
+      }
+    }
+
+    expect:
+    SystemMetrics.parseAvailable(process) == null
+  }
+
+  def "parseAvailable reads and parses output once the process has exited"() {
+    given:
+    String vmStat = '''Mach Virtual Memory Statistics: (page size of 4096 bytes)
+Pages free:                                     100.
+Pages inactive:                                  50.
+Pages speculative:                                0.
+Pages purgeable:                                  0.
+'''
+    FakeProcess process = new FakeProcess(true, null) {
+      @Override
+      InputStream getInputStream() {
+        new ByteArrayInputStream(vmStat.getBytes(StandardCharsets.UTF_8))
+      }
+    }
+
+    expect:
+    // (100 + 50) pages * 4096 bytes/page
+    SystemMetrics.parseAvailable(process) == 150L * 4096L
   }
 
   private static class FakeProcess extends Process {

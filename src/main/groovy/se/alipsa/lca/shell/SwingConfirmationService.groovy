@@ -98,15 +98,20 @@ class SwingConfirmationService implements ConfirmationService {
   }
 
   /**
-   * Fail closed (CLOSED_OPTION → NO), recording why so a real dialog/headless failure is
-   * distinguishable from a genuine user "No". Restores the interrupt flag when {@code interrupted}.
+   * Fail closed (CLOSED_OPTION → NO) either way, so a construction bug can never hang agent work
+   * waiting on a dialog that will never appear — but log the two cases at different severities so
+   * they don't look identical: an interruption is an expected, routine part of shutdown/cancellation
+   * (logged at INFO), while any other exception means the dialog itself failed to display, which is
+   * a real bug worth surfacing prominently (logged at ERROR) rather than blending into "No" traffic.
    */
   @PackageScope
   static int failClosed(Exception e, boolean interrupted) {
     if (interrupted) {
       Thread.currentThread().interrupt()
+      log.info("Confirmation dialog wait was interrupted; treating as declined", e)
+    } else {
+      log.error("Confirmation dialog failed to display; treating as declined", e)
     }
-    log.warn("Confirmation dialog failed to display; treating as declined", e)
     JOptionPane.CLOSED_OPTION
   }
 }
