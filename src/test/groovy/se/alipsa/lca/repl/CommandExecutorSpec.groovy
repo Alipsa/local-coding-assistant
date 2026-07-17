@@ -57,4 +57,63 @@ class CommandExecutorSpec extends Specification {
     1 * shellCommands.paste(content, "/end", true, "default", PersonaMode.CODER) >> "sent"
     result == "sent"
   }
+
+  def "execute binds hyphenated flags like --no-color and --min-severity"() {
+    given:
+    String command = '/review --code "x" --no-color --min-severity HIGH'
+
+    when:
+    String result = executor.execute(command)
+
+    then:
+    1 * shellCommands.review("x", "", "default", null, null, null, null, null, false,
+      ReviewSeverity.HIGH, true, true, false, false, false, null) >> "reviewed"
+    result == "reviewed"
+  }
+
+  def "execute binds --show-reasoning and --with-thinking on /chat"() {
+    when:
+    executor.execute('/chat hello --show-reasoning')
+
+    then:
+    1 * shellCommands.chat(["hello"] as String[], "default", PersonaMode.CODER, null, null, null,
+      null, null, false, true) >> "chatted"
+
+    when:
+    executor.execute('/chat hello --with-thinking')
+
+    then:
+    1 * shellCommands.chat(["hello"] as String[], "default", PersonaMode.CODER, null, null, null,
+      null, null, false, true) >> "chatted"
+  }
+
+  def "execute binds --case-insensitive on /codesearch"() {
+    when:
+    String result = executor.execute('/codesearch --query foo --case-insensitive')
+
+    then:
+    1 * shellCommands.codeSearch("foo", null, 2, 20, false, 8000, 0, true) >> "searched"
+    result == "searched"
+  }
+
+  def "execute dispatches /reviewlog to ShellCommands.reviewLog"() {
+    given:
+    String command = '/reviewlog --min-severity MEDIUM --path-filter src --limit 10 --page 2 --since 2026-01-01T00:00:00Z --no-color'
+
+    when:
+    String result = executor.execute(command)
+
+    then:
+    1 * shellCommands.reviewLog(ReviewSeverity.MEDIUM, "src", 10, 2, "2026-01-01T00:00:00Z", true) >> "log"
+    result == "log"
+  }
+
+  def "execute dispatches /reviewlog with defaults when no flags are given"() {
+    when:
+    String result = executor.execute('/reviewlog')
+
+    then:
+    1 * shellCommands.reviewLog(ReviewSeverity.LOW, null, 5, 1, null, false) >> "log"
+    result == "log"
+  }
 }
