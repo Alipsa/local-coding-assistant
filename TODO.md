@@ -1,5 +1,15 @@
 # TODO
 
+## Add a way to access command history in the lcaGui.
+e.g. shift+up/down to scroll through previous commands, or a dedicated "history" panel.
+
+## Memory and GPU setting
+If i run ollama on a remote machine via an ssh tunnel, lcaGui thinks that i am running locally. We should split local memory and ollama memory or (if there is no room), only show the ollama memory.
+
+## Application icon
+Currently the duke icon is used for the application. We should create a custom icon for the application.
+Create and SVG icon as the base for icon creation. Use a nice font to write LCA on a midnight blue background. Use the SVG to create a PNG icon for the application.
+
 ## demo/openCodeMlx: waiting on upstream opencode features
 
 - **System resource (RAM/GPU) display in opencode's TUI.** Would be nice to
