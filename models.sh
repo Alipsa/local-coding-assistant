@@ -86,6 +86,7 @@ EOF
 #checkAndInstall deepseek-coder:6.7b
 checkAndInstall qwen3.6:35b-a3b
 checkAndInstall gpt-oss:20b
+checkAndInstall nomic-embed-text:latest
 
 # Create custom models with larger context (128k=131072, 64k=65536)
 createCustomModel qwen3.6:35b-a3b qwen3.6-128k 131072

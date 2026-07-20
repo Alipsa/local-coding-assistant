@@ -23,6 +23,12 @@ import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.lang.NonNull
+import se.alipsa.lca.memory.MemoryEntry
+import se.alipsa.lca.memory.MemorySettings
+import se.alipsa.lca.memory.MemoryStore
+import se.alipsa.lca.memory.ProjectScopeResolver
+import se.alipsa.lca.memory.RecalledMemory
+import se.alipsa.lca.memory.RecalledMemoryFormatter
 import se.alipsa.lca.shell.ConfirmationService
 import se.alipsa.lca.tools.ConfirmingLlmTool
 import se.alipsa.lca.tools.FileEditingTool
@@ -161,6 +167,9 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   private final ConfirmationService confirmationService
   private final LocalOnlyState localOnlyState
   private final SessionState sessionState
+  private final MemoryStore memoryStore
+  private final MemorySettings memorySettings
+  private final ProjectScopeResolver projectScopeResolver
   private volatile List<Tool> discoveredLlmTools
 
   CodingAssistantAgent(
@@ -177,7 +186,10 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     GitTool gitTool,
     ConfirmationService confirmationService,
     LocalOnlyState localOnlyState,
-    SessionState sessionState
+    SessionState sessionState,
+    MemoryStore memoryStore,
+    MemorySettings memorySettings,
+    ProjectScopeResolver projectScopeResolver
   ) {
     this.snippetWordCount = snippetWordCount
     this.reviewWordCount = reviewWordCount
@@ -195,6 +207,9 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     this.confirmationService = confirmationService
     this.localOnlyState = Objects.requireNonNull(localOnlyState, "localOnlyState must not be null")
     this.sessionState = Objects.requireNonNull(sessionState, "sessionState must not be null")
+    this.memoryStore = memoryStore
+    this.memorySettings = memorySettings
+    this.projectScopeResolver = projectScopeResolver
   }
 
   @AchievesGoal(
@@ -431,6 +446,33 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
       )
     }
     new PullRequestSummary(true, true, prs, null)
+  }
+
+  @Action(description = "Search long-term memory for facts relevant to a query.")
+  @LlmTool(
+    name = "recallMemory",
+    description = "Search long-term memory for facts or context relevant to the given query."
+  )
+  String recallMemory(String query) {
+    List<RecalledMemory> recalled = memoryStore.recall(
+      query, memorySettings.recallTopK, projectScopeResolver.currentProjectId()
+    )
+    String rendered = RecalledMemoryFormatter.render(recalled, memorySettings.recallMaxContextChars)
+    rendered ?: "No relevant memories found."
+  }
+
+  @Action(description = "Explicitly store a fact in long-term memory, e.g. a user preference or standing instruction.")
+  @LlmTool(
+    name = "rememberFact",
+    description = "Store a fact in long-term memory so it's recalled in future conversations. " +
+      "Use scope=\"project\" (default) for facts specific to the current repository (e.g. build " +
+      "commands, conventions), or scope=\"global\" for facts that should apply everywhere " +
+      "(e.g. the user's general style preferences)."
+  )
+  String rememberFact(String fact, String scope = "project") {
+    String projectId = scope == "global" ? null : projectScopeResolver.currentProjectId()
+    MemoryEntry entry = memoryStore.remember(fact, null, projectId)
+    entry ? "Remembered." : "Could not store that (memory may be disabled, or the write failed)."
   }
 
   /**

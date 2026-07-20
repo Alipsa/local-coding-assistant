@@ -6,6 +6,10 @@ import com.embabel.chat.AssistantMessage
 import com.embabel.chat.UserMessage
 import com.embabel.chat.support.InMemoryConversation
 import com.embabel.common.ai.model.LlmOptions
+import se.alipsa.lca.memory.MemorySettings
+import se.alipsa.lca.memory.MemoryStore
+import se.alipsa.lca.memory.ProjectScopeResolver
+import se.alipsa.lca.memory.SurprisingLearningDetector
 import spock.lang.Specification
 
 class ChatAgentSpec extends Specification {
@@ -20,7 +24,13 @@ class ChatAgentSpec extends Specification {
     runner.respond(_ as List) >> new AssistantMessage("ok")
     CodingAssistantAgent codingAssistant = Mock()
     codingAssistant.buildLlmTools(_ as String) >> []
-    ChatAgent agent = new ChatAgent(200, codingAssistant)
+    MemoryStore memoryStore = Mock()
+    MemorySettings memorySettings = Mock()
+    ProjectScopeResolver projectScopeResolver = Mock()
+    SurprisingLearningDetector surprisingLearningDetector = Mock()
+    ChatAgent agent = new ChatAgent(
+      200, codingAssistant, memoryStore, memorySettings, projectScopeResolver, surprisingLearningDetector
+    )
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)
@@ -45,7 +55,13 @@ class ChatAgentSpec extends Specification {
     runner.respond(_ as List) >> new AssistantMessage("ok")
     CodingAssistantAgent codingAssistant = Mock()
     codingAssistant.buildLlmTools(_ as String) >> []
-    ChatAgent agent = new ChatAgent(200, codingAssistant)
+    MemoryStore memoryStore = Mock()
+    MemorySettings memorySettings = Mock()
+    ProjectScopeResolver projectScopeResolver = Mock()
+    SurprisingLearningDetector surprisingLearningDetector = Mock()
+    ChatAgent agent = new ChatAgent(
+      200, codingAssistant, memoryStore, memorySettings, projectScopeResolver, surprisingLearningDetector
+    )
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)
@@ -63,5 +79,72 @@ class ChatAgentSpec extends Specification {
     }
     captured[0] != null
     !captured[0].contains("Implementation:")
+  }
+
+  def "a memory recall failure does not break an otherwise-successful chat turn"() {
+    given:
+    PromptRunner runner = Mock()
+    Ai ai = Mock()
+    ai.withLlm(_ as LlmOptions) >> runner
+    runner.withPromptContributor(_) >> runner
+    runner.withSystemPrompt(_) >> runner
+    runner.withTools(_) >> runner
+    runner.respond(_ as List) >> new AssistantMessage("ok")
+    CodingAssistantAgent codingAssistant = Mock()
+    codingAssistant.buildLlmTools(_ as String) >> []
+    MemoryStore memoryStore = Mock()
+    MemorySettings memorySettings = Mock()
+    memorySettings.enabled >> true
+    ProjectScopeResolver projectScopeResolver = Mock()
+    projectScopeResolver.currentProjectId() >> "proj-1"
+    memoryStore.recall(_, _, _) >> { throw new IllegalStateException("embedding model unavailable") }
+    SurprisingLearningDetector surprisingLearningDetector = Mock()
+    ChatAgent agent = new ChatAgent(
+      200, codingAssistant, memoryStore, memorySettings, projectScopeResolver, surprisingLearningDetector
+    )
+    def conversation = new InMemoryConversation()
+    def userMessage = new UserMessage("Hello")
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, LlmOptions.withModel("m"), "", null)
+
+    when:
+    def reply = agent.respond(conversation, userMessage, request, ai)
+
+    then:
+    reply.textContent == "ok"
+    conversation.messages.any { it instanceof AssistantMessage && it.textContent == "ok" }
+  }
+
+  def "a surprising-learning capture failure does not break an otherwise-successful chat turn"() {
+    given:
+    PromptRunner runner = Mock()
+    Ai ai = Mock()
+    ai.withLlm(_ as LlmOptions) >> runner
+    runner.withPromptContributor(_) >> runner
+    runner.withSystemPrompt(_) >> runner
+    runner.withTools(_) >> runner
+    runner.respond(_ as List) >> new AssistantMessage("ok")
+    CodingAssistantAgent codingAssistant = Mock()
+    codingAssistant.buildLlmTools(_ as String) >> []
+    MemoryStore memoryStore = Mock()
+    MemorySettings memorySettings = Mock()
+    memorySettings.enabled >> false
+    ProjectScopeResolver projectScopeResolver = Mock()
+    SurprisingLearningDetector surprisingLearningDetector = Mock()
+    surprisingLearningDetector.maybeRemember(_, _, _, _) >> { throw new IllegalStateException("classifier failed") }
+    ChatAgent agent = new ChatAgent(
+      200, codingAssistant, memoryStore, memorySettings, projectScopeResolver, surprisingLearningDetector
+    )
+    def conversation = new InMemoryConversation()
+    def userMessage = new UserMessage("Hello")
+    conversation.addMessage(userMessage)
+    ChatRequest request = new ChatRequest(PersonaMode.CODER, LlmOptions.withModel("m"), "", null)
+
+    when:
+    def reply = agent.respond(conversation, userMessage, request, ai)
+
+    then:
+    reply.textContent == "ok"
+    conversation.messages.any { it instanceof AssistantMessage && it.textContent == "ok" }
   }
 }
