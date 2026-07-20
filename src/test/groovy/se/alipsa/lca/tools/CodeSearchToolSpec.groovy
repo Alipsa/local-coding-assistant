@@ -72,4 +72,19 @@ class CodeSearchToolSpec extends Specification {
     expect:
     tool.search("match", List.of(), 0, 5).isEmpty()
   }
+
+  def "skips files that are not valid UTF-8 instead of aborting the whole search"() {
+    given:
+    // Mimics a macOS .DS_Store: binary bytes that are not valid UTF-8.
+    Files.write(tempDir.resolve(".DS_Store"), (byte[]) [0x00, 0x01, (byte) 0xFF, (byte) 0xFE, 0x00])
+    Files.writeString(tempDir.resolve("Sample.groovy"), "one\nmatch here\nthree\n")
+    CodeSearchTool tool = new CodeSearchTool(tempDir)
+
+    when:
+    def hits = tool.search("match", List.of(), 1, 10)
+
+    then:
+    hits.size() == 1
+    hits.first().path.endsWith("Sample.groovy")
+  }
 }
