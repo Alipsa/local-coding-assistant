@@ -461,15 +461,25 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     rendered ?: "No relevant memories found."
   }
 
+  /**
+   * Convenience overload for internal/Groovy callers (defaults to project scope). Deliberately
+   * NOT annotated with @Action/@LlmTool - a Groovy default parameter value on an annotated
+   * method compiles into two real overloaded methods that both carry the annotations, which
+   * Embabel's action-graph validation then rejects as DUPLICATE_ACTION_NAME.
+   */
+  String rememberFact(String fact) {
+    rememberFact(fact, "project")
+  }
+
   @Action(description = "Explicitly store a fact in long-term memory, e.g. a user preference or standing instruction.")
   @LlmTool(
     name = "rememberFact",
     description = "Store a fact in long-term memory so it's recalled in future conversations. " +
-      "Use scope=\"project\" (default) for facts specific to the current repository (e.g. build " +
+      "Pass scope=\"project\" for facts specific to the current repository (e.g. build " +
       "commands, conventions), or scope=\"global\" for facts that should apply everywhere " +
       "(e.g. the user's general style preferences)."
   )
-  String rememberFact(String fact, String scope = "project") {
+  String rememberFact(String fact, String scope) {
     String projectId = scope == "global" ? null : projectScopeResolver.currentProjectId()
     MemoryEntry entry = memoryStore.remember(fact, null, projectId)
     entry ? "Remembered." : "Could not store that (memory may be disabled, or the write failed)."
