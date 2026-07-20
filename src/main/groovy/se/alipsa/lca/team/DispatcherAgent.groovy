@@ -1,21 +1,24 @@
 package se.alipsa.lca.team
 
+import com.embabel.agent.api.annotation.AchievesGoal
+import com.embabel.agent.api.annotation.Action
+import com.embabel.agent.api.annotation.Agent
 import com.embabel.agent.api.common.Ai
 import com.embabel.common.ai.model.LlmOptions
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
+import org.springframework.context.annotation.Profile
 
 import java.time.Duration
 
-@Component
+@Agent(name = "lca-team-dispatcher", description = "Classify a coding task as simple or complex")
+@Profile("!test")
 @CompileStatic
 class DispatcherAgent {
 
   private static final Logger log = LoggerFactory.getLogger(DispatcherAgent)
-  private static final long DISPATCHER_TIMEOUT_SECONDS = 30L
 
   private final Ai ai
   private final TeamSettings settings
@@ -25,7 +28,10 @@ class DispatcherAgent {
     this.settings = settings
   }
 
-  DispatchResult classify(String prompt) {
+  @AchievesGoal(description = "Classify a coding task as simple or complex")
+  @Action(canRerun = true, trigger = DispatchRequest)
+  DispatchResult classify(DispatchRequest request) {
+    String prompt = request?.prompt
     if (prompt == null || prompt.trim().isEmpty()) {
       return new DispatchResult(false, "Empty or null prompt")
     }
@@ -34,7 +40,7 @@ class DispatcherAgent {
 
     LlmOptions options = LlmOptions.withModel(settings.dispatcherModel)
       .withTemperature(settings.dispatcherTemperature)
-      .withTimeout(Duration.ofSeconds(DISPATCHER_TIMEOUT_SECONDS))
+      .withTimeout(Duration.ofSeconds(settings.dispatcherTimeoutSeconds))
 
     try {
       String response = ai.withLlm(options).generateText(classificationPrompt)

@@ -25,6 +25,7 @@ class TeamOrchestrator {
   private final DispatcherAgent dispatcher
   private final ArchitectAgent architect
   private final EngineerAgent engineer
+  private final TeamReviewerAgent reviewer
   private final TeamSettings settings
   private final FileEditingTool fileEditingTool
 
@@ -32,12 +33,14 @@ class TeamOrchestrator {
     DispatcherAgent dispatcher,
     ArchitectAgent architect,
     EngineerAgent engineer,
+    TeamReviewerAgent reviewer,
     TeamSettings settings,
     FileEditingTool fileEditingTool
   ) {
     this.dispatcher = dispatcher
     this.architect = architect
     this.engineer = engineer
+    this.reviewer = reviewer
     this.settings = settings
     this.fileEditingTool = fileEditingTool
   }
@@ -48,7 +51,7 @@ class TeamOrchestrator {
 
   TeamResult execute(String prompt, String sessionSystemPrompt) {
     // Classify complexity
-    DispatcherAgent.DispatchResult dispatch = dispatcher.classify(prompt)
+    DispatcherAgent.DispatchResult dispatch = dispatcher.classify(new DispatchRequest(prompt))
     log.info("Dispatcher classified task as {}: {}", dispatch.complex ? "complex" : "simple", dispatch.reason)
 
     if (!dispatch.complex) {
@@ -71,18 +74,18 @@ class TeamOrchestrator {
     // Build context from any referenced files
     String context = readContextForStep(step)
 
-    EngineerStepResult result = engineer.executeStep(step, syntheticPlan, [], context)
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, syntheticPlan, [], context))
     List<EngineerStepResult> results = [result]
 
-    String fullOutput = formatOutput(null, results, false)
+    String fullOutput = formatOutput(null, results, false, null)
     new TeamResult(result.success, result.success ? "Simple task completed" : "Simple task failed",
-      null, results, fullOutput)
+      null, results, fullOutput, null)
   }
 
   private TeamResult executeComplex(String prompt, String sessionSystemPrompt) {
     // Architect phase
     println("Architect is analysing the task...")
-    ArchitectPlan plan = architect.plan(prompt, sessionSystemPrompt)
+    ArchitectPlan plan = architect.plan(new PlanRequest(prompt, sessionSystemPrompt))
 
     // Print plan summary
     println("\n=== Architect Plan ===")
@@ -102,8 +105,8 @@ class TeamOrchestrator {
       BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))
       String answer = reader.readLine()?.trim()?.toLowerCase(Locale.ROOT)
       if (answer != "y" && answer != "yes") {
-        String fullOutput = formatOutput(plan, [], true)
-        return new TeamResult(false, "Plan rejected by user", plan, [], fullOutput)
+        String fullOutput = formatOutput(plan, [], true, null)
+        return new TeamResult(false, "Plan rejected by user", plan, [], fullOutput, null)
       }
     }
 
@@ -113,8 +116,8 @@ class TeamOrchestrator {
     try {
       waves = computeExecutionWaves(sortedSteps)
     } catch (IllegalStateException e) {
-      String failOutput = formatOutput(plan, [], false)
-      return new TeamResult(false, e.message, plan, [], failOutput)
+      String failOutput = formatOutput(plan, [], false, null)
+      return new TeamResult(false, e.message, plan, [], failOutput, null)
     }
 
     // Print execution plan with wave info
@@ -138,10 +141,10 @@ class TeamOrchestrator {
         String collisionMsg = collisions.collect { FileCollision c ->
           "${c.filePath} (steps ${c.conflictingStepOrders})"
         }.join(", ")
-        String failOutput = formatOutput(plan, stepResults, false)
+        String failOutput = formatOutput(plan, stepResults, false, null)
         return new TeamResult(false,
           "File collision in wave ${wave.waveNumber}: ${collisionMsg}".toString(),
-          plan, stepResults, failOutput)
+          plan, stepResults, failOutput, null)
       }
 
       // Execute wave
@@ -162,12 +165,12 @@ class TeamOrchestrator {
         for (EngineerStepResult fail : failures) {
           println("Step ${fail.stepOrder} FAILED: ${fail.errorMessage}")
         }
-        String failOutput = formatOutput(plan, stepResults, false)
+        String failOutput = formatOutput(plan, stepResults, false, null)
         int succeeded = stepResults.count { EngineerStepResult r -> r.success } as int
         int failedStep = failures.first().stepOrder
         return new TeamResult(false,
           "Failed at step ${failedStep}/${totalSteps} (${succeeded} steps succeeded)".toString(),
-          plan, stepResults, failOutput)
+          plan, stepResults, failOutput, null)
       }
 
       for (EngineerStepResult r : waveResults) {
@@ -175,10 +178,43 @@ class TeamOrchestrator {
       }
     }
 
-    String fullOutput = formatOutput(plan, stepResults, false)
+    // QA phase — review the accumulated diff; one bounded fix-up pass if High severity is flagged
+    println("\nQA reviewer is checking the implementation...")
+    TeamReviewResult qa = runQaReview(plan, stepResults, sessionSystemPrompt)
+    if (qa.hasHighSeverityFinding) {
+      println("QA flagged high-severity findings; running one fix-up pass...")
+      PlanStep fixStep = new PlanStep(
+        totalSteps + 1,
+        "Address the following QA review findings:\n${qa.review}".toString(),
+        null, StepAction.MODIFY, [], [],
+        "All High severity QA findings from the review below are resolved"
+      )
+      String fixContext = readContextForStep(fixStep)
+      EngineerStepResult fixResult = engineer.executeStep(
+        new EngineerStepRequest(fixStep, plan, stepResults, fixContext)
+      )
+      stepResults.add(fixResult)
+      if (!fixResult.success) {
+        String failOutput = formatOutput(plan, stepResults, false, qa.review)
+        return new TeamResult(false,
+          "QA-flagged fix-up failed: ${fixResult.errorMessage}".toString(),
+          plan, stepResults, failOutput, qa.review)
+      }
+      println("Fix-up applied; re-reviewing once more (no further retries)...")
+      qa = runQaReview(plan, stepResults, sessionSystemPrompt)
+    }
+
+    String fullOutput = formatOutput(plan, stepResults, false, qa.review)
     new TeamResult(true,
       "All ${totalSteps} steps completed successfully in ${waves.size()} wave(s)".toString(),
-      plan, stepResults, fullOutput)
+      plan, stepResults, fullOutput, qa.review)
+  }
+
+  private TeamReviewResult runQaReview(ArchitectPlan plan, List<EngineerStepResult> stepResults, String sessionSystemPrompt) {
+    String diffText = stepResults.collect { EngineerStepResult r ->
+      "Step ${r.stepOrder} (${r.success ? "SUCCESS" : "FAILED"}, modified: ${r.filesModified.join(', ')}):\n${r.toolResults ?: r.llmResponse ?: ''}"
+    }.join("\n\n")
+    reviewer.review(new TeamReviewRequest(plan.summary, diffText, sessionSystemPrompt))
   }
 
   List<ExecutionWave> computeExecutionWaves(List<PlanStep> steps) {
@@ -251,7 +287,7 @@ class TeamOrchestrator {
     if (wave.steps.size() == 1) {
       PlanStep step = wave.steps.first()
       String context = readContextForStep(step)
-      EngineerStepResult result = engineer.executeStep(step, plan, priorResults, context)
+      EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, priorResults, context))
       return [result]
     }
 
@@ -277,7 +313,7 @@ class TeamOrchestrator {
               }
               String context = readContextForStep(capturedStep)
               EngineerStepResult result = engineer.executeStep(
-                capturedStep, plan, priorResults, context
+                new EngineerStepRequest(capturedStep, plan, priorResults, context)
               )
               if (!result.success) {
                 failed.set(true)
@@ -362,7 +398,7 @@ class TeamOrchestrator {
     text.substring(0, maxChars) + "\n... (truncated)"
   }
 
-  private String formatOutput(ArchitectPlan plan, List<EngineerStepResult> results, boolean rejected) {
+  private String formatOutput(ArchitectPlan plan, List<EngineerStepResult> results, boolean rejected, String qaReview) {
     StringBuilder sb = new StringBuilder()
 
     if (plan != null) {
@@ -398,6 +434,12 @@ class TeamOrchestrator {
       }
     }
 
+    if (qaReview != null && !qaReview.trim().isEmpty()) {
+      sb.append("\n=== QA Review ===\n")
+      sb.append(qaReview)
+      sb.append("\n")
+    }
+
     int succeeded = results.count { EngineerStepResult r -> r.success } as int
     int total = results.size()
     sb.append("\nCompleted: ${succeeded}/${total} steps")
@@ -412,6 +454,7 @@ class TeamOrchestrator {
     ArchitectPlan plan
     List<EngineerStepResult> stepResults
     String fullOutput
+    String qaReview
   }
 
   @Canonical

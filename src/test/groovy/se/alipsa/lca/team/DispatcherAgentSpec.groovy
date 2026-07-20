@@ -8,14 +8,16 @@ class DispatcherAgentSpec extends Specification {
 
   Ai ai = Mock()
   PromptRunner promptRunner = Mock()
-  TeamSettings settings = new TeamSettings(false, "model", "model", "model", 0.1d, true)
+  TeamSettings settings = new TeamSettings(
+    false, "model", "model", "model", "model", 0.1d, 0.3d, 0.2d, 0.1d, 30L, 300L, 600L, 300L, true
+  )
 
   def "null prompt is classified as simple without LLM call"() {
     given:
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify(null)
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest(null))
 
     then:
     !result.complex
@@ -27,7 +29,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest(""))
 
     then:
     !result.complex
@@ -39,7 +41,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("   ")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest("   "))
 
     then:
     !result.complex
@@ -53,7 +55,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("add a logger")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest("add a logger"))
 
     then:
     !result.complex
@@ -67,7 +69,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("refactor authentication")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest("refactor authentication"))
 
     then:
     result.complex
@@ -81,7 +83,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("do something")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest("do something"))
 
     then:
     result.complex
@@ -94,7 +96,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("add a method")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest("add a method"))
 
     then:
     result.complex
@@ -108,7 +110,7 @@ class DispatcherAgentSpec extends Specification {
     DispatcherAgent dispatcher = new DispatcherAgent(ai, settings)
 
     when:
-    DispatcherAgent.DispatchResult result = dispatcher.classify("something")
+    DispatcherAgent.DispatchResult result = dispatcher.classify(new DispatchRequest("something"))
 
     then:
     result.complex

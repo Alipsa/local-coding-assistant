@@ -2,75 +2,37 @@ package se.alipsa.lca.team
 
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.api.common.PromptRunner
-import groovy.json.JsonBuilder
 import spock.lang.Specification
 
 class ArchitectAgentSpec extends Specification {
 
   Ai ai = Mock()
   PromptRunner promptRunner = Mock()
-  TeamSettings settings = new TeamSettings(false, "test-model", "test-model", "test-model", 0.1d, true)
+  TeamSettings settings = new TeamSettings(
+    false, "test-model", "test-model", "test-model", "test-model",
+    0.1d, 0.3d, 0.2d, 0.1d, 30L, 300L, 600L, 300L, true
+  )
 
-  def "plan parses valid JSON response"() {
+  def "plan returns the structured plan produced by createObject"() {
     given:
-    String jsonResponse = new JsonBuilder([
-      summary: "Add logging",
-      steps: [[order: 1, description: "Add logger", action: "MODIFY", targetFile: "Foo.groovy"]],
-      risks: ["None"],
-      reasoning: "Simple change"
-    ]).toString()
-
+    ArchitectPlan expected = new ArchitectPlan(
+      "Add logging",
+      [new PlanStep(1, "Add logger", "Foo.groovy", StepAction.MODIFY, [], [], "")],
+      [], ["None"], "Simple change"
+    )
     ai.withLlm(_) >> promptRunner
     promptRunner.withPromptContributor(_) >> promptRunner
-    promptRunner.generateText(_) >> jsonResponse
+    promptRunner.createObject(_ as String, ArchitectPlan) >> expected
 
     ArchitectAgent agent = new ArchitectAgent(ai, settings, null)
 
     when:
-    ArchitectPlan plan = agent.plan("add logging", null)
+    ArchitectPlan plan = agent.plan(new PlanRequest("add logging", null))
 
     then:
     plan.summary == "Add logging"
     plan.steps.size() == 1
     plan.steps[0].description == "Add logger"
-  }
-
-  def "plan handles JSON wrapped in markdown code fence"() {
-    given:
-    String wrappedResponse = '```json\n{"summary":"Test","steps":[],"risks":[],"reasoning":""}\n```'
-
-    ArchitectAgent agent = new ArchitectAgent(ai, settings, null)
-
-    when:
-    ArchitectPlan plan = agent.parseResponse(wrappedResponse)
-
-    then:
-    plan.summary == "Test"
-    plan.steps.isEmpty()
-  }
-
-  def "plan creates fallback for invalid JSON"() {
-    given:
-    ArchitectAgent agent = new ArchitectAgent(ai, settings, null)
-
-    when:
-    ArchitectPlan plan = agent.parseResponse("This is not JSON at all, just plain text.")
-
-    then:
-    plan.steps.size() == 1
-    plan.summary.contains("Fallback")
-  }
-
-  def "plan creates fallback for empty response"() {
-    given:
-    ArchitectAgent agent = new ArchitectAgent(ai, settings, null)
-
-    when:
-    ArchitectPlan plan = agent.parseResponse("")
-
-    then:
-    plan.steps.size() == 1
-    plan.summary.contains("Fallback")
   }
 
   def "plan creates fallback on exception"() {
@@ -79,7 +41,7 @@ class ArchitectAgentSpec extends Specification {
     ArchitectAgent agent = new ArchitectAgent(ai, settings, null)
 
     when:
-    ArchitectPlan plan = agent.plan("some task", null)
+    ArchitectPlan plan = agent.plan(new PlanRequest("some task", null))
 
     then:
     plan.steps.size() == 1
@@ -87,15 +49,24 @@ class ArchitectAgentSpec extends Specification {
     plan.risks.any { it.contains("LLM unavailable") }
   }
 
-  def "parseResponse handles JSON with surrounding text"() {
+  def "plan folds the session system prompt into the prompt sent to the LLM"() {
     given:
-    String response = 'Here is my plan:\n{"summary":"Plan","steps":[],"risks":[]}\nDone.'
+    String capturedPrompt = null
+    ArchitectPlan expected = new ArchitectPlan("Plan", [], [], [], "")
+    ai.withLlm(_) >> promptRunner
+    promptRunner.withPromptContributor(_) >> promptRunner
+    promptRunner.createObject(_ as String, ArchitectPlan) >> { String prompt, Class type ->
+      capturedPrompt = prompt
+      expected
+    }
+
     ArchitectAgent agent = new ArchitectAgent(ai, settings, null)
 
     when:
-    ArchitectPlan plan = agent.parseResponse(response)
+    agent.plan(new PlanRequest("do the thing", "Extra session guidance"))
 
     then:
-    plan.summary == "Plan"
+    capturedPrompt.contains("Extra session guidance")
+    capturedPrompt.contains("do the thing")
   }
 }

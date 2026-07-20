@@ -8,12 +8,15 @@ class TeamOrchestratorSpec extends Specification {
   DispatcherAgent dispatcher = Mock()
   ArchitectAgent architect = Mock()
   EngineerAgent engineer = Mock()
-  TeamSettings settings = new TeamSettings(true, "model", "model", "model", 0.1d, true)
+  TeamReviewerAgent reviewer = Mock()
+  TeamSettings settings = new TeamSettings(
+    true, "model", "model", "model", "model", 0.1d, 0.3d, 0.2d, 0.1d, 30L, 300L, 600L, 300L, true
+  )
   FileEditingTool fileEditingTool = Mock()
   TeamOrchestrator orchestrator
 
   def setup() {
-    orchestrator = new TeamOrchestrator(dispatcher, architect, engineer, settings, fileEditingTool)
+    orchestrator = new TeamOrchestrator(dispatcher, architect, engineer, reviewer, settings, fileEditingTool)
   }
 
   def "isEnabled delegates to settings"() {
@@ -23,8 +26,12 @@ class TeamOrchestratorSpec extends Specification {
 
   def "isEnabled returns false when disabled"() {
     given:
-    TeamSettings disabled = new TeamSettings(false, "model", "model", "model", 0.1d, true)
-    TeamOrchestrator disabledOrch = new TeamOrchestrator(dispatcher, architect, engineer, disabled, fileEditingTool)
+    TeamSettings disabled = new TeamSettings(
+      false, "model", "model", "model", "model", 0.1d, 0.3d, 0.2d, 0.1d, 30L, 300L, 600L, 300L, true
+    )
+    TeamOrchestrator disabledOrch = new TeamOrchestrator(
+      dispatcher, architect, engineer, reviewer, disabled, fileEditingTool
+    )
 
     expect:
     !disabledOrch.isEnabled()
@@ -33,7 +40,7 @@ class TeamOrchestratorSpec extends Specification {
   def "simple task bypasses architect and calls engineer directly"() {
     given:
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(false, "Simple")
-    engineer.executeStep(_, _, _, _) >> new EngineerStepResult(1, true, "OK", "response", ["file.groovy"], null)
+    engineer.executeStep(_) >> new EngineerStepResult(1, true, "OK", "response", ["file.groovy"], null)
 
     when:
     TeamOrchestrator.TeamResult result = orchestrator.execute("add a logger", null)
@@ -42,13 +49,14 @@ class TeamOrchestratorSpec extends Specification {
     result.success
     result.plan == null // no architect plan for simple tasks
     result.stepResults.size() == 1
-    0 * architect.plan(_, _) // architect never called
+    0 * architect.plan(_) // architect never called
+    0 * reviewer.review(_) // QA is scoped to the complex path only
   }
 
   def "complex task calls architect then engineer"() {
     given:
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex keyword")
-    architect.plan(_, _) >> new ArchitectPlan(
+    architect.plan(_) >> new ArchitectPlan(
       "Refactor plan",
       [
         new PlanStep(1, "Step 1", "File1.groovy", StepAction.MODIFY, [], [], "Done"),
@@ -58,10 +66,11 @@ class TeamOrchestratorSpec extends Specification {
       ["Risk 1"],
       "Reasoning"
     )
-    engineer.executeStep(_, _, _, _) >>> [
+    engineer.executeStep(_) >>> [
       new EngineerStepResult(1, true, "OK", "r1", ["File1.groovy"], null),
       new EngineerStepResult(2, true, "OK", "r2", ["File2.groovy"], null)
     ]
+    reviewer.review(_) >> new TeamReviewResult("No issues found.", false)
 
     when:
     TeamOrchestrator.TeamResult result = orchestrator.execute("refactor everything", null)
@@ -71,12 +80,13 @@ class TeamOrchestratorSpec extends Specification {
     result.plan != null
     result.plan.summary == "Refactor plan"
     result.stepResults.size() == 2
+    result.qaReview == "No issues found."
   }
 
   def "step failure halts execution"() {
     given:
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
-    architect.plan(_, _) >> new ArchitectPlan(
+    architect.plan(_) >> new ArchitectPlan(
       "Plan",
       [
         new PlanStep(1, "Step 1", null, StepAction.MODIFY, [], [], ""),
@@ -85,7 +95,7 @@ class TeamOrchestratorSpec extends Specification {
       ],
       [], [], ""
     )
-    engineer.executeStep(_, _, _, _) >>> [
+    engineer.executeStep(_) >>> [
       new EngineerStepResult(1, true, "OK", "r1", [], null),
       new EngineerStepResult(2, false, null, "r2", [], "Grounding check failed"),
     ]
@@ -97,12 +107,14 @@ class TeamOrchestratorSpec extends Specification {
     !result.success
     result.stepResults.size() == 2 // step 3 never executed
     result.summary.contains("Failed at step 2")
+    0 * reviewer.review(_) // failure short-circuits before QA
   }
 
   def "empty plan produces successful result"() {
     given:
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
-    architect.plan(_, _) >> new ArchitectPlan("Empty plan", [], [], [], "")
+    architect.plan(_) >> new ArchitectPlan("Empty plan", [], [], [], "")
+    reviewer.review(_) >> new TeamReviewResult("No issues found.", false)
 
     when:
     TeamOrchestrator.TeamResult result = orchestrator.execute("refactor something", null)
@@ -115,7 +127,7 @@ class TeamOrchestratorSpec extends Specification {
   def "simple task failure is reported"() {
     given:
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(false, "Simple")
-    engineer.executeStep(_, _, _, _) >> new EngineerStepResult(1, false, null, null, [], "LLM error")
+    engineer.executeStep(_) >> new EngineerStepResult(1, false, null, null, [], "LLM error")
 
     when:
     TeamOrchestrator.TeamResult result = orchestrator.execute("add a method", null)
@@ -123,6 +135,69 @@ class TeamOrchestratorSpec extends Specification {
     then:
     !result.success
     result.summary == "Simple task failed"
+  }
+
+  // --- QA loop tests ---
+
+  def "QA flags a high-severity finding, engineer runs one fix-up pass, then succeeds"() {
+    given:
+    dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
+    architect.plan(_) >> new ArchitectPlan(
+      "Plan", [new PlanStep(1, "Step 1", "A.groovy", StepAction.MODIFY, [], [], "")], [], [], ""
+    )
+    engineer.executeStep(_) >>> [
+      new EngineerStepResult(1, true, "OK", "r1", ["A.groovy"], null),
+      new EngineerStepResult(2, true, "Fixed it", "r2", ["A.groovy"], null)
+    ]
+    reviewer.review(_) >>> [
+      new TeamReviewResult("- [High] A.groovy:1 - missing null check", true),
+      new TeamReviewResult("No further issues.", false)
+    ]
+
+    when:
+    TeamOrchestrator.TeamResult result = orchestrator.execute("do something risky", null)
+
+    then:
+    result.success
+    result.stepResults.size() == 2 // original step + one fix-up step
+    result.qaReview == "No further issues." // proves the reviewer ran a second time, post-fix-up
+  }
+
+  def "QA finds nothing, no fix-up pass runs"() {
+    given:
+    dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
+    architect.plan(_) >> new ArchitectPlan(
+      "Plan", [new PlanStep(1, "Step 1", "A.groovy", StepAction.MODIFY, [], [], "")], [], [], ""
+    )
+    engineer.executeStep(_) >> new EngineerStepResult(1, true, "OK", "r1", ["A.groovy"], null)
+    reviewer.review(_) >> new TeamReviewResult("No issues found.", false)
+
+    when:
+    TeamOrchestrator.TeamResult result = orchestrator.execute("do something safe", null)
+
+    then:
+    result.success
+    result.stepResults.size() == 1 // no fix-up step added
+  }
+
+  def "QA-flagged fix-up failure is reported as a failure"() {
+    given:
+    dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
+    architect.plan(_) >> new ArchitectPlan(
+      "Plan", [new PlanStep(1, "Step 1", "A.groovy", StepAction.MODIFY, [], [], "")], [], [], ""
+    )
+    engineer.executeStep(_) >>> [
+      new EngineerStepResult(1, true, "OK", "r1", ["A.groovy"], null),
+      new EngineerStepResult(2, false, null, null, [], "Could not apply fix")
+    ]
+    reviewer.review(_) >> new TeamReviewResult("- [High] A.groovy:1 - missing null check", true)
+
+    when:
+    TeamOrchestrator.TeamResult result = orchestrator.execute("do something risky", null)
+
+    then:
+    !result.success
+    result.summary.contains("QA-flagged fix-up failed")
   }
 
   // --- Wave computation tests ---
@@ -230,7 +305,7 @@ class TeamOrchestratorSpec extends Specification {
   def "collision aborts before engineer runs"() {
     given:
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
-    architect.plan(_, _) >> new ArchitectPlan(
+    architect.plan(_) >> new ArchitectPlan(
       "Plan",
       [
         new PlanStep(1, "Step 1", "Same.groovy", StepAction.MODIFY, [], [], ""),
@@ -245,23 +320,24 @@ class TeamOrchestratorSpec extends Specification {
     then:
     !result.success
     result.summary.contains("File collision")
-    0 * engineer.executeStep(_, _, _, _)
+    0 * engineer.executeStep(_)
   }
 
   def "parallel steps all succeed"() {
     given:
     // Use Stubs for parallel tests — Spock mocks are not thread-safe
     EngineerAgent stubEngineer = Stub() {
-      executeStep(_, _, _, _) >> { args ->
-        PlanStep s = args[0] as PlanStep
+      executeStep(_) >> { args ->
+        EngineerStepRequest request = args[0] as EngineerStepRequest
+        PlanStep s = request.step
         new EngineerStepResult(s.order, true, "OK", "r${s.order}".toString(), [s.targetFile], null)
       }
     }
     TeamOrchestrator parallelOrch = new TeamOrchestrator(
-      dispatcher, architect, stubEngineer, settings, fileEditingTool
+      dispatcher, architect, stubEngineer, reviewer, settings, fileEditingTool
     )
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
-    architect.plan(_, _) >> new ArchitectPlan(
+    architect.plan(_) >> new ArchitectPlan(
       "Plan",
       [
         new PlanStep(1, "Step 1", "A.groovy", StepAction.MODIFY, [], [], ""),
@@ -270,6 +346,7 @@ class TeamOrchestratorSpec extends Specification {
       ],
       [], [], ""
     )
+    reviewer.review(_) >> new TeamReviewResult("No issues found.", false)
 
     when:
     TeamOrchestrator.TeamResult result = parallelOrch.execute("do three things", null)
@@ -284,8 +361,9 @@ class TeamOrchestratorSpec extends Specification {
     given:
     // Use Stubs for parallel tests — Spock mocks are not thread-safe
     EngineerAgent stubEngineer = Stub() {
-      executeStep(_, _, _, _) >> { args ->
-        PlanStep s = args[0] as PlanStep
+      executeStep(_) >> { args ->
+        EngineerStepRequest request = args[0] as EngineerStepRequest
+        PlanStep s = request.step
         if (s.order == 2) {
           return new EngineerStepResult(s.order, false, null, "r2", [], "Failed")
         }
@@ -293,10 +371,10 @@ class TeamOrchestratorSpec extends Specification {
       }
     }
     TeamOrchestrator waveOrch = new TeamOrchestrator(
-      dispatcher, architect, stubEngineer, settings, fileEditingTool
+      dispatcher, architect, stubEngineer, reviewer, settings, fileEditingTool
     )
     dispatcher.classify(_) >> new DispatcherAgent.DispatchResult(true, "Complex")
-    architect.plan(_, _) >> new ArchitectPlan(
+    architect.plan(_) >> new ArchitectPlan(
       "Plan",
       [
         new PlanStep(1, "Step 1", "A.groovy", StepAction.MODIFY, [], [], ""),
