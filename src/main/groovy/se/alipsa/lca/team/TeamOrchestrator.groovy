@@ -183,10 +183,13 @@ class TeamOrchestrator {
     TeamReviewResult qa = runQaReview(plan, stepResults, sessionSystemPrompt)
     if (qa.hasHighSeverityFinding) {
       println("QA flagged high-severity findings; running one fix-up pass...")
+      List<String> modifiedFiles = new ArrayList<>(new LinkedHashSet<>(
+        stepResults.collectMany { EngineerStepResult r -> r.filesModified ?: [] }
+      ))
       PlanStep fixStep = new PlanStep(
         totalSteps + 1,
         "Address the following QA review findings:\n${qa.review}".toString(),
-        null, StepAction.MODIFY, [], [],
+        null, StepAction.MODIFY, modifiedFiles, [],
         "All High severity QA findings from the review below are resolved"
       )
       String fixContext = readContextForStep(fixStep)

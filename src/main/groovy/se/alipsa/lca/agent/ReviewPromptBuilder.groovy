@@ -17,6 +17,16 @@ class ReviewPromptBuilder {
     String systemPromptOverride,
     boolean securityFocus
   ) {
+    buildPrReviewPrompt(codeText, userRequest, systemPromptOverride, securityFocus, "User request")
+  }
+
+  static String buildPrReviewPrompt(
+    String codeText,
+    String userRequest,
+    String systemPromptOverride,
+    boolean securityFocus,
+    String requestLabel
+  ) {
     String extraSystem = systemPromptOverride?.trim()
     """
 You are a repository code reviewer.
@@ -41,7 +51,7 @@ Do not limit your response length. Be thorough.
 Code to review:
 ${codeText}
 
-User request:
+${requestLabel}:
 ${userRequest}
 
 Respond with sections:

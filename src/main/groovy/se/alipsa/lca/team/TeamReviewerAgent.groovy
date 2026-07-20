@@ -27,7 +27,7 @@ class TeamReviewerAgent {
 
   private static final Logger log = LoggerFactory.getLogger(TeamReviewerAgent)
   private static final Pattern HIGH_SEVERITY_PATTERN = Pattern.compile(
-    /(?im)^[-*]?\s*\[High]/
+    /(?im)^\s*(?:[-*]|\d+[.)])?\s*\[High]/
   )
 
   private final Ai ai
@@ -42,7 +42,7 @@ class TeamReviewerAgent {
   @Action(canRerun = true, trigger = TeamReviewRequest)
   TeamReviewResult review(TeamReviewRequest request) {
     String prompt = ReviewPromptBuilder.buildPrReviewPrompt(
-      request?.diffText ?: "", request?.planSummary ?: "", request?.sessionSystemPrompt, false
+      request?.diffText ?: "", request?.planSummary ?: "", request?.sessionSystemPrompt, false, "Plan summary"
     )
 
     LlmOptions options = LlmOptions.withModel(settings.reviewerModel)

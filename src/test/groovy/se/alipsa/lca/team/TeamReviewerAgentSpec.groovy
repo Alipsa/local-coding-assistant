@@ -53,6 +53,60 @@ class TeamReviewerAgentSpec extends Specification {
     result.hasHighSeverityFinding
   }
 
+  def "review detects an indented [High] bullet"() {
+    given:
+    ai.withLlm(_) >> promptRunner
+    promptRunner.withPromptContributor(_) >> promptRunner
+    promptRunner.generateText(_) >> "Findings:\n   - [High] Foo.groovy:10 - indented bullet\nTests:\n- none"
+
+    when:
+    TeamReviewResult result = reviewer.review(new TeamReviewRequest("Plan", "diff", null))
+
+    then:
+    result.hasHighSeverityFinding
+  }
+
+  def "review detects a numbered-list [High] finding"() {
+    given:
+    ai.withLlm(_) >> promptRunner
+    promptRunner.withPromptContributor(_) >> promptRunner
+    promptRunner.generateText(_) >> "Findings:\n1. [High] Foo.groovy:10 - numbered list\nTests:\n- none"
+
+    when:
+    TeamReviewResult result = reviewer.review(new TeamReviewRequest("Plan", "diff", null))
+
+    then:
+    result.hasHighSeverityFinding
+  }
+
+  def "review does not detect a High finding that isn't at the start of a line"() {
+    given:
+    ai.withLlm(_) >> promptRunner
+    promptRunner.withPromptContributor(_) >> promptRunner
+    promptRunner.generateText(_) >> "This mentions [High] mid-sentence but isn't a real finding line"
+
+    when:
+    TeamReviewResult result = reviewer.review(new TeamReviewRequest("Plan", "diff", null))
+
+    then:
+    !result.hasHighSeverityFinding
+  }
+
+  def "review sends the plan summary under a Plan summary label, not User request"() {
+    given:
+    String capturedPrompt = null
+    ai.withLlm(_) >> promptRunner
+    promptRunner.withPromptContributor(_) >> promptRunner
+    promptRunner.generateText(_) >> { String prompt -> capturedPrompt = prompt; "Findings:\n- [Low] general - nit" }
+
+    when:
+    reviewer.review(new TeamReviewRequest("Refactor plan summary text", "diff", null))
+
+    then:
+    capturedPrompt.contains("Plan summary:\nRefactor plan summary text")
+    !capturedPrompt.contains("User request:")
+  }
+
   def "an LLM failure is treated as no findings rather than propagating"() {
     given:
     ai.withLlm(_) >> { throw new RuntimeException("LLM unavailable") }
