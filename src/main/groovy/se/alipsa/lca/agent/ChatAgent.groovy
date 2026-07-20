@@ -15,6 +15,12 @@ import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
+import se.alipsa.lca.memory.MemoryPromptContributor
+import se.alipsa.lca.memory.MemorySettings
+import se.alipsa.lca.memory.MemoryStore
+import se.alipsa.lca.memory.ProjectScopeResolver
+import se.alipsa.lca.memory.RecalledMemory
+import se.alipsa.lca.memory.SurprisingLearningDetector
 
 import java.util.Objects
 
@@ -25,6 +31,10 @@ class ChatAgent {
 
   private final int snippetWordCount
   private final CodingAssistantAgent codingAssistantAgent
+  private final MemoryStore memoryStore
+  private final MemorySettings memorySettings
+  private final ProjectScopeResolver projectScopeResolver
+  private final SurprisingLearningDetector surprisingLearningDetector
   private static final String DEFAULT_RESPONSE_FORMAT = """
 Respond with:
 Plan:
@@ -44,10 +54,18 @@ Notes:
 
   ChatAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
-    CodingAssistantAgent codingAssistantAgent
+    CodingAssistantAgent codingAssistantAgent,
+    MemoryStore memoryStore,
+    MemorySettings memorySettings,
+    ProjectScopeResolver projectScopeResolver,
+    SurprisingLearningDetector surprisingLearningDetector
   ) {
     this.snippetWordCount = snippetWordCount
     this.codingAssistantAgent = codingAssistantAgent
+    this.memoryStore = memoryStore
+    this.memorySettings = memorySettings
+    this.projectScopeResolver = projectScopeResolver
+    this.surprisingLearningDetector = surprisingLearningDetector
   }
 
   /**
@@ -73,6 +91,13 @@ Notes:
     String systemPrompt = buildSystemPrompt(template, request)
     LlmOptions options = request.options ?: LlmOptions.withDefaultLlm()
 
+    List<RecalledMemory> recalled = memorySettings.enabled
+      ? memoryStore.recall(userMessage.content, memorySettings.recallTopK, projectScopeResolver.currentProjectId())
+      : []
+    MemoryPromptContributor memoryContributor = recalled
+      ? new MemoryPromptContributor(recalled, memorySettings.recallMaxContextChars)
+      : null
+
     AssistantMessage reply
     String reasoning = null
 
@@ -82,6 +107,9 @@ Notes:
         .withPromptContributor(template.persona)
         .withSystemPrompt(systemPrompt)
         .withTools(codingAssistantAgent.buildLlmTools(conversation.id))
+      if (memoryContributor != null) {
+        promptRunner = promptRunner.withPromptContributor(memoryContributor)
+      }
 
       if (promptRunner.supportsThinking()) {
         ThinkingResponse<AssistantMessage> thinkingResponse = promptRunner
@@ -95,15 +123,19 @@ Notes:
         reply = promptRunner.respond(conversation.messages)
       }
     } else {
-      reply = ai
+      def promptRunner = ai
         .withLlm(options)
         .withPromptContributor(template.persona)
         .withSystemPrompt(systemPrompt)
         .withTools(codingAssistantAgent.buildLlmTools(conversation.id))
-        .respond(conversation.messages)
+      if (memoryContributor != null) {
+        promptRunner = promptRunner.withPromptContributor(memoryContributor)
+      }
+      reply = promptRunner.respond(conversation.messages)
     }
 
     conversation.addMessage(reply)
+    surprisingLearningDetector.maybeRemember(userMessage.content, reply.content, conversation.id, ai)
     new ChatResponse(reply, reasoning)
   }
 

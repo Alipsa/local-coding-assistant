@@ -13,6 +13,9 @@ import se.alipsa.lca.tools.WebSearchTool
 import se.alipsa.lca.tools.CodeSearchTool
 import se.alipsa.lca.tools.LocalOnlyState
 import se.alipsa.lca.shell.SessionState
+import se.alipsa.lca.memory.MemorySettings
+import se.alipsa.lca.memory.MemoryStore
+import se.alipsa.lca.memory.ProjectScopeResolver
 import spock.lang.Specification
 
 class CodingAssistantAgentSpec extends Specification {
@@ -27,6 +30,9 @@ class CodingAssistantAgentSpec extends Specification {
     getWebSearchFallbackFetcher(_) >> "jsoup"
     isToolConfirmationAllowedForAll(_) >> false
   }
+  MemoryStore memoryStore = Mock(MemoryStore)
+  MemorySettings memorySettings = Mock(MemorySettings)
+  ProjectScopeResolver projectScopeResolver = Mock(ProjectScopeResolver)
   CodingAssistantAgent agent = new CodingAssistantAgent(
     220,
     180,
@@ -41,7 +47,10 @@ class CodingAssistantAgentSpec extends Specification {
     gitTool,
     confirmationService,
     new LocalOnlyState(false),
-    sessionState
+    sessionState,
+    memoryStore,
+    memorySettings,
+    projectScopeResolver
   )
 
   def "craftCode builds a repository-aware plan and output format"() {
@@ -265,7 +274,8 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     toolNames.containsAll([
       "writeFile", "replace", "deleteFile", "applyPatch", "replaceRange", "fileContext",
-      "revertFromBackup", "applySearchReplaceBlocks", "search", "searchFiles", "checkOpenPullRequests"
+      "revertFromBackup", "applySearchReplaceBlocks", "search", "searchFiles", "checkOpenPullRequests",
+      "recallMemory", "rememberFact"
     ])
   }
 
@@ -286,6 +296,78 @@ class CodingAssistantAgentSpec extends Specification {
     !(byName["search"] instanceof ConfirmingLlmTool)
     !(byName["checkOpenPullRequests"] instanceof ConfirmingLlmTool)
     !(byName["fileContext"] instanceof ConfirmingLlmTool)
+    !(byName["recallMemory"] instanceof ConfirmingLlmTool)
+    !(byName["rememberFact"] instanceof ConfirmingLlmTool)
+  }
+
+  def "recallMemory delegates to MemoryStore and formats the result"() {
+    given:
+    def entry = new se.alipsa.lca.memory.MemoryEntry(
+      "id-1", "fact content", java.time.Instant.EPOCH, java.time.Instant.EPOCH, null, "proj-1"
+    )
+    def recalled = [new se.alipsa.lca.memory.RecalledMemory(entry, 0.9d)]
+
+    when:
+    def result = agent.recallMemory("query")
+
+    then:
+    1 * memorySettings.recallTopK >> 5
+    1 * projectScopeResolver.currentProjectId() >> "proj-1"
+    1 * memoryStore.recall("query", 5, "proj-1") >> recalled
+    1 * memorySettings.recallMaxContextChars >> 2000
+    result.contains("fact content")
+  }
+
+  def "recallMemory reports no relevant memories when recall is empty"() {
+    when:
+    def result = agent.recallMemory("query")
+
+    then:
+    1 * memorySettings.recallTopK >> 5
+    1 * projectScopeResolver.currentProjectId() >> "proj-1"
+    1 * memoryStore.recall("query", 5, "proj-1") >> []
+    1 * memorySettings.recallMaxContextChars >> 2000
+    result == "No relevant memories found."
+  }
+
+  def "rememberFact stores a project-scoped fact by default"() {
+    given:
+    def entry = new se.alipsa.lca.memory.MemoryEntry(
+      "id-1", "fact", java.time.Instant.EPOCH, java.time.Instant.EPOCH, null, "proj-1"
+    )
+
+    when:
+    def result = agent.rememberFact("fact")
+
+    then:
+    1 * projectScopeResolver.currentProjectId() >> "proj-1"
+    1 * memoryStore.remember("fact", null, "proj-1") >> entry
+    result == "Remembered."
+  }
+
+  def "rememberFact stores a global fact when scope is global"() {
+    given:
+    def entry = new se.alipsa.lca.memory.MemoryEntry(
+      "id-1", "fact", java.time.Instant.EPOCH, java.time.Instant.EPOCH, null, null
+    )
+
+    when:
+    def result = agent.rememberFact("fact", "global")
+
+    then:
+    0 * projectScopeResolver.currentProjectId()
+    1 * memoryStore.remember("fact", null, null) >> entry
+    result == "Remembered."
+  }
+
+  def "rememberFact reports failure when memory store returns null"() {
+    when:
+    def result = agent.rememberFact("fact")
+
+    then:
+    1 * projectScopeResolver.currentProjectId() >> "proj-1"
+    1 * memoryStore.remember("fact", null, "proj-1") >> null
+    result == "Could not store that (memory may be disabled)."
   }
 
   def "findLlmToolMethod matches by the @LlmTool name attribute, not the Java method name"() {
@@ -430,7 +512,10 @@ class CodingAssistantAgentSpec extends Specification {
       gitTool,
       confirmationService,
       new LocalOnlyState(true),
-      sessionState
+      sessionState,
+      memoryStore,
+      memorySettings,
+      projectScopeResolver
     )
 
     when:

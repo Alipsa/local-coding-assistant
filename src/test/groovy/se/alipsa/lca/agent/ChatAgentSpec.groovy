@@ -6,6 +6,10 @@ import com.embabel.chat.AssistantMessage
 import com.embabel.chat.UserMessage
 import com.embabel.chat.support.InMemoryConversation
 import com.embabel.common.ai.model.LlmOptions
+import se.alipsa.lca.memory.MemorySettings
+import se.alipsa.lca.memory.MemoryStore
+import se.alipsa.lca.memory.ProjectScopeResolver
+import se.alipsa.lca.memory.SurprisingLearningDetector
 import spock.lang.Specification
 
 class ChatAgentSpec extends Specification {
@@ -20,7 +24,13 @@ class ChatAgentSpec extends Specification {
     runner.respond(_ as List) >> new AssistantMessage("ok")
     CodingAssistantAgent codingAssistant = Mock()
     codingAssistant.buildLlmTools(_ as String) >> []
-    ChatAgent agent = new ChatAgent(200, codingAssistant)
+    MemoryStore memoryStore = Mock()
+    MemorySettings memorySettings = Mock()
+    ProjectScopeResolver projectScopeResolver = Mock()
+    SurprisingLearningDetector surprisingLearningDetector = Mock()
+    ChatAgent agent = new ChatAgent(
+      200, codingAssistant, memoryStore, memorySettings, projectScopeResolver, surprisingLearningDetector
+    )
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)
@@ -45,7 +55,13 @@ class ChatAgentSpec extends Specification {
     runner.respond(_ as List) >> new AssistantMessage("ok")
     CodingAssistantAgent codingAssistant = Mock()
     codingAssistant.buildLlmTools(_ as String) >> []
-    ChatAgent agent = new ChatAgent(200, codingAssistant)
+    MemoryStore memoryStore = Mock()
+    MemorySettings memorySettings = Mock()
+    ProjectScopeResolver projectScopeResolver = Mock()
+    SurprisingLearningDetector surprisingLearningDetector = Mock()
+    ChatAgent agent = new ChatAgent(
+      200, codingAssistant, memoryStore, memorySettings, projectScopeResolver, surprisingLearningDetector
+    )
     def conversation = new InMemoryConversation()
     def userMessage = new UserMessage("Hello")
     conversation.addMessage(userMessage)

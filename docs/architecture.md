@@ -651,7 +651,35 @@ Total Budget: 100,000 tokens (model dependent)
 
 ---
 
-### 5. Tool Composition
+### 5. Long-Term Memory
+
+Where Context Management (above) governs what fits in a *single conversation's* prompt, the
+memory subsystem (package `se.alipsa.lca.memory`) persists facts *across* sessions and restarts.
+The two are deliberately disjoint: `ContextCompactor` only ever mutates the in-memory
+`Conversation` held by `SessionState` (reset on restart), while `MemoryStore` writes to
+`~/.lca/memory-index/` on disk. See `docs/memory.md` for the full config reference and
+user-facing behaviour.
+
+**Components**:
+
+1. **`MemoryStore`**: recall-by-similarity, store-with-supersession, and age-AND-idle forgetting
+2. **`MemoryIndex`** (interface): the embedding/similarity-search seam; backed by
+   `SimpleCosineMemoryIndex` (brute-force cosine similarity over an `EmbeddingService`, no vector
+   database — see that class's Javadoc for why `embabel-agent-rag-lucene` was evaluated and
+   rejected)
+3. **`MemoryMetadataStore`**: JSON sidecar (`metadata.json`) tracking `createdAt`/`lastAccessedAt`
+   per memory, since the index itself has no native concept of either
+4. **`ProjectScopeResolver`**: resolves the current git repository root so memories can be
+   project-scoped (or global, when `projectId` is `null`)
+5. **`SurprisingLearningDetector`**: heuristically gates automatic remembering — a cheap keyword
+   scan runs before any LLM classification call, so most turns cost nothing extra
+6. **`ChatAgent` integration**: automatic pre-turn recall injected via `MemoryPromptContributor`,
+   plus explicit `recallMemory()`/`rememberFact()` `@LlmTool`s on `CodingAssistantAgent` for
+   on-demand use
+
+---
+
+### 6. Tool Composition
 
 Agents don't implement low-level operations directly—they delegate to specialized tools:
 

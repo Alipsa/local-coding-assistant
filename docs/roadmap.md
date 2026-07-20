@@ -1,12 +1,11 @@
 # Roadmap
 
-2. Add support for autocompact of context and for manual /compact command
-3. Add RAG or similar capability to learn and remember (RAG support was added in embabel 0.5.0)
-    - step 1 implement a memory store
-        - memory should be recalled when there are similar things discussed
-        - memory should be stored when there is a "surprising" learning (the model did not know or training data is contradicts facts)
-        - memory should have a created and lastAccessed timestamp
-        - memory should be forgotten if it is old (config parameter) and not accessed in a long time (config parameter)
+3. Create a plan to add RAG capability to learn and remember (RAG support was added in embabel 0.5.0)
+    - step 1 implement a memory store - done, see docs/memory.md
+        - [x] memory should be recalled when there are similar things discussed
+        - [x] memory should be stored when there is a "surprising" learning (the model did not know or training data is contradicts facts)
+        - [x] memory should have a created and lastAccessed timestamp
+        - [x] memory should be forgotten if it is old (config parameter) and not accessed in a long time (config parameter)
 4. Add support for switching models in runtime
     - user can select among existing Ollama models
     - a model change is persistent over restarts
