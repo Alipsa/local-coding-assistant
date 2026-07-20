@@ -45,7 +45,12 @@ class MemoryMetadataStore {
     id == null ? null : entries.get(id)
   }
 
-  void put(MemoryEntry entry) {
+  /**
+   * @return false if the write to disk failed (entry is still visible in-memory for the rest
+   * of the session; see the class Javadoc's concurrency note). Callers that need to report
+   * persistence failure honestly (e.g. rememberFact()) should check this.
+   */
+  boolean put(MemoryEntry entry) {
     entries.put(entry.id, entry)
     persist()
   }
@@ -53,10 +58,11 @@ class MemoryMetadataStore {
   /**
    * Persists several entries in a single atomic write. Used by MemoryStore.recall() so
    * bumping lastAccessedAt on every returned hit costs one write per call, not one per hit.
+   * @return false if the write to disk failed.
    */
-  void putAll(Collection<MemoryEntry> newEntries) {
+  boolean putAll(Collection<MemoryEntry> newEntries) {
     if (!newEntries) {
-      return
+      return true
     }
     newEntries.each { MemoryEntry entry -> entries.put(entry.id, entry) }
     persist()
@@ -85,13 +91,15 @@ class MemoryMetadataStore {
     }
   }
 
-  private synchronized void persist() {
+  private synchronized boolean persist() {
     try {
       Path tempFile = Files.createTempFile(metadataFile.parent, "metadata", ".json.tmp")
       objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), entries)
       Files.move(tempFile, metadataFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      true
     } catch (IOException e) {
       log.warn("Failed to persist memory metadata to {}: {}", metadataFile, e.message)
+      false
     }
   }
 }

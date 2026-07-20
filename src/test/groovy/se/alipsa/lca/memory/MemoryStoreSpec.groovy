@@ -8,11 +8,16 @@ import java.time.temporal.ChronoUnit
 
 class MemoryStoreSpec extends Specification {
 
-  MemoryIndex memoryIndex = Mock(MemoryIndex)
+  // Default to a successful write so remember() returns a non-null entry in tests that aren't
+  // specifically exercising persist-failure handling; overridden per-test where needed.
+  MemoryIndex memoryIndex = Mock(MemoryIndex) {
+    upsert(_, _) >> true
+  }
   // Default so remember()'s maybeForget() -> forget() -> metadataStore.all() doesn't NPE in tests
   // that aren't specifically exercising forget()/maybeForget(); overridden per-test where needed.
   MemoryMetadataStore metadataStore = Mock(MemoryMetadataStore) {
     all() >> []
+    put(_) >> true
   }
   MemorySettings settings = new MemorySettings()
   MemoryStore store = new MemoryStore(memoryIndex, metadataStore, settings)
@@ -27,13 +32,35 @@ class MemoryStoreSpec extends Specification {
 
     then:
     1 * memoryIndex.search("a new fact", 12) >> []
-    1 * memoryIndex.upsert(_ as String, "a new fact")
-    1 * metadataStore.put({ MemoryEntry e -> e.content == "a new fact" && e.projectId == "proj-1" })
+    1 * memoryIndex.upsert(_ as String, "a new fact") >> true
+    1 * metadataStore.put({ MemoryEntry e -> e.content == "a new fact" && e.projectId == "proj-1" }) >> true
     entry != null
     entry.content == "a new fact"
     entry.createdAt == entry.lastAccessedAt
     entry.sourceSessionId == "session-1"
     entry.projectId == "proj-1"
+  }
+
+  def "remember returns null and does not surface the entry when the index write fails"() {
+    when:
+    MemoryEntry entry = store.remember("a new fact", "session-1", "proj-1")
+
+    then:
+    1 * memoryIndex.search("a new fact", _) >> []
+    1 * memoryIndex.upsert(_ as String, "a new fact") >> false
+    1 * metadataStore.put(_ as MemoryEntry) >> true
+    entry == null
+  }
+
+  def "remember returns null and does not surface the entry when the metadata write fails"() {
+    when:
+    MemoryEntry entry = store.remember("a new fact", "session-1", "proj-1")
+
+    then:
+    1 * memoryIndex.search("a new fact", _) >> []
+    1 * memoryIndex.upsert(_ as String, "a new fact") >> true
+    1 * metadataStore.put(_ as MemoryEntry) >> false
+    entry == null
   }
 
   def "remember returns null when memory is disabled"() {
@@ -159,7 +186,7 @@ class MemoryStoreSpec extends Specification {
     metadataStore.get("id-a") >> entryA
     metadataStore.get("id-b") >> entryB
     metadataStore.get("id-c") >> entryC
-    metadataStore.putAll(_)
+    metadataStore.putAll(_) >> true
     recalled.size() == 2
     recalled*.entry.id == ["id-a", "id-b"]
   }

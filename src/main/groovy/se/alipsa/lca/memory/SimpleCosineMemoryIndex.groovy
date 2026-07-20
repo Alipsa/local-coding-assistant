@@ -51,7 +51,7 @@ class SimpleCosineMemoryIndex implements MemoryIndex {
   }
 
   @Override
-  void upsert(String id, String content) {
+  boolean upsert(String id, String content) {
     float[] vector = embeddingService().embed(content)
     vectors.put(id, vector)
     persist()
@@ -106,13 +106,15 @@ class SimpleCosineMemoryIndex implements MemoryIndex {
     }
   }
 
-  private synchronized void persist() {
+  private synchronized boolean persist() {
     try {
       Path tempFile = Files.createTempFile(vectorFile.parent, "vectors", ".json.tmp")
       objectMapper.writeValue(tempFile.toFile(), vectors)
       Files.move(tempFile, vectorFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      true
     } catch (IOException e) {
       log.warn("Failed to persist memory vectors to {}: {}", vectorFile, e.message)
+      false
     }
   }
 }

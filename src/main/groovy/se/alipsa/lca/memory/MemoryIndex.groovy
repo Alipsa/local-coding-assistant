@@ -8,7 +8,9 @@ package se.alipsa.lca.memory
  */
 interface MemoryIndex {
 
-  void upsert(String id, String content)
+  /** @return false if the underlying write failed (e.g. disk full); the in-memory index is
+   * still updated either way, so a failure here only means the entry may not survive a restart. */
+  boolean upsert(String id, String content)
 
   List<MemoryIndexHit> search(String queryText, int fetchCount)
 

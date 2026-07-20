@@ -13,6 +13,8 @@ import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.core.thinking.ThinkingResponse
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import se.alipsa.lca.memory.MemoryPromptContributor
@@ -28,6 +30,8 @@ import java.util.Objects
 @Profile("!test")
 @CompileStatic
 class ChatAgent {
+
+  private static final Logger log = LoggerFactory.getLogger(ChatAgent)
 
   private final int snippetWordCount
   private final CodingAssistantAgent codingAssistantAgent
@@ -91,9 +95,16 @@ Notes:
     String systemPrompt = buildSystemPrompt(template, request)
     LlmOptions options = request.options ?: LlmOptions.withDefaultLlm()
 
-    List<RecalledMemory> recalled = memorySettings.enabled
-      ? memoryStore.recall(userMessage.content, memorySettings.recallTopK, projectScopeResolver.currentProjectId())
-      : []
+    List<RecalledMemory> recalled = []
+    if (memorySettings.enabled) {
+      try {
+        recalled = memoryStore.recall(
+          userMessage.content, memorySettings.recallTopK, projectScopeResolver.currentProjectId()
+        )
+      } catch (Exception e) {
+        log.warn("Memory recall failed; continuing without recalled memories: {}", e.message)
+      }
+    }
     MemoryPromptContributor memoryContributor = recalled
       ? new MemoryPromptContributor(recalled, memorySettings.recallMaxContextChars)
       : null
@@ -135,7 +146,11 @@ Notes:
     }
 
     conversation.addMessage(reply)
-    surprisingLearningDetector.maybeRemember(userMessage.content, reply.content, conversation.id, ai)
+    try {
+      surprisingLearningDetector.maybeRemember(userMessage.content, reply.content, conversation.id, ai)
+    } catch (Exception e) {
+      log.warn("Surprising-learning memory capture failed: {}", e.message)
+    }
     new ChatResponse(reply, reasoning)
   }
 

@@ -1,6 +1,8 @@
 package se.alipsa.lca.memory
 
 import groovy.transform.CompileStatic
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 import java.time.Duration
@@ -14,6 +16,8 @@ import java.time.temporal.ChronoUnit
 @Component
 @CompileStatic
 class MemoryStore {
+
+  private static final Logger log = LoggerFactory.getLogger(MemoryStore)
 
   private final MemoryIndex memoryIndex
   private final MemoryMetadataStore metadataStore
@@ -30,6 +34,11 @@ class MemoryStore {
    * Persists a new memory, superseding any near-duplicate existing memory in the same scope.
    * projectId: null for a global memory (applies across every project), otherwise the scope
    * this memory belongs to - see ProjectScopeResolver.
+   *
+   * @return null if memory is disabled/content is blank, OR if the write to disk failed (the
+   * entry is still visible in-memory for the rest of this session either way - see
+   * MemoryMetadataStore's concurrency note - but callers like rememberFact() should not tell
+   * the user it was durably remembered when it wasn't).
    */
   MemoryEntry remember(String content, String sessionId, String projectId) {
     if (!settings.enabled || !content?.trim()) {
@@ -42,9 +51,16 @@ class MemoryStore {
     Instant now = Instant.now()
     String id = UUID.randomUUID().toString()
     MemoryEntry entry = new MemoryEntry(id, truncated, now, now, sessionId, projectId)
-    memoryIndex.upsert(id, truncated)
-    metadataStore.put(entry)
+    boolean indexed = memoryIndex.upsert(id, truncated)
+    boolean stored = metadataStore.put(entry)
     maybeForget()
+    if (!indexed || !stored) {
+      log.warn(
+        "Failed to persist new memory {} to disk (indexed={}, stored={}); it will not survive a restart",
+        id, indexed, stored
+      )
+      return null
+    }
     entry
   }
 

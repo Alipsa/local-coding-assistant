@@ -68,11 +68,12 @@ class SimpleCosineMemoryIndexSpec extends Specification {
     SimpleCosineMemoryIndex index = indexWith(embeddingService)
 
     when:
-    index.upsert("match-id", "exact match")
+    boolean firstUpsertResult = index.upsert("match-id", "exact match")
     index.upsert("orthogonal-id", "orthogonal")
     List<MemoryIndexHit> hits = index.search("query", 5)
 
     then:
+    firstUpsertResult
     hits.size() == 2
     hits[0].id == "match-id"
     hits[0].score == 1.0d

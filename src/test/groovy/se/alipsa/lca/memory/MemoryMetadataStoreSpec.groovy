@@ -17,15 +17,16 @@ class MemoryMetadataStoreSpec extends Specification {
     settings
   }
 
-  def "put persists an entry that get can retrieve"() {
+  def "put persists an entry that get can retrieve and reports success"() {
     given:
     MemoryMetadataStore store = new MemoryMetadataStore(settingsFor(tempDir))
     MemoryEntry entry = new MemoryEntry("id-1", "content", Instant.EPOCH, Instant.EPOCH, "session-1", "proj-1")
 
     when:
-    store.put(entry)
+    boolean result = store.put(entry)
 
     then:
+    result
     store.get("id-1") == entry
   }
 
@@ -38,30 +39,29 @@ class MemoryMetadataStoreSpec extends Specification {
     store.get(null) == null
   }
 
-  def "putAll persists multiple entries in a single call"() {
+  def "putAll persists multiple entries in a single call and reports success"() {
     given:
     MemoryMetadataStore store = new MemoryMetadataStore(settingsFor(tempDir))
     MemoryEntry entry1 = new MemoryEntry("id-1", "one", Instant.EPOCH, Instant.EPOCH, null, null)
     MemoryEntry entry2 = new MemoryEntry("id-2", "two", Instant.EPOCH, Instant.EPOCH, null, null)
 
     when:
-    store.putAll([entry1, entry2])
+    boolean result = store.putAll([entry1, entry2])
 
     then:
+    result
     store.get("id-1") == entry1
     store.get("id-2") == entry2
     store.all().size() == 2
   }
 
-  def "putAll is a no-op for an empty or null collection"() {
+  def "putAll is a no-op (and reports success) for an empty or null collection"() {
     given:
     MemoryMetadataStore store = new MemoryMetadataStore(settingsFor(tempDir))
 
-    when:
+    expect:
     store.putAll([])
     store.putAll(null)
-
-    then:
     store.all().isEmpty()
   }
 
