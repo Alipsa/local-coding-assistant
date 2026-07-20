@@ -77,8 +77,9 @@ class ContextCompactor {
   /**
    * Summarizes the older portion of the session's conversation via the LLM and replaces it with
    * one summary message plus the most recent {@code keepRecentMessages} messages verbatim. Also
-   * rewrites the parallel flat-string {@link SessionState#history} so {@link ContextEstimator}'s
-   * percent reflects the smaller size immediately, not just on the next Ollama-backed refresh.
+   * rewrites the parallel flat-string {@link SessionState#history} to cover the summary AND those
+   * kept messages, so {@link ContextEstimator}'s percent reflects what is actually still sent to
+   * the LLM every subsequent turn, not just the summary's size.
    */
   CompactionResult compact(String sessionId) {
     Conversation conversation = sessionState.getOrCreateConversation(sessionId)
@@ -103,7 +104,10 @@ class ContextCompactor {
     newMessages.addAll(toKeep)
     Conversation compacted = new InMemoryConversation(newMessages, conversation.id, false, conversation.assetTracker)
     sessionState.replaceConversation(sessionId, compacted)
-    sessionState.replaceHistory(sessionId, List.of("Compacted summary: ${trimmedSummary}".toString()))
+    List<String> newHistory = new ArrayList<>()
+    newHistory.add("Compacted summary: ${trimmedSummary}".toString())
+    newHistory.addAll(toKeep.collect { Message m -> "${m.role.displayName}: ${m.content}".toString() })
+    sessionState.replaceHistory(sessionId, newHistory)
     new CompactionResult(true, before, newMessages.size(), trimmedSummary)
   }
 

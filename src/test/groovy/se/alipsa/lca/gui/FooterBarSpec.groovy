@@ -195,17 +195,19 @@ class FooterBarSpec extends Specification {
   }
 
   @Unroll
-  def "autocompactLabelFor(enabled=#enabled, progress=#progress) == '#expected'"() {
+  def "autocompactLabelFor(enabled=#enabled, progress=#progress, checkFailed=#checkFailed) == '#expected'"() {
     expect:
-    FooterBar.autocompactLabelFor(enabled, progress) == expected
+    FooterBar.autocompactLabelFor(enabled, progress, checkFailed) == expected
 
     where:
-    enabled | progress || expected
-    false   | null     || "Autocompact: disabled"
-    false   | 42       || "Autocompact: disabled"
-    true    | null     || "Autocompact: n/a"
-    true    | 42       || "Autocompact: 42%"
-    true    | 100      || "Autocompact: 100%"
+    enabled | progress | checkFailed || expected
+    false   | null     | false       || "Autocompact: disabled"
+    false   | 42       | false       || "Autocompact: disabled"
+    true    | null     | false       || "Autocompact: n/a"
+    true    | 42       | false       || "Autocompact: 42%"
+    true    | 100      | false       || "Autocompact: 100%"
+    false   | null     | true        || "Autocompact: n/a"
+    true    | 42       | true        || "Autocompact: n/a"
   }
 
   def "the footer shows autocompact progress when enabled"() {
@@ -236,6 +238,20 @@ class FooterBarSpec extends Specification {
       autocompactText(footer) == "Autocompact: disabled"
     }
     0 * contextCompactor.autocompactProgressPercent(_)
+  }
+
+  def "the footer shows autocompact as n/a, not disabled, when the check itself throws"() {
+    given: "a transient failure, not a deliberate config choice"
+    contextCompactor.isAutocompactEnabled() >> { throw new RuntimeException("boom") }
+
+    when:
+    FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
+    footer.refreshAsync()
+
+    then:
+    conditions.eventually {
+      autocompactText(footer) == "Autocompact: n/a"
+    }
   }
 
   def "a remote Ollama never samples local host memory, since it would be discarded anyway"() {

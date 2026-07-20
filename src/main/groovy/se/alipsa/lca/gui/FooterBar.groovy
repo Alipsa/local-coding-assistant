@@ -157,16 +157,19 @@ class FooterBar extends JPanel {
     }
     boolean autocompactEnabled = false
     Integer autocompactProgress = null
+    boolean autocompactCheckFailed = false
     try {
       autocompactEnabled = contextCompactor != null && contextCompactor.isAutocompactEnabled()
       if (autocompactEnabled) {
         autocompactProgress = contextCompactor.autocompactProgressPercent(sessionId)
       }
     } catch (Exception ignored) {
-      // autocompactProgress stays null; apply() renders "n/a" for it when enabled.
+      // A thrown check is not the same as the user having turned autocompact off via config, so
+      // it's tracked separately — autocompactLabelFor() renders "n/a" for this, never "disabled".
+      autocompactCheckFailed = true
     }
     new FooterSnapshot(contextPercent, memoryPercent, memorySummary, remote, loaded,
-      autocompactEnabled, autocompactProgress)
+      autocompactEnabled, autocompactProgress, autocompactCheckFailed)
   }
 
   private void apply(FooterSnapshot snapshot) {
@@ -182,7 +185,8 @@ class FooterBar extends JPanel {
     memoryBar.setString(memoryDisplay.text)
     memoryBar.setToolTipText(memoryDisplay.tooltip)
     gpuLabel.setText(gpuLabelFor(snapshot.loadedModels))
-    autoCompactLabel.setText(autocompactLabelFor(snapshot.autocompactEnabled, snapshot.autocompactProgress))
+    autoCompactLabel.setText(autocompactLabelFor(
+      snapshot.autocompactEnabled, snapshot.autocompactProgress, snapshot.autocompactCheckFailed))
   }
 
   /**
@@ -228,11 +232,16 @@ class FooterBar extends JPanel {
   }
 
   /**
-   * The "Autocompact" label's text: "disabled" when turned off via config, a percent when enabled
-   * and known, or "n/a" when enabled but the underlying estimate failed. Pure/static, mirroring
+   * The "Autocompact" label's text: "disabled" only when the config flag itself is off; "n/a"
+   * when the enabled/progress check threw (a transient failure, not a deliberate config choice —
+   * conflating the two would misreport a bug as a setting); otherwise a percent when known, or
+   * "n/a" when enabled but the progress estimate itself failed. Pure/static, mirroring
    * {@code gpuLabelFor}/{@code memoryDisplayFor}.
    */
-  static String autocompactLabelFor(boolean enabled, Integer progress) {
+  static String autocompactLabelFor(boolean enabled, Integer progress, boolean checkFailed) {
+    if (checkFailed) {
+      return "Autocompact: n/a"
+    }
     if (!enabled) {
       return "Autocompact: disabled"
     }
@@ -254,6 +263,7 @@ class FooterBar extends JPanel {
     List<ModelRegistry.LoadedModel> loadedModels
     boolean autocompactEnabled
     Integer autocompactProgress
+    boolean autocompactCheckFailed
   }
 
   /** The "Main memory" bar's resolved display: a null {@code percent} paints the bar empty. */

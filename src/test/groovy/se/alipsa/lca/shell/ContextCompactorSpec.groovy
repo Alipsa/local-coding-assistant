@@ -91,8 +91,16 @@ class ContextCompactorSpec extends Specification {
     newConversation.messages[1].content == "message 4"
     newConversation.messages[6].content == "message 9"
 
-    and: "the flat-string history is replaced with a single compacted entry"
-    sessionState.history("s1") == ["Compacted summary: a concise summary"]
+    and: "the flat-string history covers the summary plus the kept messages verbatim"
+    sessionState.history("s1") == [
+      "Compacted summary: a concise summary",
+      "User: message 4",
+      "User: message 5",
+      "User: message 6",
+      "User: message 7",
+      "User: message 8",
+      "User: message 9"
+    ]
   }
 
   def "compact does not mutate anything when the LLM returns a blank summary"() {
