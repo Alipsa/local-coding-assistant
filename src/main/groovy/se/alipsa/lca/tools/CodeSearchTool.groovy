@@ -83,7 +83,15 @@ class CodeSearchTool {
         Iterator<Path> iterator = stream.filter { Path p -> Files.isRegularFile(p) }.iterator()
         while (iterator.hasNext() && hits.size() < cap) {
           Path file = iterator.next()
-          List<SearchHit> fileHits = processFile(query, ctx, file, caseInsensitive)
+          List<SearchHit> fileHits
+          try {
+            fileHits = processFile(query, ctx, file, caseInsensitive)
+          } catch (IOException e) {
+            // Binary or unreadable files (e.g. non-UTF-8 content) are skipped rather than
+            // aborting the whole search.
+            log.debug("Skipping unreadable file {}: {}", file, e.getMessage())
+            continue
+          }
           if (!fileHits.isEmpty()) {
             long remaining = cap - hits.size()
             if (remaining < fileHits.size()) {
