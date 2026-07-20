@@ -13,7 +13,9 @@ class EngineerAgentSpec extends Specification {
 
   Ai ai = Mock()
   PromptRunner promptRunner = Mock()
-  TeamSettings settings = new TeamSettings(false, "test-model", "test-model", "test-model", 0.1d, true)
+  TeamSettings settings = new TeamSettings(
+    false, "test-model", "test-model", "test-model", "test-model", 0.1d, 0.3d, 0.2d, 0.1d, 30L, 300L, 600L, 300L, true
+  )
   ToolCallParser toolCallParser = new ToolCallParser()
   FileEditingTool fileEditingTool = Mock()
   CommandRunner commandRunner = Mock()
@@ -31,7 +33,7 @@ class EngineerAgentSpec extends Specification {
     ArchitectPlan plan = new ArchitectPlan("Test plan", [step], [], [], "")
 
     when:
-    EngineerStepResult result = engineer.executeStep(step, plan, [], "")
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, [], ""))
 
     then:
     result.success
@@ -51,7 +53,7 @@ class EngineerAgentSpec extends Specification {
     ArchitectPlan plan = new ArchitectPlan("Test", [step], [], [], "")
 
     when:
-    EngineerStepResult result = engineer.executeStep(step, plan, [], "")
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, [], ""))
 
     then:
     result.success
@@ -69,7 +71,7 @@ class EngineerAgentSpec extends Specification {
     ArchitectPlan plan = new ArchitectPlan("Test", [step], [], [], "")
 
     when:
-    EngineerStepResult result = engineer.executeStep(step, plan, [], "")
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, [], ""))
 
     then:
     !result.success
@@ -85,7 +87,7 @@ class EngineerAgentSpec extends Specification {
     ArchitectPlan plan = new ArchitectPlan("Test", [step], [], [], "")
 
     when:
-    EngineerStepResult result = engineer.executeStep(step, plan, [], "")
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, [], ""))
 
     then:
     !result.success
@@ -111,7 +113,7 @@ class EngineerAgentSpec extends Specification {
     ArchitectPlan plan = new ArchitectPlan("Test", [step], [], [], "")
 
     when:
-    EngineerStepResult result = engineer.executeStep(step, plan, [], "")
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, [], ""))
 
     then:
     !result.success
@@ -141,7 +143,7 @@ class EngineerAgentSpec extends Specification {
     ArchitectPlan plan = new ArchitectPlan("Test", [step], [], [], "")
 
     when:
-    EngineerStepResult result = engineer.executeStep(step, plan, [], "")
+    EngineerStepResult result = engineer.executeStep(new EngineerStepRequest(step, plan, [], ""))
 
     then:
     !result.success

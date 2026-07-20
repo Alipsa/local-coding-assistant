@@ -1,11 +1,14 @@
 package se.alipsa.lca.team
 
+import com.embabel.agent.api.annotation.AchievesGoal
+import com.embabel.agent.api.annotation.Action
+import com.embabel.agent.api.annotation.Agent
 import com.embabel.agent.api.common.Ai
 import com.embabel.common.ai.model.LlmOptions
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Component
+import org.springframework.context.annotation.Profile
 import se.alipsa.lca.agent.Personas
 import se.alipsa.lca.tools.CommandRunner
 import se.alipsa.lca.tools.FileEditingTool
@@ -15,12 +18,12 @@ import se.alipsa.lca.validation.ToolCallValidator
 
 import java.time.Duration
 
-@Component
+@Agent(name = "lca-team-engineer", description = "Implement a single plan step by editing files")
+@Profile("!test")
 @CompileStatic
 class EngineerAgent {
 
   private static final Logger log = LoggerFactory.getLogger(EngineerAgent)
-  private static final long ENGINEER_TIMEOUT_SECONDS = 600L
 
   private final Ai ai
   private final TeamSettings settings
@@ -48,19 +51,19 @@ class EngineerAgent {
     this.toolCallValidator = toolCallValidator
   }
 
-  EngineerStepResult executeStep(
-    PlanStep step,
-    ArchitectPlan plan,
-    List<EngineerStepResult> priorResults,
-    String contextContent
-  ) {
+  @AchievesGoal(description = "Implement a single plan step using file editing tools")
+  @Action(canRerun = true, trigger = EngineerStepRequest)
+  EngineerStepResult executeStep(EngineerStepRequest request) {
+    PlanStep step = request.step
+    ArchitectPlan plan = request.plan
+    List<EngineerStepResult> priorResults = request.priorResults
+    String contextContent = request.contextContent
     try {
-      String systemPrompt = buildSystemPrompt()
       String userPrompt = buildUserPrompt(step, plan, priorResults, contextContent)
 
       LlmOptions options = LlmOptions.withModel(settings.engineerModel)
-        .withTemperature(0.2d)
-        .withTimeout(Duration.ofSeconds(ENGINEER_TIMEOUT_SECONDS))
+        .withTemperature(settings.engineerTemperature)
+        .withTimeout(Duration.ofSeconds(settings.engineerTimeoutSeconds))
 
       String response = ai.withLlm(options)
         .withPromptContributor(Personas.CODER)
@@ -115,25 +118,6 @@ class EngineerAgent {
     }
   }
 
-  private String buildSystemPrompt() {
-    """\
-You are a file editing assistant for an existing project. Implement the given step precisely.
-
-Use these exact tool call formats:
-- writeFile("file-path", "content") - create or overwrite a file
-- replace("file-path", "old-text", "new-text") - modify existing file
-- deleteFile("file-path") - delete a file
-- runCommand("command") - execute a shell command (e.g., chmod, mkdir, mv, cp)
-
-RULES:
-- NEVER invent package names, project structures, or frameworks not in the provided context
-- NEVER use com.example unless the project actually uses it
-- ALWAYS prefer modifying existing files over creating new ones
-- ALL new files must use the same package structure found in the project
-- Use actual tool calls, not code blocks
-- Focus only on the current step — do not implement other steps""".stripIndent()
-  }
-
   private String buildUserPrompt(
     PlanStep step,
     ArchitectPlan plan,
@@ -141,6 +125,23 @@ RULES:
     String contextContent
   ) {
     StringBuilder sb = new StringBuilder()
+
+    sb.append("You are a file editing assistant for an existing project. Implement the given step precisely.\n\n")
+    sb.append("Use these exact tool call formats:\n")
+    sb.append("- writeFile(\"file-path\", \"content\") - create or overwrite a file\n")
+    sb.append("- replace(\"file-path\", \"old-text\", \"new-text\") - modify existing file\n")
+    sb.append("- deleteFile(\"file-path\") - delete a file\n")
+    sb.append("- runCommand(\"command\") - execute a shell command (e.g., chmod, mkdir, mv, cp)\n\n")
+    sb.append("RULES:\n")
+    sb.append("- NEVER invent package names, project structures, or frameworks not in the provided context\n")
+    sb.append("- NEVER use com.example unless the project actually uses it\n")
+    sb.append("- Follow the project's coding standards and conventions (check AGENTS.md if present)\n")
+    sb.append("- ALWAYS prefer modifying existing files over creating new ones\n")
+    sb.append("- ALL new files must use the same package structure found in the project\n")
+    sb.append("- Include necessary imports, validation, and error handling; favor testable designs\n")
+    sb.append("- Match the language, style, and patterns used in the existing codebase\n")
+    sb.append("- Use actual tool calls, not code blocks\n")
+    sb.append("- Focus only on the current step — do not implement other steps\n\n")
 
     sb.append("=== PLAN SUMMARY ===\n")
     sb.append(plan.summary)
@@ -174,7 +175,9 @@ RULES:
     }
     sb.append("Action: ${step.action}\n")
     if (step.acceptanceCriteria != null && !step.acceptanceCriteria.isEmpty()) {
-      sb.append("Acceptance criteria: ${step.acceptanceCriteria}\n")
+      sb.append("Acceptance criteria (your changes MUST satisfy this before you finish): ")
+      sb.append(step.acceptanceCriteria)
+      sb.append("\n")
     }
 
     sb.toString()

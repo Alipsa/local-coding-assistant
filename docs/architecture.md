@@ -679,7 +679,18 @@ user-facing behaviour.
 
 ---
 
-### 6. Tool Composition
+### 6. Agent Team
+
+An alternative `/implement` execution path (package `se.alipsa.lca.team`, gated behind
+`assistant.team.enabled`) that decomposes a task across four roles — Dispatcher, Architect,
+Engineer, QA Reviewer — each a real Embabel `@Agent` with its own tunable prompt, model,
+temperature, and timeout, orchestrated deterministically by `TeamOrchestrator` (wave/dependency
+scheduling, file-collision detection, one bounded QA fix-up retry). See `docs/team.md` for the
+full role/config reference.
+
+---
+
+### 7. Tool Composition
 
 Agents don't implement low-level operations directly—they delegate to specialized tools:
 
