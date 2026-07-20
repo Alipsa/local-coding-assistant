@@ -3,6 +3,7 @@ package se.alipsa.lca.gui
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
+import se.alipsa.lca.shell.ContextCompactor
 import se.alipsa.lca.tools.ModelRegistry
 
 import javax.swing.BorderFactory
@@ -17,13 +18,14 @@ import java.awt.Dimension
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The bottom metrics strip. Context-window usage and host RAM are live (best-effort); autocompact
- * is shown as {@code n/a} until that feature exists (see {@code docs/gui.md}). "Main memory" and
- * "GPU memory" source from local host stats ({@link SystemMetrics}) only when Ollama is local —
- * when {@code spring.ai.ollama.base-url} points at a remote server, local host stats wouldn't
- * represent the machine actually running inference, so both switch to what Ollama itself reports
- * about its currently loaded models ({@link ModelRegistry#loadedModels}), or {@code n/a} when
- * Ollama doesn't report anything useful.
+ * The bottom metrics strip. Context-window usage, host RAM, and autocompact progress are all live
+ * (best-effort). "Main memory" and "GPU memory" source from local host stats ({@link SystemMetrics})
+ * only when Ollama is local — when {@code spring.ai.ollama.base-url} points at a remote server,
+ * local host stats wouldn't represent the machine actually running inference, so both switch to
+ * what Ollama itself reports about its currently loaded models ({@link ModelRegistry#loadedModels}),
+ * or {@code n/a} when Ollama doesn't report anything useful. "Autocompact" shows progress toward
+ * {@link ContextCompactor}'s auto-compact trigger threshold, or "disabled" when auto-compact is
+ * turned off via config.
  */
 @CompileStatic
 class FooterBar extends JPanel {
@@ -33,6 +35,7 @@ class FooterBar extends JPanel {
   private final SystemMetrics systemMetrics
   private final ContextEstimator contextEstimator
   private final ModelRegistry modelRegistry
+  private final ContextCompactor contextCompactor
   private final String sessionId
 
   private final JProgressBar contextBar = new JProgressBar(0, 100)
@@ -44,10 +47,11 @@ class FooterBar extends JPanel {
   private final AtomicInteger refreshGeneration = new AtomicInteger(0)
 
   FooterBar(SystemMetrics systemMetrics, ContextEstimator contextEstimator, ModelRegistry modelRegistry,
-            String sessionId) {
+            ContextCompactor contextCompactor, String sessionId) {
     this.systemMetrics = systemMetrics
     this.contextEstimator = contextEstimator
     this.modelRegistry = modelRegistry
+    this.contextCompactor = contextCompactor
     this.sessionId = sessionId ?: "default"
     setLayout(new BoxLayout(this, BoxLayout.X_AXIS))
     setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8))
@@ -151,7 +155,21 @@ class FooterBar extends JPanel {
     } catch (Exception ignored) {
       // loaded stays empty: memoryDisplayFor renders "n/a" when remote, never local stats.
     }
-    new FooterSnapshot(contextPercent, memoryPercent, memorySummary, remote, loaded)
+    boolean autocompactEnabled = false
+    Integer autocompactProgress = null
+    boolean autocompactCheckFailed = false
+    try {
+      autocompactEnabled = contextCompactor != null && contextCompactor.isAutocompactEnabled()
+      if (autocompactEnabled) {
+        autocompactProgress = contextCompactor.autocompactProgressPercent(sessionId)
+      }
+    } catch (Exception ignored) {
+      // A thrown check is not the same as the user having turned autocompact off via config, so
+      // it's tracked separately — autocompactLabelFor() renders "n/a" for this, never "disabled".
+      autocompactCheckFailed = true
+    }
+    new FooterSnapshot(contextPercent, memoryPercent, memorySummary, remote, loaded,
+      autocompactEnabled, autocompactProgress, autocompactCheckFailed)
   }
 
   private void apply(FooterSnapshot snapshot) {
@@ -167,6 +185,8 @@ class FooterBar extends JPanel {
     memoryBar.setString(memoryDisplay.text)
     memoryBar.setToolTipText(memoryDisplay.tooltip)
     gpuLabel.setText(gpuLabelFor(snapshot.loadedModels))
+    autoCompactLabel.setText(autocompactLabelFor(
+      snapshot.autocompactEnabled, snapshot.autocompactProgress, snapshot.autocompactCheckFailed))
   }
 
   /**
@@ -211,6 +231,23 @@ class FooterBar extends JPanel {
       : "GPU memory: n/a"
   }
 
+  /**
+   * The "Autocompact" label's text: "disabled" only when the config flag itself is off; "n/a"
+   * when the enabled/progress check threw (a transient failure, not a deliberate config choice —
+   * conflating the two would misreport a bug as a setting); otherwise a percent when known, or
+   * "n/a" when enabled but the progress estimate itself failed. Pure/static, mirroring
+   * {@code gpuLabelFor}/{@code memoryDisplayFor}.
+   */
+  static String autocompactLabelFor(boolean enabled, Integer progress, boolean checkFailed) {
+    if (checkFailed) {
+      return "Autocompact: n/a"
+    }
+    if (!enabled) {
+      return "Autocompact: disabled"
+    }
+    progress != null ? "Autocompact: ${progress}%".toString() : "Autocompact: n/a"
+  }
+
   private static Component spacer() {
     Box.createHorizontalStrut(SEGMENT_GAP)
   }
@@ -224,6 +261,9 @@ class FooterBar extends JPanel {
     String memorySummary
     boolean remote
     List<ModelRegistry.LoadedModel> loadedModels
+    boolean autocompactEnabled
+    Integer autocompactProgress
+    boolean autocompactCheckFailed
   }
 
   /** The "Main memory" bar's resolved display: a null {@code percent} paints the bar empty. */

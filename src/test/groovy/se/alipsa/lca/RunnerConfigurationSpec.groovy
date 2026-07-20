@@ -9,6 +9,7 @@ import se.alipsa.lca.gui.SystemMetrics
 import se.alipsa.lca.repl.JLineRepl
 import se.alipsa.lca.repl.ReplRunner
 import se.alipsa.lca.shell.BangCommandHandler
+import se.alipsa.lca.shell.ContextCompactor
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
@@ -26,6 +27,7 @@ class RunnerConfigurationSpec extends Specification {
       .withBean(SystemMetrics, { Mock(SystemMetrics) })
       .withBean(ContextEstimator, { Mock(ContextEstimator) })
       .withBean(ModelRegistry, { Mock(ModelRegistry) })
+      .withBean(ContextCompactor, { Mock(ContextCompactor) })
       .withBean(GuiTurnController, { Mock(GuiTurnController) })
       .withBean(FileEditingTool, { Mock(FileEditingTool) })
       .withBean(GitTool, { Mock(GitTool) })

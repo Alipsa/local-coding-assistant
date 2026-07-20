@@ -89,6 +89,9 @@ class ShellCommandsSpec extends Specification {
   AgentPlatform agentPlatform = Mock()
   ContextRepository contextRepository = Stub()
   ShellSettings shellSettings = new ShellSettings(true)
+  // Unstubbed shouldAutoCompact(_) returns false by default (Spock Stub sensible-default for
+  // boolean), so tests that don't care about auto-compact need no explicit interaction here.
+  ContextCompactor contextCompactor = Stub()
   Agent chatAgent = new Agent("lca-chat", "local", "1.0.0", "Chat agent", Set.of(), List.of(), Set.of())
   Agent reviewAgent = new Agent("lca-review", "local", "1.0.0", "Review agent", Set.of(), List.of(), Set.of())
   AgentProcess chatProcess = Mock()
@@ -133,6 +136,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -166,6 +170,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -204,6 +209,57 @@ class ShellCommandsSpec extends Specification {
     captured.options.temperature == 0.9d
     captured.options.maxTokens == 2048
     captured.systemPrompt == "extra system"
+  }
+
+  def "chat appends an auto-compact note when the session crosses the threshold"() {
+    given:
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("result"), null)
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
+    contextCompactor.shouldAutoCompact("s1") >> true
+    contextCompactor.compact("s1") >> new ContextCompactor.CompactionResult(true, 20, 7, "summary")
+
+    when:
+    def response = commands.chat(
+      ["hi"] as String[], "s1", PersonaMode.CODER, null, null, null, null, null, false, false)
+
+    then:
+    response.contains("result")
+    response.contains("(Context automatically compacted: 20 messages -> 7.)")
+  }
+
+  def "chat notes when over threshold but too few messages exist yet to compact"() {
+    given: "shouldAutoCompact fires on token usage, but compact refuses below its keep-recent floor"
+    chatProcess.resultOfType(ChatResponse) >> new ChatResponse(new AssistantMessage("result"), null)
+    agentPlatform.createAgentProcessFrom(chatAgent, _ as ProcessOptions, _ as Object[]) >> chatProcess
+    contextCompactor.shouldAutoCompact("s1") >> true
+    contextCompactor.compact("s1") >> new ContextCompactor.CompactionResult(false, 3, 3, null)
+
+    when:
+    def response = commands.chat(
+      ["hi"] as String[], "s1", PersonaMode.CODER, null, null, null, null, null, false, false)
+
+    then:
+    response.contains("result")
+    response.contains("Context usage is high, but there isn't enough conversation history yet to compact")
+    response.contains("only 3 message(s) recorded")
+  }
+
+  def "compact reports nothing to compact when below the keep-recent floor"() {
+    given:
+    contextCompactor.compact("s1") >> new ContextCompactor.CompactionResult(false, 3, 3, null)
+
+    expect:
+    commands.compact("s1") ==
+      "Nothing to compact: conversation has 3 message(s), at or below the keep-recent floor."
+  }
+
+  def "compact reports the before/after message counts on success"() {
+    given:
+    contextCompactor.compact("s1") >> new ContextCompactor.CompactionResult(true, 20, 7, "summary text")
+
+    expect:
+    commands.compact("s1") == "Compacted conversation: 20 messages -> 7 (1 summary + 6 recent). " +
+      "Context usage will reflect this on the next turn."
   }
 
   def "plan uses planning format and architect persona"() {
@@ -365,6 +421,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -471,6 +528,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -623,6 +681,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -717,6 +776,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -775,6 +835,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -869,6 +930,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -919,6 +981,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -966,6 +1029,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1020,6 +1084,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1076,6 +1141,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1127,6 +1193,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1175,6 +1242,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1232,6 +1300,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1291,6 +1360,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1346,6 +1416,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1399,6 +1470,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1450,6 +1522,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1498,6 +1571,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1546,6 +1620,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1595,6 +1670,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1635,6 +1711,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1793,6 +1870,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1846,6 +1924,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null
@@ -1982,6 +2061,7 @@ class ShellCommandsSpec extends Specification {
       null,
       null,
       null,
+      contextCompactor,
       80000,
       30000,
       null

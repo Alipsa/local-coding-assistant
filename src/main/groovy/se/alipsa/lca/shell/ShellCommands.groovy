@@ -134,6 +134,7 @@ Do not execute any commands.
   private final se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck
   private final ImplementContextPacker implementContextPacker
   private final TeamOrchestrator teamOrchestrator
+  private final ContextCompactor contextCompactor
   private final int prContextBudget
   private final int reviewContextBudget
   private final String reviewModel
@@ -228,6 +229,7 @@ Do not execute any commands.
     commands.put("/chat", "Send a prompt to the coding assistant.")
     commands.put("/codesearch", "Search repository files with ripgrep.")
     commands.put("/commit-suggest", "Draft a commit message from staged changes.")
+    commands.put("/compact", "Summarize and compact conversation history to free up context space.")
     commands.put("/config", "View or update shell settings.")
     commands.put("/context", "Show a snippet for targeted edits.")
     commands.put("/diff", "Show git diff with optional staging.")
@@ -300,6 +302,7 @@ Do not execute any commands.
     @org.springframework.beans.factory.annotation.Autowired(required = false) se.alipsa.lca.validation.ImplementationGroundingCheck groundingCheck,
     @org.springframework.beans.factory.annotation.Autowired(required = false) ImplementContextPacker implementContextPacker,
     @org.springframework.beans.factory.annotation.Autowired(required = false) TeamOrchestrator teamOrchestrator,
+    ContextCompactor contextCompactor,
     @Value('${assistant.llm.review-pr-context-budget:80000}') int prContextBudget,
     @Value('${assistant.llm.review-context-budget:30000}') int reviewContextBudget,
     @Value('${assistant.llm.review-model:}') String reviewModel
@@ -336,6 +339,7 @@ Do not execute any commands.
     this.groundingCheck = groundingCheck
     this.implementContextPacker = implementContextPacker
     this.teamOrchestrator = teamOrchestrator
+    this.contextCompactor = contextCompactor
     this.prContextBudget = prContextBudget
     this.reviewContextBudget = reviewContextBudget > 0 ? reviewContextBudget : 30000
     this.reviewModel = (reviewModel != null && reviewModel.trim()) ? reviewModel.trim() : null
@@ -412,6 +416,7 @@ Do not execute any commands.
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
+    String autoCompactNote = maybeAutoCompact(session)
 
     // Add reasoning section if available
     String reasoningSection = ""
@@ -437,9 +442,44 @@ Do not execute any commands.
     String followUp = shouldAddFollowUpPrompt(replyText, persona) ? buildPlanFollowUpPrompt() : null
 
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "")
+      return fallbackNote + "\n" + replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "") + (autoCompactNote ?: "")
     }
-    replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "")
+    replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "") + (autoCompactNote ?: "")
+  }
+
+  @ShellMethod(key = ["/compact"], value = "Summarize and compact conversation history to free up context space.")
+  String compact(
+    @ShellOption(defaultValue = "default", help = "Session id") String session
+  ) {
+    ContextCompactor.CompactionResult result = contextCompactor.compact(session)
+    if (!result.compacted) {
+      return "Nothing to compact: conversation has ${result.messagesBefore} message(s), " +
+        "at or below the keep-recent floor."
+    }
+    "Compacted conversation: ${result.messagesBefore} messages -> ${result.messagesAfter} " +
+      "(1 summary + ${result.messagesAfter - 1} recent). Context usage will reflect this on the next turn."
+  }
+
+  /**
+   * Triggers a compaction if the session is over the auto-compact threshold, returning a short
+   * note to append to the turn's response (or null if nothing happened). Called right after each
+   * of chat/plan/implement's appendHistory — those are the only methods that grow the session's
+   * {@code Conversation}; /review is a one-shot agent call with no persisted conversation.
+   */
+  private String maybeAutoCompact(String session) {
+    if (!contextCompactor.shouldAutoCompact(session)) {
+      return null
+    }
+    ContextCompactor.CompactionResult result = contextCompactor.compact(session)
+    if (result.compacted) {
+      return "\n\n(Context automatically compacted: ${result.messagesBefore} messages -> ${result.messagesAfter}.)"
+    }
+    // shouldAutoCompact() triggers on token usage; compact() separately refuses to touch a
+    // conversation at or below the keep-recent floor regardless of how token-heavy those few
+    // messages are. Without this, that mismatch would be silent: the session would sit above
+    // the threshold turn after turn with no indication anything was (or wasn't) done.
+    "\n\n(Context usage is high, but there isn't enough conversation history yet to compact " +
+      "— only ${result.messagesBefore} message(s) recorded.)"
   }
 
   @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement your task here OR /implement --prompt \"your task\"")
@@ -589,6 +629,7 @@ Use the pre-loaded context. DO NOT invent project structure.
     }
 
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant: ${replyText}")
+    String autoCompactNote = maybeAutoCompact(session)
 
     // Format reasoning section if available
     String reasoningSection = ""
@@ -611,9 +652,9 @@ Use the pre-loaded context. DO NOT invent project structure.
     }
 
     if (fallbackNote != null) {
-      return fallbackNote + "\n" + replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "")
+      return fallbackNote + "\n" + replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "") + (autoCompactNote ?: "")
     }
-    replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "")
+    replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "") + (autoCompactNote ?: "")
   }
 
   @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands. Usage: /plan \"your question\" or /plan --prompt your question here")
@@ -670,6 +711,7 @@ Use the pre-loaded context. DO NOT invent project structure.
       return "No response generated."
     }
     sessionState.appendHistory(session, "User: ${prompt}", "Assistant (plan): ${replyText}")
+    String autoCompactNote = maybeAutoCompact(session)
 
     // Add reasoning section if available
     String reasoningSection = ""
@@ -679,7 +721,7 @@ Use the pre-loaded context. DO NOT invent project structure.
 
     // Add follow-up action prompt
     String followUp = buildPlanFollowUpPrompt()
-    String fullResponse = replyText + reasoningSection + "\n\n" + followUp
+    String fullResponse = replyText + reasoningSection + "\n\n" + followUp + (autoCompactNote ?: "")
 
     if (fallbackNote != null) {
       return fallbackNote + "\n" + fullResponse

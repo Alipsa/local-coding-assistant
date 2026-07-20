@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import se.alipsa.lca.shell.BangCommandHandler
+import se.alipsa.lca.shell.ContextCompactor
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
@@ -32,6 +33,7 @@ class GuiRunner implements ApplicationRunner {
   private final SystemMetrics systemMetrics
   private final ContextEstimator contextEstimator
   private final ModelRegistry modelRegistry
+  private final ContextCompactor contextCompactor
   private final GuiTurnController turnController
   private final FileEditingTool fileEditingTool
   private final GitTool gitTool
@@ -44,6 +46,7 @@ class GuiRunner implements ApplicationRunner {
     SystemMetrics systemMetrics,
     ContextEstimator contextEstimator,
     ModelRegistry modelRegistry,
+    ContextCompactor contextCompactor,
     GuiTurnController turnController,
     FileEditingTool fileEditingTool,
     GitTool gitTool,
@@ -55,6 +58,7 @@ class GuiRunner implements ApplicationRunner {
     this.systemMetrics = systemMetrics
     this.contextEstimator = contextEstimator
     this.modelRegistry = modelRegistry
+    this.contextCompactor = contextCompactor
     this.turnController = turnController
     this.fileEditingTool = fileEditingTool
     this.gitTool = gitTool
@@ -73,7 +77,7 @@ class GuiRunner implements ApplicationRunner {
         log.warn("Could not install FlatLaf look and feel: {}", e.message)
       }
       ConversationView conversation = new ConversationView(markdownRenderer)
-      FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, "default")
+      FooterBar footer = new FooterBar(systemMetrics, contextEstimator, modelRegistry, contextCompactor, "default")
       Runnable onBaseDirChanged = {
         footer.refreshAsync()
         conversation.addNote("Base dir changed to ${workspace.baseDir}".toString())

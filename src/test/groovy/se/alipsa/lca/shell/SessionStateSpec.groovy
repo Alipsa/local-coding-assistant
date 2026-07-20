@@ -186,6 +186,41 @@ class SessionStateSpec extends Specification {
     first.id == "s1"
   }
 
+  def "replaceConversation swaps in a new conversation for the session"() {
+    given:
+    def original = state.getOrCreateConversation("s1")
+    def replacement = new com.embabel.chat.support.InMemoryConversation(new ArrayList<>(), "s1")
+
+    when:
+    state.replaceConversation("s1", replacement)
+
+    then:
+    !state.getOrCreateConversation("s1").is(original)
+    state.getOrCreateConversation("s1").is(replacement)
+  }
+
+  def "replaceHistory overwrites a session's history wholesale"() {
+    given:
+    state.appendHistory("hist2", "a", "b", "c")
+
+    when:
+    state.replaceHistory("hist2", ["summary"])
+
+    then:
+    state.history("hist2") == ["summary"]
+  }
+
+  def "replaceHistory with null entries clears the session's history"() {
+    given:
+    state.appendHistory("hist3", "a")
+
+    when:
+    state.replaceHistory("hist3", null)
+
+    then:
+    state.history("hist3") == []
+  }
+
   def "recent tool summary honours ttl"() {
     given:
     def ttlState = new SessionState(

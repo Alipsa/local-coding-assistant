@@ -13,6 +13,7 @@ import se.alipsa.lca.gui.SystemMetrics
 import se.alipsa.lca.repl.JLineRepl
 import se.alipsa.lca.repl.ReplRunner
 import se.alipsa.lca.shell.BangCommandHandler
+import se.alipsa.lca.shell.ContextCompactor
 import se.alipsa.lca.shell.SessionState
 import se.alipsa.lca.tools.FileEditingTool
 import se.alipsa.lca.tools.GitTool
@@ -44,6 +45,7 @@ class RunnerConfiguration {
     SystemMetrics systemMetrics,
     ContextEstimator contextEstimator,
     ModelRegistry modelRegistry,
+    ContextCompactor contextCompactor,
     GuiTurnController turnController,
     FileEditingTool fileEditingTool,
     GitTool gitTool,
@@ -51,8 +53,8 @@ class RunnerConfiguration {
     Workspace workspace,
     BangCommandHandler bangCommandHandler
   ) {
-    new GuiRunner(markdownRenderer, systemMetrics, contextEstimator, modelRegistry, turnController,
-      fileEditingTool, gitTool, sessionState, workspace, bangCommandHandler)
+    new GuiRunner(markdownRenderer, systemMetrics, contextEstimator, modelRegistry, contextCompactor,
+      turnController, fileEditingTool, gitTool, sessionState, workspace, bangCommandHandler)
   }
 
   @Bean

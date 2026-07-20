@@ -233,6 +233,11 @@ class ShellCommandController {
     shellCommands.model(request.set, session, list)
   }
 
+  @PostMapping(path = "/compact", consumes = MediaType.APPLICATION_JSON_VALUE)
+  String compact(@Valid @RequestBody CompactRequest request) {
+    shellCommands.compact(request.session ?: "default")
+  }
+
   @GetMapping("/health")
   String health() {
     shellCommands.health()
@@ -431,6 +436,12 @@ class ShellCommandController {
     String set
     String session
     Boolean list
+  }
+
+  @Canonical
+  @CompileStatic
+  static class CompactRequest {
+    String session
   }
 
   @Canonical

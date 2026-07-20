@@ -247,6 +247,16 @@ Options:
 - `--set`: Set the session model.
 - `--session`: Session id.
 
+## compact (/compact)
+Summarize and compact conversation history to free up context space. Replaces the older portion of
+the session's conversation with an LLM-generated summary, keeping only the most recent messages
+verbatim. Also happens automatically once a session's context usage crosses a configurable
+threshold (see `assistant.context.*` in README.md's Configuration section) — `/chat`, `/plan`, and
+`/implement` responses note when this happens.
+
+Options:
+- `--session`: Session id (default `default`).
+
 ## health (/health)
 Check connectivity to the Ollama base URL.
 

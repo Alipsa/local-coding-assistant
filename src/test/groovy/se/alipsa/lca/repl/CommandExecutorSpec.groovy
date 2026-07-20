@@ -116,4 +116,22 @@ class CommandExecutorSpec extends Specification {
     1 * shellCommands.reviewLog(ReviewSeverity.LOW, null, 5, 1, null, false) >> "log"
     result == "log"
   }
+
+  def "execute dispatches /compact with the default session when no flags are given"() {
+    when:
+    String result = executor.execute('/compact')
+
+    then:
+    1 * shellCommands.compact("default") >> "compacted"
+    result == "compacted"
+  }
+
+  def "execute dispatches /compact with an explicit --session"() {
+    when:
+    String result = executor.execute('/compact --session s1')
+
+    then:
+    1 * shellCommands.compact("s1") >> "compacted"
+    result == "compacted"
+  }
 }
