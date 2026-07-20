@@ -1,0 +1,11 @@
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/base.xml"/>
+
+  <!-- Embabel's EmbeddingTrackingConfiguration declares its BeanPostProcessor factory method as
+       non-static, so Spring logs a "not eligible for auto-proxying" warning on every startup. It's
+       benign (doesn't block startup) and the real fix belongs upstream in Embabel, not here. The
+       message comes from a nested logger (BeanPostProcessorChecker), distinct from its outer
+       class's logger, and is emitted via commons-logging before Spring Boot's `logging.level.*`
+       properties are bound - only a Logback-native override like this one actually reaches it. -->
+  <logger name="org.springframework.context.support.PostProcessorRegistrationDelegate$BeanPostProcessorChecker" level="OFF"/>
+</configuration>
