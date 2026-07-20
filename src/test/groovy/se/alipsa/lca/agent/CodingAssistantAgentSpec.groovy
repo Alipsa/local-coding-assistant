@@ -367,7 +367,7 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     1 * projectScopeResolver.currentProjectId() >> "proj-1"
     1 * memoryStore.remember("fact", null, "proj-1") >> null
-    result == "Could not store that (memory may be disabled)."
+    result == "Could not store that (memory may be disabled, or the write failed)."
   }
 
   def "findLlmToolMethod matches by the @LlmTool name attribute, not the Java method name"() {

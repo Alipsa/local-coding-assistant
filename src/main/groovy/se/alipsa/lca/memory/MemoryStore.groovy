@@ -35,10 +35,12 @@ class MemoryStore {
    * projectId: null for a global memory (applies across every project), otherwise the scope
    * this memory belongs to - see ProjectScopeResolver.
    *
-   * @return null if memory is disabled/content is blank, OR if the write to disk failed (the
-   * entry is still visible in-memory for the rest of this session either way - see
-   * MemoryMetadataStore's concurrency note - but callers like rememberFact() should not tell
-   * the user it was durably remembered when it wasn't).
+   * @return null if memory is disabled/content is blank, OR if either write failed - in which
+   * case whichever of the two writes did succeed is rolled back, so a partial failure can't
+   * leave an orphaned vector in the index with no corresponding metadata entry (metadataStore
+   * is the only thing forget() scans, so an entry visible only in the index would otherwise
+   * never be cleaned up). Callers like rememberFact() should not tell the user it was durably
+   * remembered when it wasn't.
    */
   MemoryEntry remember(String content, String sessionId, String projectId) {
     if (!settings.enabled || !content?.trim()) {
@@ -56,9 +58,15 @@ class MemoryStore {
     maybeForget()
     if (!indexed || !stored) {
       log.warn(
-        "Failed to persist new memory {} to disk (indexed={}, stored={}); it will not survive a restart",
+        "Failed to persist new memory {} to disk (indexed={}, stored={}); rolling back and not surfacing it",
         id, indexed, stored
       )
+      if (indexed) {
+        memoryIndex.delete(id)
+      }
+      if (stored) {
+        metadataStore.remove(id)
+      }
       return null
     }
     entry

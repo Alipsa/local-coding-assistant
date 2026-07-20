@@ -472,7 +472,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   String rememberFact(String fact, String scope = "project") {
     String projectId = scope == "global" ? null : projectScopeResolver.currentProjectId()
     MemoryEntry entry = memoryStore.remember(fact, null, projectId)
-    entry ? "Remembered." : "Could not store that (memory may be disabled)."
+    entry ? "Remembered." : "Could not store that (memory may be disabled, or the write failed)."
   }
 
   /**

@@ -40,7 +40,10 @@ Everything lives under `lca.memory.index-directory` (default `~/.lca/memory-inde
   search (see `SimpleCosineMemoryIndex`'s Javadoc for why this was chosen over
   `embabel-agent-rag-lucene`)
 
-Both are plain JSON, written atomically (temp file + rename) on every mutation.
+Both are plain JSON, written atomically (temp file + rename) on every mutation. If either write
+fails on `remember()` (e.g. disk full), whichever of the two succeeded is rolled back, so a
+partial failure never leaves an orphaned vector with no corresponding metadata entry (or vice
+versa) — `rememberFact()` reports failure rather than claiming the fact was stored.
 
 ## Configuration
 

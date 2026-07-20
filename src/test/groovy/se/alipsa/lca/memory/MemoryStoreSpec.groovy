@@ -41,7 +41,7 @@ class MemoryStoreSpec extends Specification {
     entry.projectId == "proj-1"
   }
 
-  def "remember returns null and does not surface the entry when the index write fails"() {
+  def "remember rolls back the metadata write when the index write fails"() {
     when:
     MemoryEntry entry = store.remember("a new fact", "session-1", "proj-1")
 
@@ -49,10 +49,12 @@ class MemoryStoreSpec extends Specification {
     1 * memoryIndex.search("a new fact", _) >> []
     1 * memoryIndex.upsert(_ as String, "a new fact") >> false
     1 * metadataStore.put(_ as MemoryEntry) >> true
+    1 * metadataStore.remove(_ as String)
+    0 * memoryIndex.delete(_)
     entry == null
   }
 
-  def "remember returns null and does not surface the entry when the metadata write fails"() {
+  def "remember rolls back the index write when the metadata write fails, avoiding an orphaned vector"() {
     when:
     MemoryEntry entry = store.remember("a new fact", "session-1", "proj-1")
 
@@ -60,6 +62,8 @@ class MemoryStoreSpec extends Specification {
     1 * memoryIndex.search("a new fact", _) >> []
     1 * memoryIndex.upsert(_ as String, "a new fact") >> true
     1 * metadataStore.put(_ as MemoryEntry) >> false
+    1 * memoryIndex.delete(_ as String)
+    0 * metadataStore.remove(_)
     entry == null
   }
 
