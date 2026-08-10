@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.ToolCallParser.ToolCall
 
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.regex.Pattern
@@ -108,6 +109,30 @@ class ImplementationGroundingCheck {
     }
 
     new FileReferenceScore(existing, nonExisting)
+  }
+
+  GroundingResult checkFileReferences(List<String> citedFiles, Set<String> additionalKnownPaths) {
+    List<String> issues = []
+    List<String> pathShaped = citedFiles.toUnique().findAll { String ref ->
+      FILE_REF_PATTERN.matcher(ref).matches() && !Paths.get(ref).isAbsolute()
+    }
+    List<String> nonExisting = pathShaped.findAll { String ref -> !fileReferenceExists(ref, additionalKnownPaths) }
+    if (!nonExisting.isEmpty()) {
+      issues.add("Referenced file(s) not found in the project: ${nonExisting.join(', ')}".toString())
+    }
+    new GroundingResult(determineLevel(issues), issues)
+  }
+
+  private boolean fileReferenceExists(String ref, Set<String> knownPaths) {
+    try {
+      Files.exists(projectRoot.resolve(ref).normalize()) || isKnownPath(ref, knownPaths)
+    } catch (InvalidPathException ex) {
+      false
+    }
+  }
+
+  private static boolean isKnownPath(String ref, Set<String> knownPaths) {
+    knownPaths.any { it == ref || it.endsWith("/" + ref) || ref.endsWith("/" + it) }
   }
 
   private boolean projectUsesComExample() {

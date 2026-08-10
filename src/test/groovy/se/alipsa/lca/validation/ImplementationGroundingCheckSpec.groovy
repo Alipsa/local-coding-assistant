@@ -200,4 +200,103 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
     then:
     !result.issues.any { it.contains("referenced files exist") }
   }
+
+  def "checkFileReferences flags a citation for a file that does not exist"() {
+    when:
+    def result = checker.checkFileReferences(["Missing.groovy"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("Missing.groovy")
+  }
+
+  def "checkFileReferences passes when all citations exist"() {
+    when:
+    def result = checker.checkFileReferences(
+      ["src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy"], [] as Set
+    )
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences matches a bare filename against a known-paths entry"() {
+    when:
+    def result = checker.checkFileReferences(
+      ["Foo.groovy"], ["src/main/groovy/se/alipsa/lca/newpkg/Foo.groovy"] as Set
+    )
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences flags one fabricated citation among several real ones, not gated by a ratio"() {
+    when:
+    def result = checker.checkFileReferences(
+      [
+        "src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy",
+        "src/main/groovy/se/alipsa/lca/tools/ToolCallParser.groovy",
+        "Fabricated.groovy"
+      ],
+      [] as Set
+    )
+
+    then: "unlike check()'s existingRatio() < 0.2 gate, any non-existing citation is flagged regardless of ratio"
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("Fabricated.groovy")
+    !result.issues[0].contains("ShellCommands.groovy")
+  }
+
+  def "checkFileReferences names a duplicate nonexistent citation once, not per occurrence"() {
+    when:
+    def result = checker.checkFileReferences(["Missing.groovy", "Missing.groovy"], [] as Set)
+
+    then:
+    result.issues.size() == 1
+  }
+
+  def "checkFileReferences ignores a prose citation that isn't shaped like a file path"() {
+    when:
+    def result = checker.checkFileReferences(["The error handling in review()"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+    result.issues.isEmpty()
+  }
+
+  def "checkFileReferences excludes an extension-less absolute path"() {
+    when:
+    def result = checker.checkFileReferences(["/etc/passwd"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences excludes an absolute path with a recognised extension even if it exists on disk"() {
+    given:
+    Path absoluteFile = tempDir.resolve("Foo.groovy")
+    Files.writeString(absoluteFile, "class Foo {}")
+
+    when:
+    def result = checker.checkFileReferences([absoluteFile.toString()], [] as Set)
+
+    then: "excluded because it's absolute, not treated as found or as missing"
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "check(llmResponse, toolCalls) is entirely unaffected by the new method"() {
+    given:
+    String response = "I'll modify src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy to add the feature."
+    def calls = [
+      new ToolCall("replace", [
+        "src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy", "old", "new"
+      ])
+    ]
+
+    when:
+    def result = checker.check(response, calls)
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
 }
