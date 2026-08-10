@@ -1890,55 +1890,99 @@ class ShellCommandsSpec extends Specification {
     GitTool.GitResult diffResult = new GitTool.GitResult(true, true, 0, diff, "")
     GitTool prGit = Stub(GitTool) {
       prChangedFiles(1) >> new GitTool.GitResult(true, true, 0, "small.groovy\nlarge.groovy", "")
+      prHeadCommit(1) >> new GitTool.GitResult(true, true, 0, "abc123", "")
+      showFileAtCommit("abc123", "small.groovy") >> new GitTool.GitResult(true, true, 0, "small content", "")
+      showFileAtCommit("abc123", "large.groovy") >> new GitTool.GitResult(true, true, 0, "x" * 90000, "")
     }
-    FileEditingTool prFileEditing = Stub(FileEditingTool) {
-      readFile("small.groovy") >> "small content"
-      readFile("large.groovy") >> "x" * 90000
-    }
+    FileEditingTool prFileEditing = Stub(FileEditingTool)
     ShellCommands shellCommands = new ShellCommands(
-      agent,
-      ai,
-      sessionState,
-      editorLauncher,
-      prFileEditing,
-      Mock(se.alipsa.lca.tools.ToolCallParser),
-      prGit,
-      Stub(CodeSearchTool),
-      new ContextPacker(),
-      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
-      commandRunner,
-      commandPolicy,
-      modelRegistry,
-      agentPlatform,
-      contextRepository,
-      tempDir.resolve("pr-budget.log").toString(),
-      null,
-      null,
-      shellSettings,
-      intentRoutingState,
-      intentRoutingSettings
-      ,
-      Mock(se.alipsa.lca.validation.RequestValidator),
-      Mock(se.alipsa.lca.validation.ClarificationDialog),
-      null,
-      null,
-      null,
-      null,
-      contextCompactor,
-      80000,
-      30000,
-      null
+      agent, ai, sessionState, editorLauncher, prFileEditing,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-budget.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
     )
 
     when:
-    String payload = shellCommands.buildPrReviewPayload(1, diffResult)
+    ShellCommands.ReviewPayload payload = shellCommands.buildPrReviewPayload(1, diffResult)
+
+    then: "the git-show path is exercised, not an accidental fallback to the local tree"
+    payload.text.contains("File: small.groovy")
+    payload.text.contains("small content")
+    !payload.text.contains("File: large.groovy")
+    payload.text.contains("PR diff:")
+    payload.text.contains("diff content")
+    payload.fileLineCounts == ["small.groovy": 1]
+    payload.changedFiles == ["small.groovy", "large.groovy"]
+  }
+
+  def "buildPrReviewPayload falls back to a local read and marks it approximate when prHeadCommit fails"() {
+    given:
+    String diff = "diff content"
+    GitTool.GitResult diffResult = new GitTool.GitResult(true, true, 0, diff, "")
+    GitTool prGit = Stub(GitTool) {
+      prChangedFiles(2) >> new GitTool.GitResult(true, true, 0, "small.groovy", "")
+      prHeadCommit(2) >> new GitTool.GitResult(false, true, 1, "", "no gh")
+    }
+    FileEditingTool prFileEditing = Stub(FileEditingTool) {
+      readFile("small.groovy") >> "local content"
+    }
+    ShellCommands shellCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, prFileEditing,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-fallback.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+
+    when:
+    ShellCommands.ReviewPayload payload = shellCommands.buildPrReviewPayload(2, diffResult)
 
     then:
-    payload.contains("File: small.groovy")
-    payload.contains("small content")
-    !payload.contains("File: large.groovy")
-    payload.contains("PR diff:")
-    payload.contains("diff content")
+    payload.text.contains("File: small.groovy")
+    payload.text.contains("local content")
+    payload.text.contains("(approximate — local copy, not verified against PR head)")
+    payload.fileLineCounts == ["small.groovy": 1]
+  }
+
+  def "buildPrReviewPayload fetches the PR ref once and retries showFileAtCommit on first failure"() {
+    given:
+    String diff = "diff content"
+    GitTool.GitResult diffResult = new GitTool.GitResult(true, true, 0, diff, "")
+    GitTool prGit = Mock(GitTool)
+    prGit.prChangedFiles(3) >> new GitTool.GitResult(true, true, 0, "a.groovy\nb.groovy", "")
+    prGit.prHeadCommit(3) >> new GitTool.GitResult(true, true, 0, "sha1", "")
+    prGit.showFileAtCommit("sha1", "a.groovy") >>> [
+      new GitTool.GitResult(false, true, 1, "", "not found"),
+      new GitTool.GitResult(true, true, 0, "a content", "")
+    ]
+    prGit.showFileAtCommit("sha1", "b.groovy") >> new GitTool.GitResult(true, true, 0, "b content", "")
+    FileEditingTool prFileEditing = Stub(FileEditingTool)
+    ShellCommands shellCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, prFileEditing,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-retry.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+
+    when:
+    ShellCommands.ReviewPayload payload = shellCommands.buildPrReviewPayload(3, diffResult)
+
+    then:
+    1 * prGit.fetchPullRequestRef(3) >> new GitTool.GitResult(true, true, 0, "", "")
+    payload.text.contains("a content")
+    payload.text.contains("b content")
+    !payload.text.contains("approximate")
   }
 
   def "renderReview shows raw response when no structured findings parsed"() {

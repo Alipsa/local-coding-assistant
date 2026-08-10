@@ -781,7 +781,7 @@ Type a command or your next question to proceed.
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
-    String reviewPayload
+    ReviewPayload reviewPayload
     if (pr != null) {
       GitTool.GitResult diffResult = gitTool.prDiff(pr)
       if (!diffResult.success) {
@@ -808,7 +808,7 @@ Type a command or your next question to proceed.
     }
     println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}${withThinking ? ' (with reasoning)' : ''}...")
     boolean isPrReview = pr != null
-    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security, withThinking, isPrReview)
+    ReviewRequest request = new ReviewRequest(prompt, reviewPayload.text, reviewOptions, system, security, withThinking, isPrReview)
     ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
     String reviewText = response?.review
@@ -1655,8 +1655,9 @@ Try:
     ".gradle", ".properties", ".yml", ".yaml", ".json", ".toml", ".md"
   )
 
-  private String buildReviewPayload(String code, List<String> paths, boolean staged) {
+  private ReviewPayload buildReviewPayload(String code, List<String> paths, boolean staged) {
     StringBuilder builder = new StringBuilder()
+    Map<String, Integer> fileLineCounts = new LinkedHashMap<>()
     if (code != null && code.trim()) {
       builder.append("User-provided code:\n```\n").append(code.trim()).append("\n```\n\n")
     }
@@ -1668,9 +1669,9 @@ Try:
         Path root = resolveProjectRoot(fileEditingTool)
         Path resolved = root.resolve(path.trim()).normalize()
         if (Files.isDirectory(resolved)) {
-          appendDirectoryContents(builder, resolved, path.trim())
+          appendDirectoryContents(builder, resolved, path.trim(), fileLineCounts)
         } else {
-          appendFileContent(builder, path.trim())
+          appendFileContent(builder, path.trim(), fileLineCounts)
         }
       }
     }
@@ -1681,20 +1682,23 @@ Try:
       }
     }
     String payload = builder.toString().trim()
-    payload ? payload : "No additional context provided."
+    new ReviewPayload(payload ? payload : "No additional context provided.", fileLineCounts, List.of())
   }
 
-  private void appendFileContent(StringBuilder builder, String path) {
+  private void appendFileContent(StringBuilder builder, String path, Map<String, Integer> fileLineCounts) {
     try {
       String content = fileEditingTool.readFile(path)
       builder.append("File: ").append(path).append("\n```\n")
         .append(content).append("\n```\n\n")
+      fileLineCounts.put(path, content.stripTrailing().split("\\R").length)
     } catch (IllegalArgumentException ex) {
       builder.append("File: ").append(path).append(" (error: ").append(ex.message).append(")\n\n")
     }
   }
 
-  private void appendDirectoryContents(StringBuilder builder, Path dirPath, String displayPath) {
+  private void appendDirectoryContents(
+    StringBuilder builder, Path dirPath, String displayPath, Map<String, Integer> fileLineCounts
+  ) {
     List<Path> sourceFiles = []
     try {
       Files.walkFileTree(dirPath, new java.nio.file.SimpleFileVisitor<Path>() {
@@ -1737,6 +1741,7 @@ Try:
         String content = Files.readString(file)
         builder.append("File: ").append(relativePath).append("\n```\n")
           .append(content).append("\n```\n\n")
+        fileLineCounts.put(relativePath, content.stripTrailing().split("\\R").length)
         filesIncluded++
       } catch (IOException ex) {
         builder.append("File: ").append(relativePath).append(" (error: ").append(ex.message).append(")\n\n")
@@ -1758,7 +1763,7 @@ Try:
     0
   }
 
-  String buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
+  ReviewPayload buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
     String diff = diffResult.output ?: ""
     if (diff.trim().isEmpty()) {
       return null
@@ -1770,25 +1775,55 @@ Try:
       changedFiles = filesResult.output.split("\\R").toList().findAll { it.trim() }
     }
 
-    StringBuilder builder = new StringBuilder()
+    GitTool.GitResult headResult = gitTool.prHeadCommit(prNumber)
+    // success=true with blank output is a real, observed shape (e.g. --jq finding nothing) — guard
+    // on both, not just success, or showFileAtCommit("", path) silently resolves against the index.
+    String headSha = (headResult.success && headResult.output?.trim()) ? headResult.output.trim() : null
 
-    // Add full file contents within budget
+    StringBuilder builder = new StringBuilder()
+    Map<String, Integer> fileLineCounts = new LinkedHashMap<>()
     int budgetUsed = diff.length()
     boolean budgetExceeded = false
-    for (String filePath : changedFiles) {
-      try {
-        String content = fileEditingTool.readFile(filePath.trim())
-        int fileSize = filePath.length() + content.length() + 20
-        if (budgetUsed + fileSize > prContextBudget) {
-          budgetExceeded = true
-          break
+    boolean refFetched = false // fetch the PR ref at most once per call, not once per failing file
+
+    for (String rawPath : changedFiles) {
+      String filePath = rawPath.trim()
+      String content = null
+      boolean approximate = false
+
+      if (headSha != null) {
+        GitTool.GitResult shown = gitTool.showFileAtCommit(headSha, filePath)
+        if (!shown.success && !refFetched) {
+          gitTool.fetchPullRequestRef(prNumber)
+          refFetched = true
+          shown = gitTool.showFileAtCommit(headSha, filePath)
         }
-        builder.append("File: ").append(filePath.trim()).append("\n```\n")
-          .append(content).append("\n```\n\n")
-        budgetUsed += fileSize
-      } catch (Exception ex) {
-        // File may have been deleted in the PR or not present locally; skip it
+        if (shown.success) {
+          content = shown.output
+        }
       }
+
+      if (content == null) {
+        // Unchanged from today: a file gone in both the PR head and the local tree (e.g. deleted in
+        // the PR) is skipped, not fatal to the whole review.
+        try {
+          content = fileEditingTool.readFile(filePath)
+          approximate = true
+        } catch (Exception ex) {
+          continue
+        }
+      }
+
+      int fileSize = filePath.length() + content.length() + 20
+      if (budgetUsed + fileSize > prContextBudget) {
+        budgetExceeded = true
+        break
+      }
+      String note = approximate ? "(approximate — local copy, not verified against PR head)\n" : ""
+      builder.append("File: ").append(filePath).append("\n").append(note).append("```\n")
+        .append(content).append("\n```\n\n")
+      budgetUsed += fileSize
+      fileLineCounts.put(filePath, content.stripTrailing().split("\\R").length)
     }
 
     if (budgetExceeded) {
@@ -1796,7 +1831,7 @@ Try:
     }
 
     builder.append("PR diff:\n```\n").append(diff).append("\n```\n")
-    builder.toString().trim()
+    new ReviewPayload(builder.toString().trim(), fileLineCounts, changedFiles)
   }
 
   private String stagedDiff() {
@@ -1952,6 +1987,14 @@ Try:
   @CompileStatic
   protected Instant nowInstant() {
     Instant.now()
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ReviewPayload {
+    String text
+    Map<String, Integer> fileLineCounts
+    List<String> changedFiles
   }
 
   @Canonical
