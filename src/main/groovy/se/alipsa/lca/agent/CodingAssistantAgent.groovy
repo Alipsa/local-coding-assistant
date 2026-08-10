@@ -612,11 +612,17 @@ Notes:
 You are a code reviewer. Review the code below and report findings directly.
 ${securityFocus ? "Focus on security risks: injection, auth bypasses, insecure defaults, data exposure." : ""}
 Format each finding as: - [High/Medium/Low] file:line - description
-${extraSystem ? "===BACKGROUND GUIDANCE (project conventions — do not review this section as code)===\n${extraSystem}\n===END BACKGROUND GUIDANCE===\n" : ""}
+${extraSystem
+    ? ("===BACKGROUND GUIDANCE (project conventions — do not review this section as code)===\n" +
+       "${extraSystem}\n===END BACKGROUND GUIDANCE===\n")
+    : ""}
 ${codeHasContent
     ? "===CODE TO REVIEW===\n${codeText}\n===END CODE TO REVIEW===\n" +
-      (!hasSpecificCode ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n" : "")
-    : "No code was provided. Do not review the background guidance above — report that no review target was specified."}
+      (!hasSpecificCode
+        ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n"
+        : "")
+    : ("No code was provided. Do not review the background guidance above — " +
+       "report that no review target was specified.")}
 
 User request:
 ${userInput.getContent()}
