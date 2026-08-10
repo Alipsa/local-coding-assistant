@@ -92,7 +92,7 @@ class ReviewLineNumberVerifierSpec extends Specification {
     when:
     ReviewSummary result = ReviewLineNumberVerifier.verify(summary, ["src/App.groovy": 42])
 
-    then: "not sent in full is not evidence the finding is wrong — a budget-excluded PR file or a mixed --paths/--staged review produces exactly this shape"
+    then: "not sent in full is not evidence the finding is wrong"
     result.findings[0].comment == "issue"
   }
 
