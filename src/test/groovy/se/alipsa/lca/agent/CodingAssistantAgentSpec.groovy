@@ -95,7 +95,7 @@ class CodingAssistantAgentSpec extends Specification {
     1 * runner.withPromptContributor(Personas.REVIEWER) >> runner
     1 * runner.generateText({
       it.contains("code reviewer") &&
-      it.contains("Code to review:") &&
+      it.contains("===CODE TO REVIEW===") &&
       it.contains("User request:")
     }) >> "High risk of errors in patch handling. Missing tests."
     review.review.contains("Findings:")
@@ -524,5 +524,112 @@ class CodingAssistantAgentSpec extends Specification {
     then:
     result == []
     0 * searchTool.search(_, _)
+  }
+
+  def "buildReviewPrompt fences background guidance and code separately"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("review this")
+    def snippet = new CodingAssistantAgent.CodeSnippet("int x = 1")
+    String capturedPrompt = null
+
+    when:
+    agent.reviewCode(userInput, snippet, ai, null, "project guidance", Personas.REVIEWER)
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(Personas.REVIEWER) >> runner
+    1 * runner.generateText(_) >> {
+      String prompt -> capturedPrompt = prompt; "Findings:\n- Low general - nit\nTests:\n- test"
+    }
+    capturedPrompt.contains("===BACKGROUND GUIDANCE")
+    capturedPrompt.contains("project guidance")
+    capturedPrompt.contains("===END BACKGROUND GUIDANCE===")
+    capturedPrompt.contains("===CODE TO REVIEW===")
+  }
+
+  def "buildReviewPrompt reports no review target instead of reviewing the background guidance when code is empty"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("review this")
+    def snippet = new CodingAssistantAgent.CodeSnippet("")
+    String capturedPrompt = null
+
+    when:
+    agent.reviewCode(userInput, snippet, ai, null, "project guidance", Personas.REVIEWER)
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(Personas.REVIEWER) >> runner
+    1 * runner.generateText(_) >> {
+      String prompt -> capturedPrompt = prompt; "Findings:\n- Low general - nit\nTests:\n- test"
+    }
+    capturedPrompt.contains("No code was provided")
+    !capturedPrompt.contains("===CODE TO REVIEW===")
+  }
+
+  def "a short but non-empty code snippet still appears inside the code section with the caution sentence"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("review this")
+    def snippet = new CodingAssistantAgent.CodeSnippet("int x = arr[i + 1]")
+    String capturedPrompt = null
+
+    when:
+    agent.reviewCode(userInput, snippet, ai)
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(_) >> runner
+    1 * runner.generateText(_) >> {
+      String prompt -> capturedPrompt = prompt; "Findings:\n- Low general - nit\nTests:\n- test"
+    }
+    capturedPrompt.contains("===CODE TO REVIEW===\nint x = arr[i + 1]")
+    capturedPrompt.contains("Only report findings you can verify from the code provided.")
+  }
+
+  def "reviewCode threads previousFindings into the PR-review prompt"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("verify these findings")
+    def snippet = new CodingAssistantAgent.CodeSnippet("diff content")
+    String capturedPrompt = null
+
+    when:
+    agent.reviewCode(
+      userInput, snippet, ai, null, null, Personas.REVIEWER, false, true, "- [High] Foo.groovy:1 - stale finding"
+    )
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(_) >> runner
+    1 * runner.generateText(_) >> {
+      String prompt -> capturedPrompt = prompt; "Findings:\n- Low general - nit\nTests:\n- test"
+    }
+    capturedPrompt.contains("Previous findings to verify:\n- [High] Foo.groovy:1 - stale finding")
+  }
+
+  def "reviewCode's 8-arg overload still delegates with no previous findings"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("review PR")
+    def snippet = new CodingAssistantAgent.CodeSnippet("diff content")
+    String capturedPrompt = null
+
+    when:
+    agent.reviewCode(userInput, snippet, ai, null, null, Personas.REVIEWER, false, true)
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(_) >> runner
+    1 * runner.generateText(_) >> {
+      String prompt -> capturedPrompt = prompt; "Findings:\n- Low general - nit\nTests:\n- test"
+    }
+    !capturedPrompt.contains("Previous findings to verify")
   }
 }

@@ -264,11 +264,27 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     boolean withThinking,
     boolean prReview
   ) {
+    reviewCode(
+      userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, withThinking, prReview, null
+    )
+  }
+
+  ReviewedCodeSnippet reviewCode(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    Ai ai,
+    LlmOptions llmOverride,
+    String systemPromptOverride,
+    RoleGoalBackstorySpec reviewerPersona,
+    boolean withThinking,
+    boolean prReview,
+    String previousFindings
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     LlmOptions options = llmOverride ?: reviewLlmOptions
     RoleGoalBackstorySpec reviewer = reviewerPersona ?: Personas.REVIEWER
     String reviewPrompt = prReview
-      ? buildPrReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
+      ? buildPrReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer, previousFindings)
       : buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
 
     String review
@@ -591,14 +607,16 @@ Notes:
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
     String codeText = codeSnippet?.text ?: ""
     boolean hasSpecificCode = codeText.trim().length() > 50
+    boolean codeHasContent = codeText.trim().length() > 0
     """/no_think
 You are a code reviewer. Review the code below and report findings directly.
 ${securityFocus ? "Focus on security risks: injection, auth bypasses, insecure defaults, data exposure." : ""}
 Format each finding as: - [High/Medium/Low] file:line - description
-${extraSystem ? extraSystem + "\n" : ""}
-${!hasSpecificCode ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n" : ""}
-Code to review:
-${codeText}
+${extraSystem ? "===BACKGROUND GUIDANCE (project conventions — do not review this section as code)===\n${extraSystem}\n===END BACKGROUND GUIDANCE===\n" : ""}
+${codeHasContent
+    ? "===CODE TO REVIEW===\n${codeText}\n===END CODE TO REVIEW===\n" +
+      (!hasSpecificCode ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n" : "")
+    : "No code was provided. Do not review the background guidance above — report that no review target was specified."}
 
 User request:
 ${userInput.getContent()}
@@ -611,11 +629,13 @@ Findings:
     UserInput userInput,
     CodeSnippet codeSnippet,
     String systemPromptOverride,
-    RoleGoalBackstorySpec reviewerPersona
+    RoleGoalBackstorySpec reviewerPersona,
+    String previousFindings
   ) {
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
     ReviewPromptBuilder.buildPrReviewPrompt(
-      codeSnippet?.text ?: "", userInput.getContent(), systemPromptOverride, securityFocus
+      codeSnippet?.text ?: "", userInput.getContent(), systemPromptOverride, securityFocus,
+      "User request", previousFindings
     )
   }
 
