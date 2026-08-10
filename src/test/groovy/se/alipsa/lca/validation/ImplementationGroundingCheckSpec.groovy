@@ -284,6 +284,17 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
     result.level == GroundingLevel.GROUNDED
   }
 
+  def "checkFileReferences excludes a non-existing absolute path with a recognised extension"() {
+    given:
+    String nonExistentAbsolute = tempDir.resolve("does-not-exist/Fabricated.groovy").toString()
+
+    when:
+    def result = checker.checkFileReferences([nonExistentAbsolute], [] as Set)
+
+    then: "GROUNDED because it's excluded as absolute, not because Files.exists happens to find it — if isAbsolute() were removed, this would resolve to a real absolute path that doesn't exist and would be reported as missing (UNCERTAIN) instead"
+    result.level == GroundingLevel.GROUNDED
+  }
+
   def "check(llmResponse, toolCalls) is entirely unaffected by the new method"() {
     given:
     String response = "I'll modify src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy to add the feature."
