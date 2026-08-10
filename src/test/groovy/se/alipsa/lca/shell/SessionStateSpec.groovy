@@ -319,4 +319,61 @@ class SessionStateSpec extends Specification {
     state.isToolConfirmationAllowedForAll("s1")
     !state.isToolConfirmationAllowedForAll("s2")
   }
+
+  def "lastReview returns null when nothing has been recorded"() {
+    expect:
+    state.lastReview("s1") == null
+  }
+
+  def "recordReview stores and lastReview retrieves the same context for a session"() {
+    given:
+    SessionState.ReviewContext context = new SessionState.ReviewContext(
+      ["Foo.groovy"], null, ["Foo.groovy": 10], "findings text"
+    )
+
+    when:
+    state.recordReview("s1", context)
+
+    then:
+    state.lastReview("s1") == context
+  }
+
+  def "recordReview overwrites the previous context for the same session"() {
+    given:
+    SessionState.ReviewContext first = new SessionState.ReviewContext(["Foo.groovy"], null, [:], "first")
+    SessionState.ReviewContext second = new SessionState.ReviewContext([], 52, [:], "second")
+
+    when:
+    state.recordReview("s1", first)
+    state.recordReview("s1", second)
+
+    then:
+    state.lastReview("s1") == second
+  }
+
+  def "recordReview and lastReview normalise a null session id to default"() {
+    given:
+    SessionState.ReviewContext context = new SessionState.ReviewContext([], 52, [:], "findings")
+
+    when:
+    state.recordReview(null, context)
+
+    then:
+    state.lastReview(null) == context
+    state.lastReview("default") == context
+  }
+
+  def "reviews recorded under different sessions do not leak into each other"() {
+    given:
+    SessionState.ReviewContext a = new SessionState.ReviewContext(["A.groovy"], null, [:], "a")
+    SessionState.ReviewContext b = new SessionState.ReviewContext(["B.groovy"], null, [:], "b")
+
+    when:
+    state.recordReview("session-a", a)
+    state.recordReview("session-b", b)
+
+    then:
+    state.lastReview("session-a") == a
+    state.lastReview("session-b") == b
+  }
 }
