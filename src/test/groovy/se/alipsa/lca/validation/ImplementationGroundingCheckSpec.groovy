@@ -291,7 +291,9 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
     when:
     def result = checker.checkFileReferences([nonExistentAbsolute], [] as Set)
 
-    then: "GROUNDED because it's excluded as absolute, not because Files.exists happens to find it — if isAbsolute() were removed, this would resolve to a real absolute path that doesn't exist and would be reported as missing (UNCERTAIN) instead"
+    // If isAbsolute() were removed, this would resolve to a real path that doesn't exist
+    // and would be reported as missing (UNCERTAIN) instead.
+    then: "GROUNDED because it's excluded as absolute, not because Files.exists happens to find it"
     result.level == GroundingLevel.GROUNDED
   }
 

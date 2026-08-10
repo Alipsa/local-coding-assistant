@@ -2,6 +2,12 @@ package se.alipsa.lca.agent
 
 import groovy.transform.CompileStatic
 
+/**
+ * Builds the PR-review prompt shared between {@code CodingAssistantAgent} and
+ * {@code TeamReviewerAgent}, so both paths benefit from the same cross-file-analysis
+ * depth instead of drifting into two independently-tuned prompts. Also threads an
+ * optional {@code previousFindings} block for verify-these-findings follow-ups.
+ */
 @CompileStatic
 class ReviewPromptBuilder {
 

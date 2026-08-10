@@ -285,7 +285,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     RoleGoalBackstorySpec reviewer = reviewerPersona ?: Personas.REVIEWER
     String reviewPrompt = prReview
       ? buildPrReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer, previousFindings)
-      : buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
+      : buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer, previousFindings)
 
     String review
     String reasoning = null
@@ -601,7 +601,8 @@ Notes:
     UserInput userInput,
     CodeSnippet codeSnippet,
     String systemPromptOverride,
-    RoleGoalBackstorySpec reviewerPersona
+    RoleGoalBackstorySpec reviewerPersona,
+    String previousFindings
   ) {
     String extraSystem = systemPromptOverride?.trim()
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
@@ -624,7 +625,7 @@ ${codeHasContent
     : ("No code was provided. Do not review the background guidance above — " +
        "report that no review target was specified.")}
 
-User request:
+${previousFindings ? "Previous findings to verify:\n${previousFindings}\n" : ""}User request:
 ${userInput.getContent()}
 
 Findings:

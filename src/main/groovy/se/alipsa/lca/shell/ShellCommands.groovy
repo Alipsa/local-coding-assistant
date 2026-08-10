@@ -853,7 +853,10 @@ Type a command or your next question to proceed.
       // bean is absent. Cited files come from the already-parsed findings, not raw reviewText — the
       // Tests: section would otherwise read as a wall of nonexistent-file citations.
       List<String> citedFiles = summary.findings.collect { it.file }.findAll { it && it != "general" }
-      Set<String> knownPaths = isPrReview ? new HashSet<>(reviewPayload.changedFiles) : Set.<String>of()
+      Set<String> knownPaths = new HashSet<>(reviewPayload.fileLineCounts.keySet())
+      if (isPrReview) {
+        knownPaths.addAll(reviewPayload.changedFiles)
+      }
       def grounding = groundingCheck.checkFileReferences(citedFiles, knownPaths)
       if (grounding.level != se.alipsa.lca.validation.ImplementationGroundingCheck.GroundingLevel.GROUNDED) {
         groundingWarningBlock = "\n\n" + formatGroundingWarning(grounding)
@@ -861,7 +864,7 @@ Type a command or your next question to proceed.
     }
     summary = ReviewLineNumberVerifier.verify(summary, reviewPayload.fileLineCounts)
     String rendered = renderReview(summary, severityThreshold, !noColor)
-    String sastBlock = buildSastBlock(sast, effectivePaths)
+    String sastBlock = buildSastBlock(sast, paths ?: effectivePaths)
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
@@ -892,7 +895,7 @@ Type a command or your next question to proceed.
       ))
     }
     if (logReview) {
-      writeReviewLog(prompt, summary, effectivePaths, staged, severityThreshold)
+      writeReviewLog(prompt, summary, paths ?: effectivePaths, staged, severityThreshold)
     }
     output
   }

@@ -2356,6 +2356,40 @@ class ShellCommandsSpec extends Specification {
     response.contains("Referenced file(s) not found in the project")
   }
 
+  def "reviewing a directory cites its parent-relative label, and grounding does not flag it as missing"() {
+    given: "a real (project-root-relative) grounding check, distinct from the temp dir being reviewed"
+    ImplementationGroundingCheck realGroundingCheck = new ImplementationGroundingCheck()
+    ShellCommands groundedCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), gitTool, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("grounding-dir-review.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, realGroundingCheck, null, null, contextCompactor, 80000, 30000, null
+    )
+    Path dir = tempDir.resolve("reviewdir")
+    Files.createDirectories(dir)
+    Files.writeString(dir.resolve("Sample.groovy"), "class Sample {\n  void x() {}\n}\n")
+    // appendDirectoryContents labels files relative to the reviewed dir's parent (tempDir here),
+    // so the model is instructed to cite it back as "reviewdir/Sample.groovy" — a path that does
+    // not exist under the real project root the grounding check resolves against.
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] reviewdir/Sample.groovy:1 - looks fine\nTests:\n- test it"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+
+    when:
+    def response = groundedCommands.review(
+      "", "review this directory", "s-dir-grounding", null, null, null, null,
+      [dir.toString()], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    !response.contains("not found in the project")
+  }
+
   def "a Tests: section naming a not-yet-created file does not trigger a grounding warning"() {
     given:
     ImplementationGroundingCheck realGroundingCheck = new ImplementationGroundingCheck(tempDir)

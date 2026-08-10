@@ -632,4 +632,27 @@ class CodingAssistantAgentSpec extends Specification {
     }
     !capturedPrompt.contains("Previous findings to verify")
   }
+
+  def "reviewCode threads previousFindings into the non-PR (path-based) review prompt"() {
+    given:
+    Ai ai = Mock(Ai)
+    PromptRunner runner = Mock(PromptRunner)
+    UserInput userInput = new UserInput("verify these findings")
+    def snippet = new CodingAssistantAgent.CodeSnippet("some code to re-check")
+    String capturedPrompt = null
+
+    when:
+    agent.reviewCode(
+      userInput, snippet, ai, null, null, Personas.REVIEWER, false, false,
+      "- [High] Bar.groovy:42 - stale non-PR finding"
+    )
+
+    then:
+    1 * ai.withLlm(agent.reviewLlmOptions) >> runner
+    1 * runner.withPromptContributor(_) >> runner
+    1 * runner.generateText(_) >> {
+      String prompt -> capturedPrompt = prompt; "Findings:\n- Low general - nit\nTests:\n- test"
+    }
+    capturedPrompt.contains("Previous findings to verify:\n- [High] Bar.groovy:42 - stale non-PR finding")
+  }
 }
