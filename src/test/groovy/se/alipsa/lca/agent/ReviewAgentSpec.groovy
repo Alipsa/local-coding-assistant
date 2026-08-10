@@ -27,8 +27,9 @@ class ReviewAgentSpec extends Specification {
       "system",
       _,
       false,
-      false
-    ) >> { userInput, snippet, aiArg, options, system, persona, withThinking, prReview ->
+      false,
+      null
+    ) >> { userInput, snippet, aiArg, options, system, persona, withThinking, prReview, previousFindings ->
       capturedOptions = options as LlmOptions
       capturedPersona = persona
       reviewed
@@ -41,5 +42,31 @@ class ReviewAgentSpec extends Specification {
     response.review.contains("Findings:")
     capturedOptions?.modelSelectionCriteria?.name == "m"
     capturedPersona?.role == Personas.SECURITY_REVIEWER.role
+  }
+
+  def "review threads previousFindings from the request through to reviewCode"() {
+    given:
+    CodingAssistantAgent assistant = Mock()
+    ReviewAgent agent = new ReviewAgent(assistant)
+    ReviewRequest request = new ReviewRequest(
+      "verify these findings", "PR diff payload", LlmOptions.withModel("m"), "system", true, false, true,
+      "- [High] Foo.groovy:1 - stale finding"
+    )
+    def reviewed = new CodingAssistantAgent.ReviewedCodeSnippet(
+      new CodingAssistantAgent.CodeSnippet("PR diff payload"),
+      "Findings:\n- [High] general - issue\nTests:\n- test",
+      Personas.SECURITY_REVIEWER,
+      null
+    )
+    def capturedPreviousFindings = null
+    1 * assistant.reviewCode(
+      _, _, _ as Ai, _ as LlmOptions, "system", _, false, true, "- [High] Foo.groovy:1 - stale finding"
+    ) >> { args -> capturedPreviousFindings = args[8]; reviewed }
+
+    when:
+    agent.review(request, Stub(Ai))
+
+    then:
+    capturedPreviousFindings == "- [High] Foo.groovy:1 - stale finding"
   }
 }
