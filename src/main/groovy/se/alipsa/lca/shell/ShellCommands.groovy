@@ -28,6 +28,7 @@ import se.alipsa.lca.tools.ToolCallParser
 import se.alipsa.lca.agent.ReviewRequest
 import se.alipsa.lca.agent.ReviewResponse
 import se.alipsa.lca.review.ReviewFinding
+import se.alipsa.lca.review.ReviewLineNumberVerifier
 import se.alipsa.lca.review.ReviewParser
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.review.ReviewSummary
@@ -781,34 +782,64 @@ Type a command or your next question to proceed.
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
+    Integer resolvedPr = pr
+    List<String> effectivePaths = Collections.<String>emptyList()
+    String previousFindings = null
     ReviewPayload reviewPayload
-    if (pr != null) {
-      GitTool.GitResult diffResult = gitTool.prDiff(pr)
-      if (!diffResult.success) {
+
+    if (resolvedPr != null) {
+      PrPayloadOutcome outcome = resolvePrReviewPayload(resolvedPr)
+      if (outcome.error != null) {
         printProgressDone("Review")
-        String error = diffResult.error ?: "Unknown error fetching PR diff."
-        return "PR review failed: ${error}"
+        return outcome.error
       }
-      reviewPayload = buildPrReviewPayload(pr, diffResult)
-      if (reviewPayload == null) {
-        printProgressDone("Review")
-        return "PR #${pr} has no diff content."
-      }
+      reviewPayload = outcome.payload
     } else {
-      List<String> effectivePaths = paths
-      if ((effectivePaths == null || effectivePaths.isEmpty()) && prompt != null) {
+      effectivePaths = paths ?: Collections.<String>emptyList()
+      if (effectivePaths.isEmpty() && prompt != null) {
         effectivePaths = extractPathsFromPrompt(prompt)
       }
       reviewPayload = buildReviewPayload(code, effectivePaths, staged)
+      if (reviewPayload == null) {
+        if (staged) {
+          printProgressDone("Review")
+          return "Nothing staged to review — git add your changes first, or drop --staged."
+        }
+        if (code != null && !code.isEmpty()) {
+          printProgressDone("Review")
+          return "No code provided to review — pass --code with content, or drop --code."
+        }
+        SessionState.ReviewContext cached = sessionState.lastReview(session)
+        if (cached == null) {
+          printProgressDone("Review")
+          return "No prior review to verify, and no file/PR specified — what would you like me to review?"
+        }
+        previousFindings = cached.findingsText
+        if (cached.prNumber != null) {
+          resolvedPr = cached.prNumber
+          PrPayloadOutcome outcome = resolvePrReviewPayload(resolvedPr)
+          if (outcome.error != null) {
+            printProgressDone("Review")
+            return "Reusing your previous review target (PR #${resolvedPr}): ${outcome.error}"
+          }
+          reviewPayload = outcome.payload
+        } else {
+          effectivePaths = cached.paths
+          reviewPayload = buildReviewPayload(code, effectivePaths, staged)
+        }
+      }
     }
+    boolean isPrReview = resolvedPr != null
+
     Agent agent = resolveAgent(REVIEW_AGENT_NAME)
     if (agent == null) {
       printProgressDone("Review")
       return "Review agent unavailable; ensure Embabel agents are enabled."
     }
     println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}${withThinking ? ' (with reasoning)' : ''}...")
-    boolean isPrReview = pr != null
-    ReviewRequest request = new ReviewRequest(prompt, reviewPayload.text, reviewOptions, system, security, withThinking, isPrReview)
+    ReviewRequest request = new ReviewRequest(
+      prompt, reviewPayload.text, reviewOptions, system, security, withThinking, isPrReview, previousFindings
+    )
     ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
     String reviewText = response?.review
@@ -816,8 +847,21 @@ Type a command or your next question to proceed.
       return "No review response generated."
     }
     ReviewSummary summary = ReviewParser.parse(reviewText)
+    String groundingWarningBlock = ""
+    if (groundingCheck != null) {
+      // Optional bean, same as /implement's existing guard — calling it unguarded NPEs whenever the
+      // bean is absent. Cited files come from the already-parsed findings, not raw reviewText — the
+      // Tests: section would otherwise read as a wall of nonexistent-file citations.
+      List<String> citedFiles = summary.findings.collect { it.file }.findAll { it && it != "general" }
+      Set<String> knownPaths = isPrReview ? new HashSet<>(reviewPayload.changedFiles) : Set.<String>of()
+      def grounding = groundingCheck.checkFileReferences(citedFiles, knownPaths)
+      if (grounding.level != se.alipsa.lca.validation.ImplementationGroundingCheck.GroundingLevel.GROUNDED) {
+        groundingWarningBlock = "\n\n" + formatGroundingWarning(grounding)
+      }
+    }
+    summary = ReviewLineNumberVerifier.verify(summary, reviewPayload.fileLineCounts)
     String rendered = renderReview(summary, severityThreshold, !noColor)
-    String sastBlock = buildSastBlock(sast, paths)
+    String sastBlock = buildSastBlock(sast, effectivePaths)
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
@@ -838,10 +882,17 @@ Type a command or your next question to proceed.
       reasoningSection = "\n\n=== Reasoning Process ===\n" + response.reasoning
     }
 
-    String output = formatSection("Review", rendered + sastBlock + verificationNote + reasoningSection)
+    String output = formatSection(
+      "Review", rendered + sastBlock + verificationNote + reasoningSection + groundingWarningBlock
+    )
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
+    if (isPrReview || !effectivePaths.isEmpty()) {
+      sessionState.recordReview(session, new SessionState.ReviewContext(
+        effectivePaths, resolvedPr, reviewPayload.fileLineCounts, summary.raw
+      ))
+    }
     if (logReview) {
-      writeReviewLog(prompt, summary, paths, staged, severityThreshold)
+      writeReviewLog(prompt, summary, effectivePaths, staged, severityThreshold)
     }
     output
   }
@@ -1682,7 +1733,10 @@ Try:
       }
     }
     String payload = builder.toString().trim()
-    new ReviewPayload(payload ? payload : "No additional context provided.", fileLineCounts, List.of())
+    if (!payload) {
+      return null
+    }
+    new ReviewPayload(payload, fileLineCounts, List.of())
   }
 
   private void appendFileContent(StringBuilder builder, String path, Map<String, Integer> fileLineCounts) {
@@ -1761,6 +1815,25 @@ Try:
       }
     }
     0
+  }
+
+  @Canonical
+  @CompileStatic
+  private static class PrPayloadOutcome {
+    ReviewPayload payload
+    String error
+  }
+
+  private PrPayloadOutcome resolvePrReviewPayload(int prNumber) {
+    GitTool.GitResult diffResult = gitTool.prDiff(prNumber)
+    if (!diffResult.success) {
+      return new PrPayloadOutcome(null, "PR review failed: ${diffResult.error ?: 'Unknown error fetching PR diff.'}")
+    }
+    ReviewPayload payload = buildPrReviewPayload(prNumber, diffResult)
+    if (payload == null) {
+      return new PrPayloadOutcome(null, "PR #${prNumber} has no diff content.")
+    }
+    new PrPayloadOutcome(payload, null)
   }
 
   ReviewPayload buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {

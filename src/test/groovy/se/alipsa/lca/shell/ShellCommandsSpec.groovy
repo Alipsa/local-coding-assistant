@@ -34,6 +34,7 @@ import se.alipsa.lca.tools.ModelRegistry
 import se.alipsa.lca.tools.TreeTool
 import se.alipsa.lca.tools.TokenEstimator
 import se.alipsa.lca.tools.SastTool
+import se.alipsa.lca.validation.ImplementationGroundingCheck
 import spock.lang.Requires
 import spock.lang.Specification
 import spock.lang.TempDir
@@ -350,7 +351,8 @@ class ShellCommandsSpec extends Specification {
         captured = inputs.find { it instanceof ReviewRequest } as ReviewRequest
         reviewProcess
     }
-    fileEditingTool.readFile(_) >> "content"
+    // 10 lines so the cited "src/App.groovy:10" finding is in range, not [UNVERIFIED].
+    fileEditingTool.readFile(_) >> (1..10).collect { "line${it}" }.join("\n")
 
     when:
     def response = commands.review(
@@ -2073,6 +2075,315 @@ class ShellCommandsSpec extends Specification {
     then:
     // header ("$ awk ...\n") + body (<= 8000) + footer ("[exit 0]"); comfortably under 2x the cap.
     captured.length() <= 8000 + 200
+  }
+
+  def "a target-less follow-up reuses the cached non-PR target and includes previousFindings"() {
+    given:
+    reviewProcess.resultOfType(ReviewResponse) >>> [
+      new ReviewResponse("Findings:\n- [High] src/App.groovy:10 - first round bug\nTests:\n- test it"),
+      new ReviewResponse("Findings:\n- [Low] src/App.groovy:10 - confirmed fixed\nTests:\n- test it")
+    ]
+    List<ReviewRequest> capturedRequests = []
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        capturedRequests << (inputs.find { it instanceof ReviewRequest } as ReviewRequest)
+        reviewProcess
+    }
+    fileEditingTool.readFile(_) >> "content"
+
+    when: "the first review names a real target"
+    commands.review(
+      "", "review this file", "s-cache", null, null, null, null,
+      ["src/App.groovy"], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    and: "no target named at all — code defaults to '', never null, proving the cache branch is reachable"
+    commands.review(
+      "", "verify these findings", "s-cache", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    capturedRequests.size() == 2
+    capturedRequests[1].previousFindings.contains("first round bug")
+    capturedRequests[1].payload.contains("content")
+  }
+
+  def "a target-less follow-up with no prior cache returns the fail-fast message without invoking the agent"() {
+    when:
+    def response = commands.review(
+      "", "verify these findings", "s-empty", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    response == "No prior review to verify, and no file/PR specified — what would you like me to review?"
+    0 * agentPlatform.createAgentProcessFrom(_, _, _)
+  }
+
+  def "a target-less follow-up reusing a cached PR target is treated as a PR review, not a non-PR review"() {
+    given: "the headline regression this round found"
+    GitTool prGit = Mock(GitTool)
+    prGit.prDiff(52) >>> [
+      new GitTool.GitResult(true, true, 0, "diff round 1", ""),
+      new GitTool.GitResult(true, true, 0, "diff round 2", "")
+    ]
+    prGit.prChangedFiles(52) >> new GitTool.GitResult(true, true, 0, "Foo.groovy\nNewFile.groovy", "")
+    prGit.prHeadCommit(52) >> new GitTool.GitResult(true, true, 0, "sha1", "")
+    prGit.showFileAtCommit("sha1", "Foo.groovy") >> new GitTool.GitResult(true, true, 0, "class Foo {}", "")
+    prGit.showFileAtCommit("sha1", "NewFile.groovy") >> new GitTool.GitResult(true, true, 0, "class NewFile {}", "")
+    List<Set<String>> capturedKnownPaths = []
+    ImplementationGroundingCheck groundingCheck = Stub(ImplementationGroundingCheck) {
+      checkFileReferences(_, _) >> { List<String> cited, Set<String> known ->
+        capturedKnownPaths << known
+        new ImplementationGroundingCheck.GroundingResult(ImplementationGroundingCheck.GroundingLevel.GROUNDED, [])
+      }
+    }
+    ShellCommands prCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-cache.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, groundingCheck, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >>> [
+      new ReviewResponse("Findings:\n- [High] Foo.groovy:1 - round 1 bug\nTests:\n- test it"),
+      new ReviewResponse("Findings:\n- [Low] Foo.groovy:1 - confirmed fixed\nTests:\n- test it"),
+      new ReviewResponse("Findings:\n- [Low] Foo.groovy:1 - still fine\nTests:\n- test it")
+    ]
+    List<ReviewRequest> capturedRequests = []
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        capturedRequests << (inputs.find { it instanceof ReviewRequest } as ReviewRequest)
+        reviewProcess
+    }
+
+    when: "the first review explicitly targets PR 52"
+    prCommands.review(
+      "", "review this PR", "s-pr", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, 52
+    )
+
+    and: "a target-less follow-up, with no --pr of its own, asks to verify"
+    prCommands.review(
+      "", "verify these findings", "s-pr", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then: "the reused cache is treated as a full PR review — right prompt shape, real changedFiles for grounding"
+    capturedRequests.size() == 2
+    capturedRequests[1].prReview
+    capturedRequests[1].previousFindings.contains("round 1 bug")
+    capturedKnownPaths[1].contains("Foo.groovy") || capturedKnownPaths[1].contains("NewFile.groovy")
+
+    when: "a third target-less follow-up verifies round 2, not round 1"
+    prCommands.review(
+      "", "verify again", "s-pr", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then: "the cache was overwritten after round 2, so round 3 verifies round 2's findings"
+    capturedRequests.size() == 3
+    capturedRequests[2].prReview
+    capturedRequests[2].previousFindings.contains("confirmed fixed")
+    !capturedRequests[2].previousFindings.contains("round 1 bug")
+  }
+
+  def "a --staged-only review skips the cache, so a later target-less follow-up fails fast instead of NPEing"() {
+    given:
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse("Findings:\n- [Low] general - nit\nTests:\n- test")
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+    GitTool stagedGit = Stub(GitTool) {
+      stagedDiff() >> new GitTool.GitResult(true, true, 0, "some staged diff", "")
+    }
+    ShellCommands stagedCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), stagedGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("staged-no-cache.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+
+    when: "a --staged review runs with a real staged diff"
+    stagedCommands.review(
+      "", "review my staged changes", "s-staged", null, null, null, null,
+      null, true, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    and: "a target-less follow-up asks to verify"
+    def response = stagedCommands.review(
+      "", "verify these findings", "s-staged", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then: "no NPE, and the fail-fast message fires, because --staged reviews are never cached"
+    response == "No prior review to verify, and no file/PR specified — what would you like me to review?"
+  }
+
+  def "review --staged against a clean index reports nothing staged, without a prior cache"() {
+    when:
+    def response = commands.review(
+      "", "review my staged changes", "s-clean-a", null, null, null, null,
+      null, true, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then: "gitTool.stagedDiff() is stubbed to fail in the shared fixture, i.e. a clean-index diff"
+    response == "Nothing staged to review — git add your changes first, or drop --staged."
+    0 * agentPlatform.createAgentProcessFrom(_, _, _)
+  }
+
+  def "review --staged against a clean index reports nothing staged even with a prior cached PR review"() {
+    given:
+    GitTool prGit = Mock(GitTool)
+    prGit.prDiff(52) >> new GitTool.GitResult(true, true, 0, "diff content", "")
+    prGit.prChangedFiles(52) >> new GitTool.GitResult(true, true, 0, "Foo.groovy", "")
+    prGit.prHeadCommit(52) >> new GitTool.GitResult(true, true, 0, "sha1", "")
+    prGit.showFileAtCommit("sha1", "Foo.groovy") >> new GitTool.GitResult(true, true, 0, "class Foo {}", "")
+    prGit.stagedDiff() >> new GitTool.GitResult(false, true, 1, "", "")
+    ShellCommands prCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("staged-clean-with-cache.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] Foo.groovy:1 - bug\nTests:\n- test"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+
+    when: "a PR review is cached first"
+    prCommands.review(
+      "", "review PR 52", "s-clean-b", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, 52
+    )
+
+    and: "then a --staged review runs against a clean index"
+    def response = prCommands.review(
+      "", "review my staged changes", "s-clean-b", null, null, null, null,
+      null, true, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then: "reports nothing staged, does not silently substitute the cached PR #52 review"
+    response == "Nothing staged to review — git add your changes first, or drop --staged."
+  }
+
+  def "review --code with only whitespace reports no code provided, even with a prior cache"() {
+    given:
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] Foo.groovy:1 - nit\nTests:\n- test"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+    fileEditingTool.readFile(_) >> "content"
+
+    when: "a real path-based review is cached first"
+    commands.review(
+      "", "review this file", "s-whitespace", null, null, null, null,
+      ["src/App.groovy"], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    and: "then --code is passed but is whitespace-only"
+    def response = commands.review(
+      "   ", "verify these findings", "s-whitespace", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    response == "No code provided to review — pass --code with content, or drop --code."
+  }
+
+  def "reviewing a directory target populates fileLineCounts, so an out-of-range line gets flagged UNVERIFIED"() {
+    given:
+    Path dir = tempDir.resolve("reviewdir")
+    Files.createDirectories(dir)
+    Files.writeString(dir.resolve("Sample.groovy"), "class Sample {\n  void x() {}\n}\n")
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] Sample.groovy:999 - out of range\nTests:\n- test it"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+
+    when:
+    def response = commands.review(
+      "", "review this directory", "s-dir", null, null, null, null,
+      [dir.toString()], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    response.contains("[UNVERIFIED]")
+  }
+
+  def "the grounding warning appears in review's returned string, not only in stdout"() {
+    given:
+    ImplementationGroundingCheck stubbedGroundingCheck = Stub(ImplementationGroundingCheck) {
+      checkFileReferences(_, _) >> new ImplementationGroundingCheck.GroundingResult(
+        ImplementationGroundingCheck.GroundingLevel.UNCERTAIN,
+        ["Referenced file(s) not found in the project: Fake.groovy"]
+      )
+    }
+    ShellCommands groundedCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), gitTool, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("grounding-visible.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, stubbedGroundingCheck, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [High] Fake.groovy:1 - a fabricated citation\nTests:\n- test it"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+    fileEditingTool.readFile(_) >> "content"
+
+    when:
+    def response = groundedCommands.review(
+      "", "review this file", "s-grounding", null, null, null, null,
+      ["src/App.groovy"], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    response.contains("Fake.groovy")
+    response.contains("Referenced file(s) not found in the project")
+  }
+
+  def "a Tests: section naming a not-yet-created file does not trigger a grounding warning"() {
+    given:
+    ImplementationGroundingCheck realGroundingCheck = new ImplementationGroundingCheck(tempDir)
+    ShellCommands groundedCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), gitTool, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("grounding-tests-section.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, realGroundingCheck, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] general - looks fine\n" +
+      "Tests:\n- add ReviewLineNumberVerifierSpec.groovy covering the new verifier"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+    fileEditingTool.readFile(_) >> "content"
+
+    when:
+    def response = groundedCommands.review(
+      "", "review this file", "s-tests-section", null, null, null, null,
+      ["src/App.groovy"], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then: "the Tests: section citation never enters summary.findings, so it never reaches checkFileReferences"
+    !response.contains("not found in the project")
   }
 
   private ShellCommands commitCommandsFor(GitTool repoGit) {
