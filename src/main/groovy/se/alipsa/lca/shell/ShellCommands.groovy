@@ -105,6 +105,7 @@ Do not execute any commands.
   private static final long DIRECT_SHELL_TIMEOUT_MILLIS = 60000L
   private static final long IMPLEMENT_LLM_TIMEOUT_SECONDS = 600L
   private static final int DIRECT_SHELL_MAX_OUTPUT_CHARS = 8000
+  private static final int PREVIOUS_FINDINGS_MAX_CHARS = 8000
   private static final int DIRECT_SHELL_SUMMARY_MAX_CHARS = 400
   private static final int DIRECT_SHELL_CONVERSATION_MAX_CHARS = 2000
   private final CodingAssistantAgent codingAssistantAgent
@@ -895,8 +896,9 @@ Type a command or your next question to proceed.
     )
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (isPrReview || !effectivePaths.isEmpty()) {
+      String findingsForFollowUp = truncateFindingsText(renderReview(summary, severityThreshold, false))
       sessionState.recordReview(session, new SessionState.ReviewContext(
-        effectivePaths, resolvedPr, summary.raw
+        effectivePaths, resolvedPr, findingsForFollowUp
       ))
     }
     if (logReview) {
@@ -1950,6 +1952,14 @@ Try:
       return ""
     }
     diff.output ?: ""
+  }
+
+  /** Caps text carried into a follow-up prompt as previousFindings, mirroring the payload's own budget. */
+  private static String truncateFindingsText(String text) {
+    if (text == null || text.length() <= PREVIOUS_FINDINGS_MAX_CHARS) {
+      return text
+    }
+    text.substring(0, PREVIOUS_FINDINGS_MAX_CHARS) + "\n... (truncated)"
   }
 
   static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {

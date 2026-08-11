@@ -2139,10 +2139,42 @@ class ShellCommandsSpec extends Specification {
       null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
     )
 
-    then:
+    then: "the finding's line (10) exceeds the 1-line file, so previousFindings carries the annotation forward"
     capturedRequests.size() == 2
     capturedRequests[1].previousFindings.contains("first round bug")
+    capturedRequests[1].previousFindings.contains("[UNVERIFIED]")
     capturedRequests[1].payload.contains("content")
+  }
+
+  def "previousFindings carried into a follow-up is capped, unlike the payload it rides alongside"() {
+    given:
+    String hugeFindings = (1..1000).collect { "- [Low] general - note number $it padding padding padding" }
+      .join("\n")
+    reviewProcess.resultOfType(ReviewResponse) >>> [
+      new ReviewResponse("Findings:\n${hugeFindings}\nTests:\n- test it"),
+      new ReviewResponse("Findings:\n- [Low] general - fine\nTests:\n- test it")
+    ]
+    List<ReviewRequest> capturedRequests = []
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        capturedRequests << (inputs.find { it instanceof ReviewRequest } as ReviewRequest)
+        reviewProcess
+    }
+    fileEditingTool.readFile(_) >> "content"
+
+    when:
+    commands.review(
+      "", "review this file", "s-cap", null, null, null, null,
+      ["src/App.groovy"], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+    commands.review(
+      "", "verify these findings", "s-cap", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    capturedRequests.size() == 2
+    capturedRequests[1].previousFindings.length() <= 8100
   }
 
   def "a target-less follow-up with no prior cache returns the fail-fast message without invoking the agent"() {
