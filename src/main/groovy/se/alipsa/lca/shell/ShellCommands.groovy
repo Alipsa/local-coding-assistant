@@ -871,6 +871,10 @@ Type a command or your next question to proceed.
     summary = ReviewLineNumberVerifier.verify(summary, reviewPayload.fileLineCounts)
     String rendered = renderReview(summary, severityThreshold, !noColor)
     String sastBlock = buildSastBlock(sast, paths ?: effectivePaths)
+    if (isPrReview && reviewPayload.anyApproximate) {
+      rendered = "Note: some file(s) were read from the local tree, not verified against PR head " +
+        "(PR head commit unavailable).\n" + rendered
+    }
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
@@ -1746,7 +1750,7 @@ Try:
     if (!payload) {
       return null
     }
-    new ReviewPayload(payload, fileLineCounts, List.of())
+    new ReviewPayload(payload, fileLineCounts, List.of(), false)
   }
 
   private void appendFileContent(StringBuilder builder, String path, Map<String, Integer> fileLineCounts) {
@@ -1868,6 +1872,7 @@ Try:
     int budgetUsed = diff.length()
     boolean budgetExceeded = false
     boolean refFetched = false // fetch the PR ref at most once per call, not once per failing file
+    boolean anyApproximate = false
 
     for (String rawPath : changedFiles) {
       String filePath = rawPath.trim()
@@ -1911,6 +1916,9 @@ Try:
         break
       }
       String note = approximate ? "(approximate — local copy, not verified against PR head)\n" : ""
+      if (approximate) {
+        anyApproximate = true
+      }
       builder.append("File: ").append(filePath).append("\n").append(note).append("```\n")
         .append(content).append("\n```\n\n")
       budgetUsed += fileSize
@@ -1922,7 +1930,7 @@ Try:
     }
 
     builder.append("PR diff:\n```\n").append(diff).append("\n```\n")
-    new ReviewPayload(builder.toString().trim(), fileLineCounts, changedFiles)
+    new ReviewPayload(builder.toString().trim(), fileLineCounts, changedFiles, anyApproximate)
   }
 
   /**
@@ -2115,6 +2123,7 @@ Try:
     String text
     Map<String, Integer> fileLineCounts
     List<String> changedFiles
+    boolean anyApproximate
   }
 
   @Canonical

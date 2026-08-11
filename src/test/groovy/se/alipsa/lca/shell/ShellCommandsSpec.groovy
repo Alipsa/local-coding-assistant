@@ -2260,6 +2260,68 @@ class ShellCommandsSpec extends Specification {
     !capturedRequests[2].previousFindings.contains("round 1 bug")
   }
 
+  def "a PR review warns the user visibly when prHeadCommit fails and content falls back to the local tree"() {
+    given: "gh auth/network is unavailable, so every file is read from the local tree instead of PR head"
+    GitTool prGit = Stub(GitTool) {
+      prDiff(52) >> new GitTool.GitResult(true, true, 0, "diff content", "")
+      prChangedFiles(52) >> new GitTool.GitResult(true, true, 0, "Foo.groovy", "")
+      prHeadCommit(52) >> new GitTool.GitResult(false, true, 1, "", "no gh")
+    }
+    fileEditingTool.readFile("Foo.groovy") >> "class Foo {}"
+    ShellCommands prCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-approx.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse("Findings:\n- [Low] general - nit\nTests:\n- test")
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+
+    when:
+    String output = prCommands.review(
+      "", "review this PR", "s-approx", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, 52
+    )
+
+    then: "the degradation is visible in the returned output, not just embedded in the LLM prompt"
+    output.contains("not verified against PR head")
+  }
+
+  def "a PR review served entirely from PR head content carries no approximate warning"() {
+    given:
+    GitTool prGit = Stub(GitTool) {
+      prDiff(53) >> new GitTool.GitResult(true, true, 0, "diff content", "")
+      prChangedFiles(53) >> new GitTool.GitResult(true, true, 0, "Foo.groovy", "")
+      prHeadCommit(53) >> new GitTool.GitResult(true, true, 0, "sha1", "")
+      showFileAtCommit("sha1", "Foo.groovy") >> new GitTool.GitResult(true, true, 0, "class Foo {}", "")
+    }
+    ShellCommands prCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-no-approx.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse("Findings:\n- [Low] general - nit\nTests:\n- test")
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+
+    when:
+    String output = prCommands.review(
+      "", "review this PR", "s-no-approx", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, 53
+    )
+
+    then:
+    !output.contains("not verified against PR head")
+  }
+
   def "a --staged-only review skips the cache, so a later target-less follow-up fails fast instead of NPEing"() {
     given:
     reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse("Findings:\n- [Low] general - nit\nTests:\n- test")
