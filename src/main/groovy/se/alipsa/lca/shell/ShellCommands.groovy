@@ -1737,7 +1737,7 @@ Try:
         Path root = resolveProjectRoot(fileEditingTool)
         Path resolved = root.resolve(path.trim()).normalize()
         if (Files.isDirectory(resolved)) {
-          appendDirectoryContents(builder, resolved, path.trim(), fileLineCounts)
+          appendDirectoryContents(builder, resolved, path.trim(), fileLineCounts, root)
         } else {
           appendFileContent(builder, path.trim(), fileLineCounts)
         }
@@ -1768,7 +1768,7 @@ Try:
   }
 
   private void appendDirectoryContents(
-    StringBuilder builder, Path dirPath, String displayPath, Map<String, Integer> fileLineCounts
+    StringBuilder builder, Path dirPath, String displayPath, Map<String, Integer> fileLineCounts, Path projectRoot
   ) {
     List<Path> sourceFiles = []
     try {
@@ -1805,9 +1805,11 @@ Try:
         builder.append("\n(${skipped} more file(s) skipped — context budget reached)\n")
         break
       }
-      String relativePath = dirPath.parent != null
-        ? dirPath.parent.relativize(file).toString()
-        : file.fileName.toString()
+      // Label relative to the project root, not the reviewed dir's immediate parent — a citation
+      // back from the model naturally uses the full repo-relative path (matching how PR-review and
+      // single-file review already label their File: entries), and an exact match against
+      // fileLineCounts/knownPaths needs the label to be that same path, not a fragment of it.
+      String relativePath = projectRoot.relativize(file).toString()
       try {
         String content = Files.readString(file)
         builder.append("File: ").append(relativePath).append("\n```\n")

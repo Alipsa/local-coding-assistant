@@ -2519,7 +2519,7 @@ class ShellCommandsSpec extends Specification {
     response.contains("Referenced file(s) not found in the project")
   }
 
-  def "reviewing a directory cites its parent-relative label, and grounding does not flag it as missing"() {
+  def "reviewing a directory outside the project root still verifies a shorthand citation via the suffix fallback"() {
     given: "a real (project-root-relative) grounding check, distinct from the temp dir being reviewed"
     ImplementationGroundingCheck realGroundingCheck = new ImplementationGroundingCheck()
     ShellCommands groundedCommands = new ShellCommands(
@@ -2535,9 +2535,11 @@ class ShellCommandsSpec extends Specification {
     Path dir = tempDir.resolve("reviewdir")
     Files.createDirectories(dir)
     Files.writeString(dir.resolve("Sample.groovy"), "class Sample {\n  void x() {}\n}\n")
-    // appendDirectoryContents labels files relative to the reviewed dir's parent (tempDir here),
-    // so the model is instructed to cite it back as "reviewdir/Sample.groovy" — a path that does
-    // not exist under the real project root the grounding check resolves against.
+    // appendDirectoryContents now labels files relative to the project root (here, fileEditingTool's
+    // unstubbed getProjectRoot() falls back to the real CWD), and tempDir sits outside that root — so
+    // the real label is a "../.."-laden path ending in ".../reviewdir/Sample.groovy". The model still
+    // naturally cites the short form it can actually see on screen; the suffix-match fallback in
+    // isKnownPath is what lets that shorthand citation verify against the longer real label.
     reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
       "Findings:\n- [Low] reviewdir/Sample.groovy:1 - looks fine\nTests:\n- test it"
     )
@@ -2551,6 +2553,34 @@ class ShellCommandsSpec extends Specification {
 
     then:
     !response.contains("not found in the project")
+  }
+
+  def "reviewing a directory under the project root cites the full repo-relative path, not just its parent"() {
+    given:
+    ReviewRequest captured = null
+    fileEditingTool.getProjectRoot() >> tempDir
+    Path dir = tempDir.resolve("src/main/groovy/reviewdir")
+    Files.createDirectories(dir)
+    Files.writeString(dir.resolve("Sample.groovy"), "class Sample {\n  void x() {}\n}\n")
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] general - looks fine\nTests:\n- test it"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ReviewRequest } as ReviewRequest
+        reviewProcess
+    }
+
+    when:
+    commands.review(
+      "", "review this directory", "s-dir-label", null, null, null, null,
+      [dir.toString()], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    captured != null
+    captured.payload.contains("File: src/main/groovy/reviewdir/Sample.groovy")
+    !captured.payload.contains("File: reviewdir/Sample.groovy")
   }
 
   def "a Tests: section naming a not-yet-created file does not trigger a grounding warning"() {
