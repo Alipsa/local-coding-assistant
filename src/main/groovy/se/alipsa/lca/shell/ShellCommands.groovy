@@ -899,6 +899,10 @@ Type a command or your next question to proceed.
     )
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (isPrReview || !effectivePaths.isEmpty()) {
+      // renderReview falls back to summary.raw.trim() (unannotated) when no finding clears
+      // severityThreshold — a review with zero findings at/above threshold loses [UNVERIFIED]
+      // markers in that edge case. Benign today since truncateFindingsText still caps the size,
+      // but don't mistake this call for a guarantee that annotations always survive into the cache.
       String findingsForFollowUp = truncateFindingsText(renderReview(summary, severityThreshold, false))
       sessionState.recordReview(session, new SessionState.ReviewContext(
         effectivePaths, resolvedPr, findingsForFollowUp
