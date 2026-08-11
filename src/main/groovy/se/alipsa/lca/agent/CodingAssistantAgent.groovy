@@ -634,14 +634,31 @@ Findings:
 """.stripIndent().trim()
   }
 
+  private static final List<String> FENCE_MARKERS = [
+    "===END CODE TO REVIEW===",
+    "===CODE TO REVIEW===",
+    "===END BACKGROUND GUIDANCE===",
+    "===BACKGROUND GUIDANCE (project conventions — do not review this section as code)==="
+  ]
+
   /**
-   * Collapses runs of 3+ '=' so reviewed content can never forge the literal
-   * {@code ===...===} fence markers this prompt uses to bound itself — otherwise a file
-   * whose own text happens to contain e.g. {@code ===END CODE TO REVIEW===} (this repo's own
-   * design docs do) could close the fence early and have its remainder read as instructions.
+   * Neutralizes only the exact literal {@code ===...===} fence-marker strings this prompt uses to
+   * bound itself, leaving everything else — including legitimate {@code ===}/{@code !==} runs in
+   * reviewed code, markdown setext headings, and diff conflict markers — byte-exact. A blanket
+   * "collapse every run of 3+ '='" approach corrupted JS/TS strict-equality operators and similar
+   * content; only text that exactly reproduces one of our own marker phrases (e.g. a file whose
+   * own text happens to contain {@code ===END CODE TO REVIEW===}, as this repo's own design docs
+   * do) needs to be defused, since only that exact phrase can close the fence early.
    */
   private static String sanitizeForFencing(String text) {
-    text == null ? null : text.replaceAll(/={3,}/, "==")
+    if (text == null) {
+      return null
+    }
+    String sanitized = text
+    for (String marker : FENCE_MARKERS) {
+      sanitized = sanitized.replace(marker, marker.replaceAll(/={3,}/, "=="))
+    }
+    sanitized
   }
 
   protected String buildPrReviewPrompt(
