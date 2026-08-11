@@ -28,6 +28,7 @@ import se.alipsa.lca.tools.ToolCallParser
 import se.alipsa.lca.agent.ReviewRequest
 import se.alipsa.lca.agent.ReviewResponse
 import se.alipsa.lca.review.ReviewFinding
+import se.alipsa.lca.review.ReviewLineNumberVerifier
 import se.alipsa.lca.review.ReviewParser
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.review.ReviewSummary
@@ -104,6 +105,7 @@ Do not execute any commands.
   private static final long DIRECT_SHELL_TIMEOUT_MILLIS = 60000L
   private static final long IMPLEMENT_LLM_TIMEOUT_SECONDS = 600L
   private static final int DIRECT_SHELL_MAX_OUTPUT_CHARS = 8000
+  private static final int PREVIOUS_FINDINGS_MAX_CHARS = 8000
   private static final int DIRECT_SHELL_SUMMARY_MAX_CHARS = 400
   private static final int DIRECT_SHELL_CONVERSATION_MAX_CHARS = 2000
   private final CodingAssistantAgent codingAssistantAgent
@@ -781,34 +783,69 @@ Type a command or your next question to proceed.
     SessionSettings settings = sessionState.update(session, resolution.chosen, null, reviewTemperature, maxTokens, systemPrompt, null)
     LlmOptions reviewOptions = sessionState.reviewOptions(settings)
     String system = sessionState.systemPrompt(settings)
-    String reviewPayload
-    if (pr != null) {
-      GitTool.GitResult diffResult = gitTool.prDiff(pr)
-      if (!diffResult.success) {
+    Integer resolvedPr = pr
+    List<String> effectivePaths = Collections.<String>emptyList()
+    String previousFindings = null
+    ReviewPayload reviewPayload
+
+    if (resolvedPr != null) {
+      PrPayloadOutcome outcome = resolvePrReviewPayload(resolvedPr)
+      if (outcome.error != null) {
         printProgressDone("Review")
-        String error = diffResult.error ?: "Unknown error fetching PR diff."
-        return "PR review failed: ${error}"
+        return outcome.error
       }
-      reviewPayload = buildPrReviewPayload(pr, diffResult)
-      if (reviewPayload == null) {
-        printProgressDone("Review")
-        return "PR #${pr} has no diff content."
-      }
+      reviewPayload = outcome.payload
     } else {
-      List<String> effectivePaths = paths
-      if ((effectivePaths == null || effectivePaths.isEmpty()) && prompt != null) {
+      effectivePaths = paths ?: Collections.<String>emptyList()
+      if (effectivePaths.isEmpty() && prompt != null) {
         effectivePaths = extractPathsFromPrompt(prompt)
       }
       reviewPayload = buildReviewPayload(code, effectivePaths, staged)
+      if (reviewPayload == null) {
+        if (staged) {
+          printProgressDone("Review")
+          return "Nothing staged to review — git add your changes first, or drop --staged."
+        }
+        if (code != null && !code.isEmpty()) {
+          printProgressDone("Review")
+          return "No code provided to review — pass --code with content, or drop --code."
+        }
+        SessionState.ReviewContext cached = sessionState.lastReview(session)
+        if (cached == null) {
+          printProgressDone("Review")
+          return "No prior review to verify, and no file/PR specified — what would you like me to review?"
+        }
+        previousFindings = cached.findingsText
+        if (cached.prNumber != null) {
+          resolvedPr = cached.prNumber
+          PrPayloadOutcome outcome = resolvePrReviewPayload(resolvedPr)
+          if (outcome.error != null) {
+            printProgressDone("Review")
+            return "Reusing your previous review target (PR #${resolvedPr}): ${outcome.error}"
+          }
+          reviewPayload = outcome.payload
+        } else {
+          effectivePaths = cached.paths
+          reviewPayload = buildReviewPayload(code, effectivePaths, staged)
+          if (reviewPayload == null) {
+            printProgressDone("Review")
+            return "Reusing your previous review target (${effectivePaths.join(', ')}) found nothing to " +
+              "review — the files may have been deleted or moved."
+          }
+        }
+      }
     }
+    boolean isPrReview = resolvedPr != null
+
     Agent agent = resolveAgent(REVIEW_AGENT_NAME)
     if (agent == null) {
       printProgressDone("Review")
       return "Review agent unavailable; ensure Embabel agents are enabled."
     }
     println("Analyzing code with ${settings.model}${security ? ' (security focus)' : ''}${withThinking ? ' (with reasoning)' : ''}...")
-    boolean isPrReview = pr != null
-    ReviewRequest request = new ReviewRequest(prompt, reviewPayload, reviewOptions, system, security, withThinking, isPrReview)
+    ReviewRequest request = new ReviewRequest(
+      prompt, reviewPayload.text, reviewOptions, system, security, withThinking, isPrReview, previousFindings
+    )
     ReviewResponse response = runAgent(agent, session, ReviewResponse, request)
     printProgressDone("Review")
     String reviewText = response?.review
@@ -816,8 +853,27 @@ Type a command or your next question to proceed.
       return "No review response generated."
     }
     ReviewSummary summary = ReviewParser.parse(reviewText)
+    String groundingWarningBlock = ""
+    if (groundingCheck != null) {
+      // Optional bean, same as /implement's existing guard — calling it unguarded NPEs whenever the
+      // bean is absent. Cited files come from the already-parsed findings, not raw reviewText — the
+      // Tests: section would otherwise read as a wall of nonexistent-file citations.
+      List<String> citedFiles = summary.findings.collect { it.file }.findAll { it && it != "general" }
+      Set<String> knownPaths = new HashSet<>(reviewPayload.fileLineCounts.keySet())
+      if (isPrReview) {
+        knownPaths.addAll(reviewPayload.changedFiles)
+      }
+      def grounding = groundingCheck.checkFileReferences(citedFiles, knownPaths)
+      if (grounding.level != se.alipsa.lca.validation.ImplementationGroundingCheck.GroundingLevel.GROUNDED) {
+        groundingWarningBlock = "\n\n" + formatGroundingWarning(grounding)
+      }
+    }
+    summary = ReviewLineNumberVerifier.verify(summary, reviewPayload.fileLineCounts)
     String rendered = renderReview(summary, severityThreshold, !noColor)
-    String sastBlock = buildSastBlock(sast, paths)
+    String sastBlock = buildSastBlock(sast, paths ?: effectivePaths)
+    if (isPrReview && reviewPayload.anyApproximate) {
+      rendered = "Note: some file(s) were read from the local tree, not verified against PR head.\n" + rendered
+    }
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
     }
@@ -838,10 +894,22 @@ Type a command or your next question to proceed.
       reasoningSection = "\n\n=== Reasoning Process ===\n" + response.reasoning
     }
 
-    String output = formatSection("Review", rendered + sastBlock + verificationNote + reasoningSection)
+    String output = formatSection(
+      "Review", rendered + sastBlock + verificationNote + reasoningSection + groundingWarningBlock
+    )
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
+    if (isPrReview || !effectivePaths.isEmpty()) {
+      // renderReview falls back to summary.raw.trim() (unannotated) when no finding clears
+      // severityThreshold — a review with zero findings at/above threshold loses [UNVERIFIED]
+      // markers in that edge case. Benign today since truncateFindingsText still caps the size,
+      // but don't mistake this call for a guarantee that annotations always survive into the cache.
+      String findingsForFollowUp = truncateFindingsText(renderReview(summary, severityThreshold, false))
+      sessionState.recordReview(session, new SessionState.ReviewContext(
+        effectivePaths, resolvedPr, findingsForFollowUp
+      ))
+    }
     if (logReview) {
-      writeReviewLog(prompt, summary, paths, staged, severityThreshold)
+      writeReviewLog(prompt, summary, paths ?: effectivePaths, staged, severityThreshold)
     }
     output
   }
@@ -1655,8 +1723,9 @@ Try:
     ".gradle", ".properties", ".yml", ".yaml", ".json", ".toml", ".md"
   )
 
-  private String buildReviewPayload(String code, List<String> paths, boolean staged) {
+  private ReviewPayload buildReviewPayload(String code, List<String> paths, boolean staged) {
     StringBuilder builder = new StringBuilder()
+    Map<String, Integer> fileLineCounts = new LinkedHashMap<>()
     if (code != null && code.trim()) {
       builder.append("User-provided code:\n```\n").append(code.trim()).append("\n```\n\n")
     }
@@ -1668,9 +1737,9 @@ Try:
         Path root = resolveProjectRoot(fileEditingTool)
         Path resolved = root.resolve(path.trim()).normalize()
         if (Files.isDirectory(resolved)) {
-          appendDirectoryContents(builder, resolved, path.trim())
+          appendDirectoryContents(builder, resolved, path.trim(), fileLineCounts, root)
         } else {
-          appendFileContent(builder, path.trim())
+          appendFileContent(builder, path.trim(), fileLineCounts)
         }
       }
     }
@@ -1681,20 +1750,26 @@ Try:
       }
     }
     String payload = builder.toString().trim()
-    payload ? payload : "No additional context provided."
+    if (!payload) {
+      return null
+    }
+    new ReviewPayload(payload, fileLineCounts, List.of(), false)
   }
 
-  private void appendFileContent(StringBuilder builder, String path) {
+  private void appendFileContent(StringBuilder builder, String path, Map<String, Integer> fileLineCounts) {
     try {
       String content = fileEditingTool.readFile(path)
       builder.append("File: ").append(path).append("\n```\n")
         .append(content).append("\n```\n\n")
+      fileLineCounts.put(path, content.stripTrailing().split("\\R").length)
     } catch (IllegalArgumentException ex) {
       builder.append("File: ").append(path).append(" (error: ").append(ex.message).append(")\n\n")
     }
   }
 
-  private void appendDirectoryContents(StringBuilder builder, Path dirPath, String displayPath) {
+  private void appendDirectoryContents(
+    StringBuilder builder, Path dirPath, String displayPath, Map<String, Integer> fileLineCounts, Path projectRoot
+  ) {
     List<Path> sourceFiles = []
     try {
       Files.walkFileTree(dirPath, new java.nio.file.SimpleFileVisitor<Path>() {
@@ -1730,13 +1805,23 @@ Try:
         builder.append("\n(${skipped} more file(s) skipped — context budget reached)\n")
         break
       }
-      String relativePath = dirPath.parent != null
-        ? dirPath.parent.relativize(file).toString()
-        : file.fileName.toString()
+      // Label relative to the project root, not the reviewed dir's immediate parent — a citation
+      // back from the model naturally uses the full repo-relative path (matching how PR-review and
+      // single-file review already label their File: entries), and an exact match against
+      // fileLineCounts/knownPaths needs the label to be that same path, not a fragment of it. But
+      // only when the file is actually under the root: relativizing an out-of-root file (an
+      // absolute --paths target, or one reached via "..") produces a "../"-prefixed label that
+      // leaks host filesystem layout into the prompt and that REVIEW_FILE_REF_PATTERN's leading \b
+      // can't anchor on (a run starting with "." is never a word boundary), so any citation of it
+      // silently drops out of grounding coverage. Fall back to the old parent-relative label there.
+      String relativePath = file.startsWith(projectRoot)
+        ? projectRoot.relativize(file).toString()
+        : (dirPath.parent != null ? dirPath.parent.relativize(file).toString() : file.fileName.toString())
       try {
         String content = Files.readString(file)
         builder.append("File: ").append(relativePath).append("\n```\n")
           .append(content).append("\n```\n\n")
+        fileLineCounts.put(relativePath, content.stripTrailing().split("\\R").length)
         filesIncluded++
       } catch (IOException ex) {
         builder.append("File: ").append(relativePath).append(" (error: ").append(ex.message).append(")\n\n")
@@ -1758,7 +1843,26 @@ Try:
     0
   }
 
-  String buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
+  @Canonical
+  @CompileStatic
+  private static class PrPayloadOutcome {
+    ReviewPayload payload
+    String error
+  }
+
+  private PrPayloadOutcome resolvePrReviewPayload(int prNumber) {
+    GitTool.GitResult diffResult = gitTool.prDiff(prNumber)
+    if (!diffResult.success) {
+      return new PrPayloadOutcome(null, "PR review failed: ${diffResult.error ?: 'Unknown error fetching PR diff.'}")
+    }
+    ReviewPayload payload = buildPrReviewPayload(prNumber, diffResult)
+    if (payload == null) {
+      return new PrPayloadOutcome(null, "PR #${prNumber} has no diff content.")
+    }
+    new PrPayloadOutcome(payload, null)
+  }
+
+  ReviewPayload buildPrReviewPayload(int prNumber, GitTool.GitResult diffResult) {
     String diff = diffResult.output ?: ""
     if (diff.trim().isEmpty()) {
       return null
@@ -1770,25 +1874,67 @@ Try:
       changedFiles = filesResult.output.split("\\R").toList().findAll { it.trim() }
     }
 
-    StringBuilder builder = new StringBuilder()
+    GitTool.GitResult headResult = gitTool.prHeadCommit(prNumber)
+    // success=true with blank output is a real, observed shape (e.g. --jq finding nothing) — guard
+    // on both, not just success, or showFileAtCommit("", path) silently resolves against the index.
+    String headSha = (headResult.success && headResult.output?.trim()) ? headResult.output.trim() : null
 
-    // Add full file contents within budget
+    StringBuilder builder = new StringBuilder()
+    Map<String, Integer> fileLineCounts = new LinkedHashMap<>()
     int budgetUsed = diff.length()
     boolean budgetExceeded = false
-    for (String filePath : changedFiles) {
-      try {
-        String content = fileEditingTool.readFile(filePath.trim())
-        int fileSize = filePath.length() + content.length() + 20
-        if (budgetUsed + fileSize > prContextBudget) {
-          budgetExceeded = true
-          break
+    boolean refFetched = false // fetch the PR ref at most once per call, not once per failing file
+    boolean anyApproximate = false
+
+    for (String rawPath : changedFiles) {
+      String filePath = rawPath.trim()
+      String content = null
+      boolean approximate = false
+
+      if (headSha != null) {
+        GitTool.GitResult shown = gitTool.showFileAtCommit(headSha, filePath)
+        if (!shown.success && !refFetched) {
+          GitTool.GitResult fetchResult = gitTool.fetchPullRequestRef(prNumber)
+          if (!fetchResult.success) {
+            log.warn("fetchPullRequestRef failed for PR #{}: {}", prNumber, fetchResult.error)
+          }
+          refFetched = true
+          shown = gitTool.showFileAtCommit(headSha, filePath)
         }
-        builder.append("File: ").append(filePath.trim()).append("\n```\n")
-          .append(content).append("\n```\n\n")
-        budgetUsed += fileSize
-      } catch (Exception ex) {
-        // File may have been deleted in the PR or not present locally; skip it
+        if (shown.success && isProbablyText(shown.output)) {
+          content = shown.output
+        }
       }
+
+      if (content == null) {
+        // Unchanged from today: a file gone in both the PR head and the local tree (e.g. deleted in
+        // the PR) is skipped, not fatal to the whole review.
+        try {
+          String local = fileEditingTool.readFile(filePath)
+          if (isProbablyText(local)) {
+            content = local
+            approximate = true
+          } else {
+            continue
+          }
+        } catch (Exception ex) {
+          continue
+        }
+      }
+
+      int fileSize = filePath.length() + content.length() + 20
+      if (budgetUsed + fileSize > prContextBudget) {
+        budgetExceeded = true
+        break
+      }
+      String note = approximate ? "(approximate — local copy, not verified against PR head)\n" : ""
+      if (approximate) {
+        anyApproximate = true
+      }
+      builder.append("File: ").append(filePath).append("\n").append(note).append("```\n")
+        .append(content).append("\n```\n\n")
+      budgetUsed += fileSize
+      fileLineCounts.put(filePath, content.stripTrailing().split("\\R").length)
     }
 
     if (budgetExceeded) {
@@ -1796,7 +1942,28 @@ Try:
     }
 
     builder.append("PR diff:\n```\n").append(diff).append("\n```\n")
-    builder.toString().trim()
+    new ReviewPayload(builder.toString().trim(), fileLineCounts, changedFiles, anyApproximate)
+  }
+
+  /**
+   * A binary file read via git-show never throws — invalid UTF-8 bytes are silently substituted
+   * with U+FFFD — so this catches what the exception-based guard around a local file read cannot.
+   */
+  private static boolean isProbablyText(String content) {
+    if (content == null || content.isEmpty()) {
+      return true
+    }
+    int replacementCount = 0
+    for (int i = 0; i < content.length(); i++) {
+      char c = content.charAt(i)
+      if (c == (char) 0) {
+        return false
+      }
+      if (c == (char) 0xFFFD) {
+        replacementCount++
+      }
+    }
+    replacementCount <= content.length() * 0.01d
   }
 
   private String stagedDiff() {
@@ -1805,6 +1972,14 @@ Try:
       return ""
     }
     diff.output ?: ""
+  }
+
+  /** Caps text carried into a follow-up prompt as previousFindings, mirroring the payload's own budget. */
+  private static String truncateFindingsText(String text) {
+    if (text == null || text.length() <= PREVIOUS_FINDINGS_MAX_CHARS) {
+      return text
+    }
+    text.substring(0, PREVIOUS_FINDINGS_MAX_CHARS) + "\n... (truncated)"
   }
 
   static String renderReview(ReviewSummary summary, ReviewSeverity minSeverity, boolean colorize) {
@@ -1952,6 +2127,15 @@ Try:
   @CompileStatic
   protected Instant nowInstant() {
     Instant.now()
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ReviewPayload {
+    String text
+    Map<String, Integer> fileLineCounts
+    List<String> changedFiles
+    boolean anyApproximate
   }
 
   @Canonical

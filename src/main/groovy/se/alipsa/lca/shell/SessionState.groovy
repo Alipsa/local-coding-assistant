@@ -29,6 +29,7 @@ class SessionState {
   private final Map<String, Conversation> conversations = new ConcurrentHashMap<>()
   private final Map<String, ToolSummary> toolSummaries = new ConcurrentHashMap<>()
   private final Map<String, Deque<String>> recentFilePaths = new ConcurrentHashMap<>()
+  private final Map<String, ReviewContext> lastReviews = new ConcurrentHashMap<>()
   private final Set<String> toolConfirmationAllowAll = ConcurrentHashMap.newKeySet()
   private final String defaultModel
   private final double defaultCraftTemperature
@@ -181,6 +182,14 @@ class SessionState {
 
   List<String> getRecentFilePaths(String sessionId) {
     getRecentFilePaths(sessionId, 10)
+  }
+
+  void recordReview(String sessionId, ReviewContext context) {
+    lastReviews.put(sessionId ?: "default", context)
+  }
+
+  ReviewContext lastReview(String sessionId) {
+    lastReviews.get(sessionId ?: "default")
   }
 
   Conversation getOrCreateConversation(String sessionId) {
@@ -391,6 +400,14 @@ class SessionState {
     String source
     String summary
     Instant timestamp
+  }
+
+  @Canonical
+  @CompileStatic
+  static class ReviewContext {
+    List<String> paths        // empty when prNumber is set
+    Integer prNumber          // null when paths is set
+    String findingsText
   }
 
   @Canonical

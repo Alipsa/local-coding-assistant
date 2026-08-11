@@ -342,6 +342,75 @@ six
     result.error.contains("PR number must be positive")
   }
 
+  def "prHeadCommit rejects non-positive PR number"() {
+    when:
+    def result = gitTool.prHeadCommit(0)
+
+    then:
+    !result.success
+    result.error.contains("PR number must be positive")
+  }
+
+  def "prHeadCommit returns error when gh is not available"() {
+    given:
+    initRepo()
+
+    when:
+    def result = gitTool.prHeadCommit(999)
+
+    then:
+    !result.success
+    result.error != null && !result.error.isEmpty()
+  }
+
+  def "showFileAtCommit returns file content at a given commit"() {
+    given:
+    initRepo()
+    Path file = tempDir.resolve("sample.txt")
+    Files.writeString(file, "original content\n")
+    runGit("add", "sample.txt")
+    runGit("commit", "-m", "init")
+    String sha = runGitCapture("rev-parse", "HEAD").trim()
+    Files.writeString(file, "changed content\n")
+
+    when:
+    def result = gitTool.showFileAtCommit(sha, "sample.txt")
+
+    then:
+    result.success
+    result.output.contains("original content")
+    !result.output.contains("changed content")
+  }
+
+  def "showFileAtCommit fails for a path that does not exist at that commit"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("sample.txt"), "content\n")
+    runGit("add", "sample.txt")
+    runGit("commit", "-m", "init")
+    String sha = runGitCapture("rev-parse", "HEAD").trim()
+
+    when:
+    def result = gitTool.showFileAtCommit(sha, "missing.txt")
+
+    then:
+    !result.success
+  }
+
+  def "fetchPullRequestRef reports failure for a nonexistent PR ref"() {
+    given:
+    initRepo()
+    Files.writeString(tempDir.resolve("a.txt"), "hello\n")
+    runGit("add", "a.txt")
+    runGit("commit", "-m", "init")
+
+    when:
+    def result = gitTool.fetchPullRequestRef(999)
+
+    then:
+    !result.success
+  }
+
   def "openPullRequestsForCurrentBranch reports missing repository"() {
     when:
     def result = gitTool.openPullRequestsForCurrentBranch()

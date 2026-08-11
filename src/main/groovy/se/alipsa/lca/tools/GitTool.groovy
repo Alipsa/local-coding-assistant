@@ -297,6 +297,21 @@ class GitTool {
     runCommand(List.of("gh", "pr", "view", String.valueOf(prNumber), "--json", "files", "--jq", ".files[].path"))
   }
 
+  GitResult prHeadCommit(int prNumber) {
+    if (prNumber <= 0) {
+      return new GitResult(false, false, 1, "", "PR number must be positive.")
+    }
+    runCommand(List.of("gh", "pr", "view", String.valueOf(prNumber), "--json", "headRefOid", "--jq", ".headRefOid"))
+  }
+
+  GitResult showFileAtCommit(String sha, String path) {
+    runGit(List.of("show", "${sha}:${path}".toString()))
+  }
+
+  GitResult fetchPullRequestRef(int prNumber) {
+    runGit(List.of("fetch", "origin", "refs/pull/${prNumber}/head".toString()))
+  }
+
   /**
    * Open pull requests targeting the current branch, as raw {@code gh pr list --json} output in
    * {@link GitResult#output}. Use {@link #parsePullRequestJson} to turn that into structured data.

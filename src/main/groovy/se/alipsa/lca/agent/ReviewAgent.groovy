@@ -37,7 +37,8 @@ class ReviewAgent {
       request.systemPrompt,
       persona,
       request.withThinking,
-      request.prReview
+      request.prReview,
+      request.previousFindings
     )
     new ReviewResponse(reviewed.review, reviewed.reasoning)
   }

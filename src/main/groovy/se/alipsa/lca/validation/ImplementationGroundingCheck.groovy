@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component
 import se.alipsa.lca.tools.ToolCallParser.ToolCall
 
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.regex.Pattern
@@ -21,8 +22,25 @@ class ImplementationGroundingCheck {
 
   private static final Logger log = LoggerFactory.getLogger(ImplementationGroundingCheck)
 
+  // check()/scoreFileReferences scan free-form LLM prose with .find() — a wide extension list there
+  // makes bare framework mentions like "Node.js" or "Vue.js" parse as file paths and produce false
+  // "files don't exist" warnings. Kept narrow to JVM-language extensions, where that ambiguity
+  // barely exists in practice.
   private static final Pattern FILE_REF_PATTERN = Pattern.compile(
     /\b([\w\/\-\.]+\.(?:groovy|java|xml|yaml|yml|properties|json|sh|sql|gradle|kt))\b/
+  )
+
+  // checkFileReferences matches whole strings (.matches()) against already-parsed review-finding
+  // paths, not free prose, so a wide pattern is safe there. Kept in sync with
+  // ShellCommands.SOURCE_EXTENSIONS (plus sh/sql, which that set omits) — the project's review
+  // target is language-agnostic, so a citation with any extension the reviewer accepts must be
+  // checkable here too, not just JVM-language files.
+  private static final String REVIEW_FILE_EXTENSIONS =
+    "groovy|java|kt|scala|py|js|ts|tsx|jsx|go|rs|rb|c|cpp|h|hpp|cs|swift|xml|gradle|" +
+    "properties|yml|yaml|json|toml|md|sh|sql"
+
+  private static final Pattern REVIEW_FILE_REF_PATTERN = Pattern.compile(
+    "\\b([\\w/\\-.]+\\.(?:${REVIEW_FILE_EXTENSIONS}))\\b".toString()
   )
 
   private static final Pattern COM_EXAMPLE_PATTERN = Pattern.compile(
@@ -108,6 +126,37 @@ class ImplementationGroundingCheck {
     }
 
     new FileReferenceScore(existing, nonExisting)
+  }
+
+  GroundingResult checkFileReferences(List<String> citedFiles, Set<String> additionalKnownPaths) {
+    List<String> issues = []
+    List<String> pathShaped = citedFiles.toUnique().findAll { String ref ->
+      REVIEW_FILE_REF_PATTERN.matcher(ref).matches() && !Paths.get(ref).isAbsolute()
+    }
+    List<String> nonExisting = pathShaped.findAll { String ref -> !fileReferenceExists(ref, additionalKnownPaths) }
+    if (!nonExisting.isEmpty()) {
+      issues.add("Referenced file(s) not found in the project: ${nonExisting.join(', ')}".toString())
+    }
+    new GroundingResult(determineLevel(issues), issues)
+  }
+
+  private boolean fileReferenceExists(String ref, Set<String> knownPaths) {
+    try {
+      Files.exists(projectRoot.resolve(ref).normalize()) || isKnownPath(ref, knownPaths)
+    } catch (InvalidPathException ex) {
+      false
+    }
+  }
+
+  // Forward only (known path ends with "/" + cited): a citation shorter than or equal to the real
+  // label is a legitimate paraphrase (a bare filename, or a directory review's parent-relative
+  // label being cited back verbatim). The reverse direction (a cited path ending in the known
+  // fragment) has no corresponding legitimate input — a model only ever sees the label actually
+  // shown to it (the full repo-relative path for in-root reviews, the parent-relative label for
+  // out-of-root ones) and never a "fuller" path it could correctly cite instead — so it was
+  // removed: it only ever admitted a fabricated deep path piggybacking on a real short one.
+  private static boolean isKnownPath(String ref, Set<String> knownPaths) {
+    knownPaths.any { it == ref || it.endsWith("/" + ref) }
   }
 
   private boolean projectUsesComExample() {

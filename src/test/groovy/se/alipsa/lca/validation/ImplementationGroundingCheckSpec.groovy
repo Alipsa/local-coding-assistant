@@ -56,6 +56,18 @@ class ImplementationGroundingCheckSpec extends Specification {
     !result.shouldWarn()
   }
 
+  def "prose mentioning JS framework names is not misread as file citations"() {
+    given: "check()/scoreFileReferences scan free prose, unlike checkFileReferences's parsed paths"
+    String response = "I used Node.js and Next.js here, see Vue.js docs. " +
+      "Refactored the D3.js chart and the React.ts helper."
+
+    when:
+    def result = checker.check(response, [])
+
+    then:
+    !result.issues.any { it.contains("referenced files exist") }
+  }
+
   def "response with com.example when project does not use it is flagged"() {
     given:
     String response = "I'll create com.example.cli.MyApplication to handle the task."
@@ -199,5 +211,149 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
 
     then:
     !result.issues.any { it.contains("referenced files exist") }
+  }
+
+  def "checkFileReferences flags a citation for a file that does not exist"() {
+    when:
+    def result = checker.checkFileReferences(["Missing.groovy"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("Missing.groovy")
+  }
+
+  def "checkFileReferences passes when all citations exist"() {
+    when:
+    def result = checker.checkFileReferences(
+      ["src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy"], [] as Set
+    )
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences matches a bare filename against a known-paths entry"() {
+    when:
+    def result = checker.checkFileReferences(
+      ["Foo.groovy"], ["src/main/groovy/se/alipsa/lca/newpkg/Foo.groovy"] as Set
+    )
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences flags a fabricated citation with a non-JVM extension the reviewer also accepts"() {
+    when: "the project is language-agnostic — ShellCommands.SOURCE_EXTENSIONS accepts .py/.md for review"
+    def result = checker.checkFileReferences(["missing_module.py", "missing_notes.md"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("missing_module.py")
+    result.issues[0].contains("missing_notes.md")
+  }
+
+  def "checkFileReferences flags a fabricated deep path even though it ends with a real short known path"() {
+    when: "knownPaths holds a short root-level entry, as PR reviews' changedFiles routinely do"
+    def result = checker.checkFileReferences(
+      ["src/does/not/exist/pom.xml"], ["pom.xml"] as Set
+    )
+
+    then: "reverse-suffix matching must not let a hallucinated path piggyback on an unrelated real filename"
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("src/does/not/exist/pom.xml")
+  }
+
+  def "checkFileReferences flags a fabricated deep path even though it ends with a multi-segment known path"() {
+    when: "knownPaths holds a parent-relative label, as an out-of-root directory review produces"
+    def result = checker.checkFileReferences(
+      ["src/does/not/exist/reviewdir/Sample.groovy"], ["reviewdir/Sample.groovy"] as Set
+    )
+
+    then: "reverse-suffix matching must not let a hallucinated path piggyback on a real short label"
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("src/does/not/exist/reviewdir/Sample.groovy")
+  }
+
+  def "checkFileReferences flags one fabricated citation among several real ones, not gated by a ratio"() {
+    when:
+    def result = checker.checkFileReferences(
+      [
+        "src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy",
+        "src/main/groovy/se/alipsa/lca/tools/ToolCallParser.groovy",
+        "Fabricated.groovy"
+      ],
+      [] as Set
+    )
+
+    then: "unlike check()'s existingRatio() < 0.2 gate, any non-existing citation is flagged regardless of ratio"
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("Fabricated.groovy")
+    !result.issues[0].contains("ShellCommands.groovy")
+  }
+
+  def "checkFileReferences names a duplicate nonexistent citation once, not per occurrence"() {
+    when:
+    def result = checker.checkFileReferences(["Missing.groovy", "Missing.groovy"], [] as Set)
+
+    then:
+    result.issues.size() == 1
+  }
+
+  def "checkFileReferences ignores a prose citation that isn't shaped like a file path"() {
+    when:
+    def result = checker.checkFileReferences(["The error handling in review()"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+    result.issues.isEmpty()
+  }
+
+  def "checkFileReferences excludes an extension-less absolute path"() {
+    when:
+    def result = checker.checkFileReferences(["/etc/passwd"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences excludes an absolute path with a recognised extension even if it exists on disk"() {
+    given:
+    Path absoluteFile = tempDir.resolve("Foo.groovy")
+    Files.writeString(absoluteFile, "class Foo {}")
+
+    when:
+    def result = checker.checkFileReferences([absoluteFile.toString()], [] as Set)
+
+    then: "excluded because it's absolute, not treated as found or as missing"
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "checkFileReferences excludes a non-existing absolute path with a recognised extension"() {
+    given:
+    String nonExistentAbsolute = tempDir.resolve("does-not-exist/Fabricated.groovy").toString()
+
+    when:
+    def result = checker.checkFileReferences([nonExistentAbsolute], [] as Set)
+
+    // If isAbsolute() were removed, this would resolve to a real path that doesn't exist
+    // and would be reported as missing (UNCERTAIN) instead.
+    then: "GROUNDED because it's excluded as absolute, not because Files.exists happens to find it"
+    result.level == GroundingLevel.GROUNDED
+  }
+
+  def "check(llmResponse, toolCalls) is entirely unaffected by the new method"() {
+    given:
+    String response = "I'll modify src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy to add the feature."
+    def calls = [
+      new ToolCall("replace", [
+        "src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy", "old", "new"
+      ])
+    ]
+
+    when:
+    def result = checker.check(response, calls)
+
+    then:
+    result.level == GroundingLevel.GROUNDED
   }
 }

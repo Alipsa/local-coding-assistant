@@ -43,6 +43,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Objects
+import java.util.regex.Matcher
+import java.util.regex.Pattern
 
 @CompileStatic
 class Personas {
@@ -264,12 +266,28 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     boolean withThinking,
     boolean prReview
   ) {
+    reviewCode(
+      userInput, codeSnippet, ai, llmOverride, systemPromptOverride, reviewerPersona, withThinking, prReview, null
+    )
+  }
+
+  ReviewedCodeSnippet reviewCode(
+    UserInput userInput,
+    CodeSnippet codeSnippet,
+    Ai ai,
+    LlmOptions llmOverride,
+    String systemPromptOverride,
+    RoleGoalBackstorySpec reviewerPersona,
+    boolean withThinking,
+    boolean prReview,
+    String previousFindings
+  ) {
     Objects.requireNonNull(ai, "Ai must not be null")
     LlmOptions options = llmOverride ?: reviewLlmOptions
     RoleGoalBackstorySpec reviewer = reviewerPersona ?: Personas.REVIEWER
     String reviewPrompt = prReview
-      ? buildPrReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
-      : buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer)
+      ? buildPrReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer, previousFindings)
+      : buildReviewPrompt(userInput, codeSnippet, systemPromptOverride, reviewer, previousFindings)
 
     String review
     String reasoning = null
@@ -585,37 +603,95 @@ Notes:
     UserInput userInput,
     CodeSnippet codeSnippet,
     String systemPromptOverride,
-    RoleGoalBackstorySpec reviewerPersona
+    RoleGoalBackstorySpec reviewerPersona,
+    String previousFindings
   ) {
     String extraSystem = systemPromptOverride?.trim()
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
     String codeText = codeSnippet?.text ?: ""
     boolean hasSpecificCode = codeText.trim().length() > 50
+    boolean codeHasContent = codeText.trim().length() > 0
+    String fencedCodeText = sanitizeForFencing(codeText)
+    String fencedExtraSystem = sanitizeForFencing(extraSystem)
     """/no_think
 You are a code reviewer. Review the code below and report findings directly.
 ${securityFocus ? "Focus on security risks: injection, auth bypasses, insecure defaults, data exposure." : ""}
 Format each finding as: - [High/Medium/Low] file:line - description
-${extraSystem ? extraSystem + "\n" : ""}
-${!hasSpecificCode ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n" : ""}
-Code to review:
-${codeText}
+${fencedExtraSystem
+    ? ("${GUIDANCE_FENCE_OPEN}\n" +
+       "${fencedExtraSystem}\n${GUIDANCE_FENCE_CLOSE}\n")
+    : ""}
+${codeHasContent
+    ? "${CODE_FENCE_OPEN}\n${fencedCodeText}\n${CODE_FENCE_CLOSE}\n" +
+      (!hasSpecificCode
+        ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n"
+        : "")
+    : ("No code was provided. Do not review the background guidance above — " +
+       "report that no review target was specified.")}
 
-User request:
+${previousFindings ? "Previous findings to verify:\n${previousFindings}\n" : ""}User request:
 ${userInput.getContent()}
 
 Findings:
 """.stripIndent().trim()
   }
 
+  // Single source of truth for the fence-marker phrases so the prompt template, the neutralizer,
+  // and the specs can never drift apart the way the independent hardcoded copies did before.
+  protected static final String CODE_FENCE_CORE = "CODE TO REVIEW"
+  protected static final String CODE_FENCE_END_CORE = "END CODE TO REVIEW"
+  protected static final String GUIDANCE_FENCE_CORE =
+    "BACKGROUND GUIDANCE (project conventions — do not review this section as code)"
+  protected static final String GUIDANCE_FENCE_END_CORE = "END BACKGROUND GUIDANCE"
+
+  protected static final String CODE_FENCE_OPEN = "===" + CODE_FENCE_CORE + "==="
+  protected static final String CODE_FENCE_CLOSE = "===" + CODE_FENCE_END_CORE + "==="
+  protected static final String GUIDANCE_FENCE_OPEN = "===" + GUIDANCE_FENCE_CORE + "==="
+  protected static final String GUIDANCE_FENCE_CLOSE = "===" + GUIDANCE_FENCE_END_CORE + "==="
+
+  private static final List<String> FENCE_MARKER_CORES = [
+    CODE_FENCE_END_CORE, CODE_FENCE_CORE, GUIDANCE_FENCE_END_CORE, GUIDANCE_FENCE_CORE
+  ]
+
+  // Matches any run of 3+ '=' immediately surrounding one of our fence-marker phrases, however
+  // wide that run is. A fixed-width replace (swap exactly "===X===" for "==X==") only consumes one
+  // 3-wide layer of padding: text pre-padded to "====X====" keeps one '=' on each side after that
+  // single pass, and those leftover characters reconstitute the exact marker the replace was meant
+  // to defuse. The greedy {3,} quantifier consumes the whole run in one pass, so no padding survives
+  // to reform the marker regardless of how much padding the input started with.
+  private static final List<Pattern> FENCE_MARKER_PATTERNS = FENCE_MARKER_CORES.collect { String core ->
+    Pattern.compile("={3,}" + Pattern.quote(core) + "={3,}")
+  }
+
+  /**
+   * Neutralizes only the exact literal {@code ===...===} fence-marker phrases this prompt uses to
+   * bound itself (at any padding width), leaving everything else — including legitimate
+   * {@code ===}/{@code !==} runs in reviewed code, markdown setext headings, and diff conflict
+   * markers — byte-exact.
+   */
+  private static String sanitizeForFencing(String text) {
+    if (text == null) {
+      return null
+    }
+    String sanitized = text
+    for (int i = 0; i < FENCE_MARKER_CORES.size(); i++) {
+      String replacement = "==" + FENCE_MARKER_CORES[i] + "=="
+      sanitized = FENCE_MARKER_PATTERNS[i].matcher(sanitized).replaceAll(Matcher.quoteReplacement(replacement))
+    }
+    sanitized
+  }
+
   protected String buildPrReviewPrompt(
     UserInput userInput,
     CodeSnippet codeSnippet,
     String systemPromptOverride,
-    RoleGoalBackstorySpec reviewerPersona
+    RoleGoalBackstorySpec reviewerPersona,
+    String previousFindings
   ) {
     boolean securityFocus = reviewerPersona?.getRole() == "Security Reviewer"
     ReviewPromptBuilder.buildPrReviewPrompt(
-      codeSnippet?.text ?: "", userInput.getContent(), systemPromptOverride, securityFocus
+      codeSnippet?.text ?: "", userInput.getContent(), systemPromptOverride, securityFocus,
+      "User request", previousFindings
     )
   }
 

@@ -14,4 +14,5 @@ class ReviewRequest {
   boolean security
   boolean withThinking = false
   boolean prReview = false
+  String previousFindings = null
 }

@@ -3,10 +3,10 @@ package se.alipsa.lca.agent
 import groovy.transform.CompileStatic
 
 /**
- * Shared PR-review prompt text, used by both the {@code /review} command
- * ({@link CodingAssistantAgent#buildPrReviewPrompt}) and the agent team's QA pass
- * ({@code se.alipsa.lca.team.TeamReviewerAgent}), so both paths benefit from the same
- * cross-file-analysis depth instead of drifting into two independently-tuned prompts.
+ * Builds the PR-review prompt shared between {@code CodingAssistantAgent} and
+ * {@code TeamReviewerAgent}, so both paths benefit from the same cross-file-analysis
+ * depth instead of drifting into two independently-tuned prompts. Also threads an
+ * optional {@code previousFindings} block for verify-these-findings follow-ups.
  */
 @CompileStatic
 class ReviewPromptBuilder {
@@ -17,7 +17,7 @@ class ReviewPromptBuilder {
     String systemPromptOverride,
     boolean securityFocus
   ) {
-    buildPrReviewPrompt(codeText, userRequest, systemPromptOverride, securityFocus, "User request")
+    buildPrReviewPrompt(codeText, userRequest, systemPromptOverride, securityFocus, "User request", null)
   }
 
   static String buildPrReviewPrompt(
@@ -26,6 +26,17 @@ class ReviewPromptBuilder {
     String systemPromptOverride,
     boolean securityFocus,
     String requestLabel
+  ) {
+    buildPrReviewPrompt(codeText, userRequest, systemPromptOverride, securityFocus, requestLabel, null)
+  }
+
+  static String buildPrReviewPrompt(
+    String codeText,
+    String userRequest,
+    String systemPromptOverride,
+    boolean securityFocus,
+    String requestLabel,
+    String previousFindings
   ) {
     String extraSystem = systemPromptOverride?.trim()
     """
@@ -48,10 +59,13 @@ Cross-file analysis:
 Report only issues found and suggested actions. Do not list strengths or summarise what the PR does well.
 Do not limit your response length. Be thorough.
 
+Quote the exact line you are citing (from the code or diff below) before asserting a finding against
+it. If you cannot locate the line in the content provided, say so instead of guessing a line number.
+
 Code to review:
 ${codeText}
 
-${requestLabel}:
+${previousFindings ? "Previous findings to verify:\n${previousFindings}\n" : ""}${requestLabel}:
 ${userRequest}
 
 Respond with sections:
