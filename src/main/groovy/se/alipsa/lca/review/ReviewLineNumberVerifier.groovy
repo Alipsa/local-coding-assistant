@@ -28,16 +28,15 @@ class ReviewLineNumberVerifier {
     if (knownPaths.contains(citedFile)) {
       return citedFile
     }
+    // Forward only (known path ends with "/" + cited): a citation shorter than or equal to the real
+    // label is a legitimate paraphrase (a bare filename, or a directory review's parent-relative
+    // label being cited back verbatim). The reverse direction (a cited path ending in the known
+    // fragment) has no corresponding legitimate input — a model only ever sees the label actually
+    // shown to it (the full repo-relative path for in-root reviews, the parent-relative label for
+    // out-of-root ones) and never a "fuller" path it could correctly cite instead — so it was
+    // removed: it only ever admitted a fabricated deep path piggybacking on a real short one (e.g.
+    // "src/does/not/exist/reviewdir/Sample.groovy" matching "reviewdir/Sample.groovy").
     Set<String> forwardMatches = knownPaths.findAll { key -> key.endsWith("/" + citedFile) }
-    if (!forwardMatches.isEmpty()) {
-      return forwardMatches.size() == 1 ? forwardMatches.iterator().next() : null
-    }
-    // The reverse direction (a cited path ending in the known fragment) is only safe when the known
-    // path has 2+ segments: a directory review's fileLineCounts keys are parent-relative labels
-    // (e.g. "shell/ShellCommands.groovy"), so a model citing the natural full repo path needs this
-    // to verify at all. Gating on "/" in the key stops a single-segment root-level entry like
-    // "pom.xml" from letting a fabricated deep path (e.g. "src/does/not/exist/pom.xml") piggyback.
-    Set<String> reverseMatches = knownPaths.findAll { key -> key.contains("/") && citedFile.endsWith("/" + key) }
-    reverseMatches.size() == 1 ? reverseMatches.iterator().next() : null
+    forwardMatches.size() == 1 ? forwardMatches.iterator().next() : null
   }
 }

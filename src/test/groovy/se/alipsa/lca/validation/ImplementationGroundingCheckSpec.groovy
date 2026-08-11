@@ -263,17 +263,15 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
     result.issues[0].contains("src/does/not/exist/pom.xml")
   }
 
-  def "checkFileReferences matches a full repo-relative citation against a directory review's parent-relative label"() {
-    given: "appendDirectoryContents keys knownPaths by a label relative to the reviewed dir's parent"
-    // Deliberately absent from the tempDir fixture — a GROUNDED verdict here can only come from the
-    // reverse-suffix match against additionalKnownPaths, not from an on-disk existence check.
-    String citedPath = "src/main/groovy/se/alipsa/lca/newpkg/Handler.groovy"
+  def "checkFileReferences flags a fabricated deep path even though it ends with a multi-segment known path"() {
+    when: "knownPaths holds a parent-relative label, as an out-of-root directory review produces"
+    def result = checker.checkFileReferences(
+      ["src/does/not/exist/reviewdir/Sample.groovy"], ["reviewdir/Sample.groovy"] as Set
+    )
 
-    when:
-    def result = checker.checkFileReferences([citedPath], ["newpkg/Handler.groovy"] as Set)
-
-    then: "the known path has 2+ segments, so the reverse direction is safe to allow here"
-    result.level == GroundingLevel.GROUNDED
+    then: "reverse-suffix matching must not let a hallucinated path piggyback on a real short label"
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("src/does/not/exist/reviewdir/Sample.groovy")
   }
 
   def "checkFileReferences flags one fabricated citation among several real ones, not gated by a ratio"() {

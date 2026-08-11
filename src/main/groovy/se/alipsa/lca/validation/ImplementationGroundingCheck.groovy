@@ -148,16 +148,15 @@ class ImplementationGroundingCheck {
     }
   }
 
+  // Forward only (known path ends with "/" + cited): a citation shorter than or equal to the real
+  // label is a legitimate paraphrase (a bare filename, or a directory review's parent-relative
+  // label being cited back verbatim). The reverse direction (a cited path ending in the known
+  // fragment) has no corresponding legitimate input — a model only ever sees the label actually
+  // shown to it (the full repo-relative path for in-root reviews, the parent-relative label for
+  // out-of-root ones) and never a "fuller" path it could correctly cite instead — so it was
+  // removed: it only ever admitted a fabricated deep path piggybacking on a real short one.
   private static boolean isKnownPath(String ref, Set<String> knownPaths) {
-    if (knownPaths.any { it == ref || it.endsWith("/" + ref) }) {
-      return true
-    }
-    // The reverse direction (a cited path ending in the known fragment) is only safe when the known
-    // path has 2+ segments: a directory review's knownPaths are parent-relative labels (e.g.
-    // "shell/ShellCommands.groovy"), so a citation of the natural full repo path needs this to be
-    // recognised at all. Gating on "/" in the known path stops a single-segment root-level entry
-    // like "pom.xml" from letting a fabricated deep path piggyback on it.
-    knownPaths.any { it.contains("/") && ref.endsWith("/" + it) }
+    knownPaths.any { it == ref || it.endsWith("/" + ref) }
   }
 
   private boolean projectUsesComExample() {
