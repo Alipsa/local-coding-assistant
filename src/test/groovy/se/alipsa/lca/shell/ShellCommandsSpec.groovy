@@ -1991,7 +1991,7 @@ class ShellCommandsSpec extends Specification {
     given:
     String diff = "diff content"
     GitTool.GitResult diffResult = new GitTool.GitResult(true, true, 0, diff, "")
-    String binaryGarbage = "PK  ���some-binary-payload��"
+    String binaryGarbage = "PK\u0000\u0000\uFFFD\uFFFD\uFFFDsome-binary-payload\uFFFD\uFFFD"
     GitTool prGit = Stub(GitTool) {
       prChangedFiles(4) >> new GitTool.GitResult(true, true, 0, "app.jar\nsmall.groovy", "")
       prHeadCommit(4) >> new GitTool.GitResult(true, true, 0, "abc123", "")
