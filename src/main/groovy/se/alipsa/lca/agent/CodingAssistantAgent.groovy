@@ -609,16 +609,18 @@ Notes:
     String codeText = codeSnippet?.text ?: ""
     boolean hasSpecificCode = codeText.trim().length() > 50
     boolean codeHasContent = codeText.trim().length() > 0
+    String fencedCodeText = sanitizeForFencing(codeText)
+    String fencedExtraSystem = sanitizeForFencing(extraSystem)
     """/no_think
 You are a code reviewer. Review the code below and report findings directly.
 ${securityFocus ? "Focus on security risks: injection, auth bypasses, insecure defaults, data exposure." : ""}
 Format each finding as: - [High/Medium/Low] file:line - description
-${extraSystem
+${fencedExtraSystem
     ? ("===BACKGROUND GUIDANCE (project conventions — do not review this section as code)===\n" +
-       "${extraSystem}\n===END BACKGROUND GUIDANCE===\n")
+       "${fencedExtraSystem}\n===END BACKGROUND GUIDANCE===\n")
     : ""}
 ${codeHasContent
-    ? "===CODE TO REVIEW===\n${codeText}\n===END CODE TO REVIEW===\n" +
+    ? "===CODE TO REVIEW===\n${fencedCodeText}\n===END CODE TO REVIEW===\n" +
       (!hasSpecificCode
         ? "Only report findings you can verify from the code provided. Do not guess about code you cannot see.\n"
         : "")
@@ -630,6 +632,16 @@ ${userInput.getContent()}
 
 Findings:
 """.stripIndent().trim()
+  }
+
+  /**
+   * Collapses runs of 3+ '=' so reviewed content can never forge the literal
+   * {@code ===...===} fence markers this prompt uses to bound itself — otherwise a file
+   * whose own text happens to contain e.g. {@code ===END CODE TO REVIEW===} (this repo's own
+   * design docs do) could close the fence early and have its remainder read as instructions.
+   */
+  private static String sanitizeForFencing(String text) {
+    text == null ? null : text.replaceAll(/={3,}/, "==")
   }
 
   protected String buildPrReviewPrompt(
