@@ -22,8 +22,15 @@ class ImplementationGroundingCheck {
 
   private static final Logger log = LoggerFactory.getLogger(ImplementationGroundingCheck)
 
+  // Kept in sync with ShellCommands.SOURCE_EXTENSIONS (plus sh/sql, which that set omits) — the
+  // project's review target is language-agnostic, so a citation with any extension the reviewer
+  // accepts must be checkable here too, not just JVM-language files.
+  private static final String FILE_EXTENSIONS =
+    "groovy|java|kt|scala|py|js|ts|tsx|jsx|go|rs|rb|c|cpp|h|hpp|cs|swift|xml|gradle|" +
+    "properties|yml|yaml|json|toml|md|sh|sql"
+
   private static final Pattern FILE_REF_PATTERN = Pattern.compile(
-    /\b([\w\/\-\.]+\.(?:groovy|java|xml|yaml|yml|properties|json|sh|sql|gradle|kt))\b/
+    "\\b([\\w/\\-.]+\\.(?:${FILE_EXTENSIONS}))\\b".toString()
   )
 
   private static final Pattern COM_EXAMPLE_PATTERN = Pattern.compile(

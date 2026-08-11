@@ -230,6 +230,16 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
     result.level == GroundingLevel.GROUNDED
   }
 
+  def "checkFileReferences flags a fabricated citation with a non-JVM extension the reviewer also accepts"() {
+    when: "the project is language-agnostic — ShellCommands.SOURCE_EXTENSIONS accepts .py/.md for review"
+    def result = checker.checkFileReferences(["missing_module.py", "missing_notes.md"], [] as Set)
+
+    then:
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("missing_module.py")
+    result.issues[0].contains("missing_notes.md")
+  }
+
   def "checkFileReferences flags a fabricated deep path even though it ends with a real short known path"() {
     when: "knownPaths holds a short root-level entry, as PR reviews' changedFiles routinely do"
     def result = checker.checkFileReferences(
