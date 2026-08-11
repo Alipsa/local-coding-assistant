@@ -230,6 +230,17 @@ Creating src/main/java/com/example/cli/App.java and src/main/java/com/example/cl
     result.level == GroundingLevel.GROUNDED
   }
 
+  def "checkFileReferences flags a fabricated deep path even though it ends with a real short known path"() {
+    when: "knownPaths holds a short root-level entry, as PR reviews' changedFiles routinely do"
+    def result = checker.checkFileReferences(
+      ["src/does/not/exist/pom.xml"], ["pom.xml"] as Set
+    )
+
+    then: "reverse-suffix matching must not let a hallucinated path piggyback on an unrelated real filename"
+    result.level == GroundingLevel.UNCERTAIN
+    result.issues[0].contains("src/does/not/exist/pom.xml")
+  }
+
   def "checkFileReferences flags one fabricated citation among several real ones, not gated by a ratio"() {
     when:
     def result = checker.checkFileReferences(

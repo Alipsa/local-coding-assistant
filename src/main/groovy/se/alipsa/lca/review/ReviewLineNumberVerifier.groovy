@@ -28,8 +28,10 @@ class ReviewLineNumberVerifier {
     if (knownPaths.contains(citedFile)) {
       return citedFile
     }
-    knownPaths.findAll { key ->
-      key.endsWith("/" + citedFile) || citedFile.endsWith("/" + key)
-    }.max { it.length() }
+    // Only the forward direction (a known path ending in the cited fragment) is safe: the reverse
+    // direction would let a fabricated deep path piggyback on any short known path sharing its
+    // filename (e.g. "src/does/not/exist/pom.xml" matching a real root-level "pom.xml").
+    Set<String> matches = knownPaths.findAll { key -> key.endsWith("/" + citedFile) }
+    matches.size() == 1 ? matches.iterator().next() : null
   }
 }

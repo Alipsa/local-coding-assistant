@@ -132,7 +132,10 @@ class ImplementationGroundingCheck {
   }
 
   private static boolean isKnownPath(String ref, Set<String> knownPaths) {
-    knownPaths.any { it == ref || it.endsWith("/" + ref) || ref.endsWith("/" + it) }
+    // Only the forward direction (a known path ending in the cited fragment) is safe: the reverse
+    // direction would let a fabricated deep path piggyback on any short known path sharing its
+    // filename — PR reviews' changedFiles routinely include root-level entries like "pom.xml".
+    knownPaths.any { it == ref || it.endsWith("/" + ref) }
   }
 
   private boolean projectUsesComExample() {

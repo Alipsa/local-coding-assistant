@@ -96,6 +96,38 @@ class ReviewLineNumberVerifierSpec extends Specification {
     result.findings[0].comment == "issue"
   }
 
+  def "an ambiguous basename shared by two known paths leaves the finding untouched"() {
+    given:
+    ReviewSummary summary = new ReviewSummary(
+      [new ReviewFinding(ReviewSeverity.HIGH, "Config.groovy", 999, "issue")],
+      [],
+      "raw"
+    )
+
+    when:
+    ReviewSummary result = ReviewLineNumberVerifier.verify(
+      summary, ["src/main/Config.groovy": 3, "src/test/Config.groovy": 5]
+    )
+
+    then: "two matches is not evidence either way; picking one arbitrarily would misjudge the finding"
+    result.findings[0].comment == "issue"
+  }
+
+  def "a cited path is not verified merely because it ends with a short known path's filename"() {
+    given:
+    ReviewSummary summary = new ReviewSummary(
+      [new ReviewFinding(ReviewSeverity.HIGH, "src/does/not/exist/pom.xml", 999, "issue")],
+      [],
+      "raw"
+    )
+
+    when:
+    ReviewSummary result = ReviewLineNumberVerifier.verify(summary, ["pom.xml": 10])
+
+    then: "a fabricated deep path must not match a short known path via reverse-suffix matching"
+    result.findings[0].comment == "issue"
+  }
+
   def "a finding with file general or a null line is left untouched"() {
     given:
     ReviewSummary summary = new ReviewSummary(
