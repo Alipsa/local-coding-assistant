@@ -22,15 +22,25 @@ class ImplementationGroundingCheck {
 
   private static final Logger log = LoggerFactory.getLogger(ImplementationGroundingCheck)
 
-  // Kept in sync with ShellCommands.SOURCE_EXTENSIONS (plus sh/sql, which that set omits) — the
-  // project's review target is language-agnostic, so a citation with any extension the reviewer
-  // accepts must be checkable here too, not just JVM-language files.
-  private static final String FILE_EXTENSIONS =
+  // check()/scoreFileReferences scan free-form LLM prose with .find() — a wide extension list there
+  // makes bare framework mentions like "Node.js" or "Vue.js" parse as file paths and produce false
+  // "files don't exist" warnings. Kept narrow to JVM-language extensions, where that ambiguity
+  // barely exists in practice.
+  private static final Pattern FILE_REF_PATTERN = Pattern.compile(
+    /\b([\w\/\-\.]+\.(?:groovy|java|xml|yaml|yml|properties|json|sh|sql|gradle|kt))\b/
+  )
+
+  // checkFileReferences matches whole strings (.matches()) against already-parsed review-finding
+  // paths, not free prose, so a wide pattern is safe there. Kept in sync with
+  // ShellCommands.SOURCE_EXTENSIONS (plus sh/sql, which that set omits) — the project's review
+  // target is language-agnostic, so a citation with any extension the reviewer accepts must be
+  // checkable here too, not just JVM-language files.
+  private static final String REVIEW_FILE_EXTENSIONS =
     "groovy|java|kt|scala|py|js|ts|tsx|jsx|go|rs|rb|c|cpp|h|hpp|cs|swift|xml|gradle|" +
     "properties|yml|yaml|json|toml|md|sh|sql"
 
-  private static final Pattern FILE_REF_PATTERN = Pattern.compile(
-    "\\b([\\w/\\-.]+\\.(?:${FILE_EXTENSIONS}))\\b".toString()
+  private static final Pattern REVIEW_FILE_REF_PATTERN = Pattern.compile(
+    "\\b([\\w/\\-.]+\\.(?:${REVIEW_FILE_EXTENSIONS}))\\b".toString()
   )
 
   private static final Pattern COM_EXAMPLE_PATTERN = Pattern.compile(
@@ -121,7 +131,7 @@ class ImplementationGroundingCheck {
   GroundingResult checkFileReferences(List<String> citedFiles, Set<String> additionalKnownPaths) {
     List<String> issues = []
     List<String> pathShaped = citedFiles.toUnique().findAll { String ref ->
-      FILE_REF_PATTERN.matcher(ref).matches() && !Paths.get(ref).isAbsolute()
+      REVIEW_FILE_REF_PATTERN.matcher(ref).matches() && !Paths.get(ref).isAbsolute()
     }
     List<String> nonExisting = pathShaped.findAll { String ref -> !fileReferenceExists(ref, additionalKnownPaths) }
     if (!nonExisting.isEmpty()) {

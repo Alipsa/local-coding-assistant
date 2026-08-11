@@ -56,6 +56,18 @@ class ImplementationGroundingCheckSpec extends Specification {
     !result.shouldWarn()
   }
 
+  def "prose mentioning JS framework names is not misread as file citations"() {
+    given: "check()/scoreFileReferences scan free prose, unlike checkFileReferences's parsed paths"
+    String response = "I used Node.js and Next.js here, see Vue.js docs. " +
+      "Refactored the D3.js chart and the React.ts helper."
+
+    when:
+    def result = checker.check(response, [])
+
+    then:
+    !result.issues.any { it.contains("referenced files exist") }
+  }
+
   def "response with com.example when project does not use it is flagged"() {
     given:
     String response = "I'll create com.example.cli.MyApplication to handle the task."
