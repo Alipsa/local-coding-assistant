@@ -149,10 +149,15 @@ class ImplementationGroundingCheck {
   }
 
   private static boolean isKnownPath(String ref, Set<String> knownPaths) {
-    // Only the forward direction (a known path ending in the cited fragment) is safe: the reverse
-    // direction would let a fabricated deep path piggyback on any short known path sharing its
-    // filename — PR reviews' changedFiles routinely include root-level entries like "pom.xml".
-    knownPaths.any { it == ref || it.endsWith("/" + ref) }
+    if (knownPaths.any { it == ref || it.endsWith("/" + ref) }) {
+      return true
+    }
+    // The reverse direction (a cited path ending in the known fragment) is only safe when the known
+    // path has 2+ segments: a directory review's knownPaths are parent-relative labels (e.g.
+    // "shell/ShellCommands.groovy"), so a citation of the natural full repo path needs this to be
+    // recognised at all. Gating on "/" in the known path stops a single-segment root-level entry
+    // like "pom.xml" from letting a fabricated deep path piggyback on it.
+    knownPaths.any { it.contains("/") && ref.endsWith("/" + it) }
   }
 
   private boolean projectUsesComExample() {

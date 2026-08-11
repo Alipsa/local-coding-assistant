@@ -28,10 +28,16 @@ class ReviewLineNumberVerifier {
     if (knownPaths.contains(citedFile)) {
       return citedFile
     }
-    // Only the forward direction (a known path ending in the cited fragment) is safe: the reverse
-    // direction would let a fabricated deep path piggyback on any short known path sharing its
-    // filename (e.g. "src/does/not/exist/pom.xml" matching a real root-level "pom.xml").
-    Set<String> matches = knownPaths.findAll { key -> key.endsWith("/" + citedFile) }
-    matches.size() == 1 ? matches.iterator().next() : null
+    Set<String> forwardMatches = knownPaths.findAll { key -> key.endsWith("/" + citedFile) }
+    if (!forwardMatches.isEmpty()) {
+      return forwardMatches.size() == 1 ? forwardMatches.iterator().next() : null
+    }
+    // The reverse direction (a cited path ending in the known fragment) is only safe when the known
+    // path has 2+ segments: a directory review's fileLineCounts keys are parent-relative labels
+    // (e.g. "shell/ShellCommands.groovy"), so a model citing the natural full repo path needs this
+    // to verify at all. Gating on "/" in the key stops a single-segment root-level entry like
+    // "pom.xml" from letting a fabricated deep path (e.g. "src/does/not/exist/pom.xml") piggyback.
+    Set<String> reverseMatches = knownPaths.findAll { key -> key.contains("/") && citedFile.endsWith("/" + key) }
+    reverseMatches.size() == 1 ? reverseMatches.iterator().next() : null
   }
 }

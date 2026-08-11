@@ -128,6 +128,22 @@ class ReviewLineNumberVerifierSpec extends Specification {
     result.findings[0].comment == "issue"
   }
 
+  def "a full repo-relative citation matches a directory review's parent-relative label"() {
+    given: "appendDirectoryContents keys fileLineCounts by a label relative to the reviewed dir's parent"
+    String citedPath = "src/main/groovy/se/alipsa/lca/shell/ShellCommands.groovy"
+    ReviewSummary summary = new ReviewSummary(
+      [new ReviewFinding(ReviewSeverity.HIGH, citedPath, 999, "issue")],
+      [],
+      "raw"
+    )
+
+    when:
+    ReviewSummary result = ReviewLineNumberVerifier.verify(summary, ["shell/ShellCommands.groovy": 10])
+
+    then: "the known key has 2+ segments, so the reverse direction is safe to allow here"
+    result.findings[0].comment == "[UNVERIFIED] issue"
+  }
+
   def "a finding with file general or a null line is left untouched"() {
     given:
     ReviewSummary summary = new ReviewSummary(
