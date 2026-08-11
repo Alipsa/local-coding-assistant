@@ -328,7 +328,7 @@ class SessionStateSpec extends Specification {
   def "recordReview stores and lastReview retrieves the same context for a session"() {
     given:
     SessionState.ReviewContext context = new SessionState.ReviewContext(
-      ["Foo.groovy"], null, ["Foo.groovy": 10], "findings text"
+      ["Foo.groovy"], null, "findings text"
     )
 
     when:
@@ -340,8 +340,8 @@ class SessionStateSpec extends Specification {
 
   def "recordReview overwrites the previous context for the same session"() {
     given:
-    SessionState.ReviewContext first = new SessionState.ReviewContext(["Foo.groovy"], null, [:], "first")
-    SessionState.ReviewContext second = new SessionState.ReviewContext([], 52, [:], "second")
+    SessionState.ReviewContext first = new SessionState.ReviewContext(["Foo.groovy"], null, "first")
+    SessionState.ReviewContext second = new SessionState.ReviewContext([], 52, "second")
 
     when:
     state.recordReview("s1", first)
@@ -353,7 +353,7 @@ class SessionStateSpec extends Specification {
 
   def "recordReview and lastReview normalise a null session id to default"() {
     given:
-    SessionState.ReviewContext context = new SessionState.ReviewContext([], 52, [:], "findings")
+    SessionState.ReviewContext context = new SessionState.ReviewContext([], 52, "findings")
 
     when:
     state.recordReview(null, context)
@@ -365,8 +365,8 @@ class SessionStateSpec extends Specification {
 
   def "reviews recorded under different sessions do not leak into each other"() {
     given:
-    SessionState.ReviewContext a = new SessionState.ReviewContext(["A.groovy"], null, [:], "a")
-    SessionState.ReviewContext b = new SessionState.ReviewContext(["B.groovy"], null, [:], "b")
+    SessionState.ReviewContext a = new SessionState.ReviewContext(["A.groovy"], null, "a")
+    SessionState.ReviewContext b = new SessionState.ReviewContext(["B.groovy"], null, "b")
 
     when:
     state.recordReview("session-a", a)

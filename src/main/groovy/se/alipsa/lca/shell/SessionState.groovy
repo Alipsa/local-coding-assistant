@@ -407,7 +407,6 @@ class SessionState {
   static class ReviewContext {
     List<String> paths        // empty when prNumber is set
     Integer prNumber          // null when paths is set
-    Map<String, Integer> fileLineCounts
     String findingsText
   }
 

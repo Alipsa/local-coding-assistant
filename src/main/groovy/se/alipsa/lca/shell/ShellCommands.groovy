@@ -826,6 +826,11 @@ Type a command or your next question to proceed.
         } else {
           effectivePaths = cached.paths
           reviewPayload = buildReviewPayload(code, effectivePaths, staged)
+          if (reviewPayload == null) {
+            printProgressDone("Review")
+            return "Reusing your previous review target (${effectivePaths.join(', ')}) found nothing to " +
+              "review — the files may have been deleted or moved."
+          }
         }
       }
     }
@@ -891,7 +896,7 @@ Type a command or your next question to proceed.
     sessionState.appendHistory(session, "User review request: ${prompt}", "Review: ${output}")
     if (isPrReview || !effectivePaths.isEmpty()) {
       sessionState.recordReview(session, new SessionState.ReviewContext(
-        effectivePaths, resolvedPr, reviewPayload.fileLineCounts, summary.raw
+        effectivePaths, resolvedPr, summary.raw
       ))
     }
     if (logReview) {
