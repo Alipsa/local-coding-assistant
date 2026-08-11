@@ -1987,6 +1987,42 @@ class ShellCommandsSpec extends Specification {
     !payload.text.contains("approximate")
   }
 
+  def "buildPrReviewPayload skips a binary file instead of embedding decoded garbage or aborting later files"() {
+    given:
+    String diff = "diff content"
+    GitTool.GitResult diffResult = new GitTool.GitResult(true, true, 0, diff, "")
+    String binaryGarbage = "PK  ���some-binary-payload��"
+    GitTool prGit = Stub(GitTool) {
+      prChangedFiles(4) >> new GitTool.GitResult(true, true, 0, "app.jar\nsmall.groovy", "")
+      prHeadCommit(4) >> new GitTool.GitResult(true, true, 0, "abc123", "")
+      showFileAtCommit("abc123", "app.jar") >> new GitTool.GitResult(true, true, 0, binaryGarbage, "")
+      showFileAtCommit("abc123", "small.groovy") >> new GitTool.GitResult(true, true, 0, "small content", "")
+    }
+    FileEditingTool prFileEditing = Stub(FileEditingTool) {
+      readFile("app.jar") >> { throw new IllegalArgumentException("binary file") }
+    }
+    ShellCommands shellCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, prFileEditing,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-binary.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+
+    when:
+    ShellCommands.ReviewPayload payload = shellCommands.buildPrReviewPayload(4, diffResult)
+
+    then: "the binary file is skipped entirely and does not block small.groovy from being included"
+    !payload.text.contains("app.jar")
+    !payload.text.contains(binaryGarbage)
+    payload.text.contains("File: small.groovy")
+    payload.text.contains("small content")
+    payload.fileLineCounts == ["small.groovy": 1]
+  }
+
   def "renderReview shows raw response when no structured findings parsed"() {
     given:
     String rawText = "This PR looks good. No issues found. The changes correctly replace CompanySettingsService with CompanyService."

@@ -1870,11 +1870,14 @@ Try:
       if (headSha != null) {
         GitTool.GitResult shown = gitTool.showFileAtCommit(headSha, filePath)
         if (!shown.success && !refFetched) {
-          gitTool.fetchPullRequestRef(prNumber)
+          GitTool.GitResult fetchResult = gitTool.fetchPullRequestRef(prNumber)
+          if (!fetchResult.success) {
+            log.warn("fetchPullRequestRef failed for PR #{}: {}", prNumber, fetchResult.error)
+          }
           refFetched = true
           shown = gitTool.showFileAtCommit(headSha, filePath)
         }
-        if (shown.success) {
+        if (shown.success && isProbablyText(shown.output)) {
           content = shown.output
         }
       }
@@ -1883,8 +1886,13 @@ Try:
         // Unchanged from today: a file gone in both the PR head and the local tree (e.g. deleted in
         // the PR) is skipped, not fatal to the whole review.
         try {
-          content = fileEditingTool.readFile(filePath)
-          approximate = true
+          String local = fileEditingTool.readFile(filePath)
+          if (isProbablyText(local)) {
+            content = local
+            approximate = true
+          } else {
+            continue
+          }
         } catch (Exception ex) {
           continue
         }
@@ -1908,6 +1916,27 @@ Try:
 
     builder.append("PR diff:\n```\n").append(diff).append("\n```\n")
     new ReviewPayload(builder.toString().trim(), fileLineCounts, changedFiles)
+  }
+
+  /**
+   * A binary file read via git-show never throws — invalid UTF-8 bytes are silently substituted
+   * with U+FFFD — so this catches what the exception-based guard around a local file read cannot.
+   */
+  private static boolean isProbablyText(String content) {
+    if (content == null || content.isEmpty()) {
+      return true
+    }
+    int replacementCount = 0
+    for (int i = 0; i < content.length(); i++) {
+      char c = content.charAt(i)
+      if (c == (char) 0) {
+        return false
+      }
+      if (c == (char) 0xFFFD) {
+        replacementCount++
+      }
+    }
+    replacementCount <= content.length() * 0.01d
   }
 
   private String stagedDiff() {
