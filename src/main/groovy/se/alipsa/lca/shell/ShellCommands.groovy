@@ -1808,8 +1808,15 @@ Try:
       // Label relative to the project root, not the reviewed dir's immediate parent — a citation
       // back from the model naturally uses the full repo-relative path (matching how PR-review and
       // single-file review already label their File: entries), and an exact match against
-      // fileLineCounts/knownPaths needs the label to be that same path, not a fragment of it.
-      String relativePath = projectRoot.relativize(file).toString()
+      // fileLineCounts/knownPaths needs the label to be that same path, not a fragment of it. But
+      // only when the file is actually under the root: relativizing an out-of-root file (an
+      // absolute --paths target, or one reached via "..") produces a "../"-prefixed label that
+      // leaks host filesystem layout into the prompt and that REVIEW_FILE_REF_PATTERN's leading \b
+      // can't anchor on (a run starting with "." is never a word boundary), so any citation of it
+      // silently drops out of grounding coverage. Fall back to the old parent-relative label there.
+      String relativePath = file.startsWith(projectRoot)
+        ? projectRoot.relativize(file).toString()
+        : (dirPath.parent != null ? dirPath.parent.relativize(file).toString() : file.fileName.toString())
       try {
         String content = Files.readString(file)
         builder.append("File: ").append(relativePath).append("\n```\n")

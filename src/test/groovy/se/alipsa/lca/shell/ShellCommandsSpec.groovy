@@ -2583,6 +2583,35 @@ class ShellCommandsSpec extends Specification {
     !captured.payload.contains("File: reviewdir/Sample.groovy")
   }
 
+  def "reviewing a directory outside the project root falls back to a parent-relative label, not a dot-dot path"() {
+    given:
+    ReviewRequest captured = null
+    fileEditingTool.getProjectRoot() >> tempDir.resolve("realroot")
+    Files.createDirectories(tempDir.resolve("realroot"))
+    Path dir = tempDir.resolve("outsideroot/reviewdir")
+    Files.createDirectories(dir)
+    Files.writeString(dir.resolve("Sample.groovy"), "class Sample {\n  void x() {}\n}\n")
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse(
+      "Findings:\n- [Low] general - looks fine\nTests:\n- test it"
+    )
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> {
+      Agent agentArg, ProcessOptions options, Object[] inputs ->
+        captured = inputs.find { it instanceof ReviewRequest } as ReviewRequest
+        reviewProcess
+    }
+
+    when:
+    commands.review(
+      "", "review this directory", "s-dir-outside", null, null, null, null,
+      [dir.toString()], false, ReviewSeverity.LOW, true, false, false, false, false, (Integer) null
+    )
+
+    then:
+    captured != null
+    captured.payload.contains("File: reviewdir/Sample.groovy")
+    !captured.payload.contains("..")
+  }
+
   def "a Tests: section naming a not-yet-created file does not trigger a grounding warning"() {
     given:
     ImplementationGroundingCheck realGroundingCheck = new ImplementationGroundingCheck(tempDir)
