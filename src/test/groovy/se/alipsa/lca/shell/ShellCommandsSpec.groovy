@@ -2291,6 +2291,39 @@ class ShellCommandsSpec extends Specification {
     output.contains("not verified against PR head")
   }
 
+  def "the approximate warning does not assert PR head was unavailable when only one file's git-show failed"() {
+    given: "headSha resolves fine; only this specific file's git-show (and its one retry) fails"
+    GitTool prGit = Mock(GitTool)
+    prGit.prDiff(54) >> new GitTool.GitResult(true, true, 0, "diff content", "")
+    prGit.prChangedFiles(54) >> new GitTool.GitResult(true, true, 0, "New.groovy", "")
+    prGit.prHeadCommit(54) >> new GitTool.GitResult(true, true, 0, "sha1", "")
+    prGit.showFileAtCommit("sha1", "New.groovy") >> new GitTool.GitResult(false, true, 1, "", "not found")
+    prGit.fetchPullRequestRef(54) >> new GitTool.GitResult(true, true, 0, "", "")
+    fileEditingTool.readFile("New.groovy") >> "class New {}"
+    ShellCommands prCommands = new ShellCommands(
+      agent, ai, sessionState, editorLauncher, fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser), prGit, Stub(CodeSearchTool),
+      new ContextPacker(), new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner, commandPolicy, modelRegistry, agentPlatform, contextRepository,
+      tempDir.resolve("pr-approx-partial.log").toString(), null, null, shellSettings,
+      intentRoutingState, intentRoutingSettings,
+      Mock(se.alipsa.lca.validation.RequestValidator), Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null, null, null, null, contextCompactor, 80000, 30000, null
+    )
+    reviewProcess.resultOfType(ReviewResponse) >> new ReviewResponse("Findings:\n- [Low] general - nit\nTests:\n- test")
+    agentPlatform.createAgentProcessFrom(reviewAgent, _ as ProcessOptions, _ as Object[]) >> reviewProcess
+
+    when:
+    String output = prCommands.review(
+      "", "review this PR", "s-approx-partial", null, null, null, null,
+      null, false, ReviewSeverity.LOW, true, false, false, false, false, 54
+    )
+
+    then: "the note is still shown, but must not claim a cause (PR head unavailable) that isn't true"
+    output.contains("not verified against PR head")
+    !output.contains("PR head commit unavailable")
+  }
+
   def "a PR review served entirely from PR head content carries no approximate warning"() {
     given:
     GitTool prGit = Stub(GitTool) {

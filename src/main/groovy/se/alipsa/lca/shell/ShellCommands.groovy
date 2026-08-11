@@ -872,8 +872,7 @@ Type a command or your next question to proceed.
     String rendered = renderReview(summary, severityThreshold, !noColor)
     String sastBlock = buildSastBlock(sast, paths ?: effectivePaths)
     if (isPrReview && reviewPayload.anyApproximate) {
-      rendered = "Note: some file(s) were read from the local tree, not verified against PR head " +
-        "(PR head commit unavailable).\n" + rendered
+      rendered = "Note: some file(s) were read from the local tree, not verified against PR head.\n" + rendered
     }
     if (resolution.fallbackUsed) {
       rendered = "Note: using fallback model ${resolution.chosen}.\n" + rendered
