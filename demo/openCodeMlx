@@ -31,15 +31,15 @@ MLX_DRAFT_MODEL="${MLX_DRAFT_MODEL:-mlx-community/Qwen3.8-27B-MTP-4bit}"
 # small_model role never needs Ollama.
 MLX_SMALL_MODEL="${MLX_SMALL_MODEL:-mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit}"
 
-# Network interface to bind model downloads to. Defaults to en7 (this
-# author's real Ethernet interface): GlobalProtect VPN was found to reset
-# every connection to huggingface.co outright when it's the default route
-# (utun0), while binding to en7 gets a clean, fast response - so this
-# bypasses the VPN specifically for model downloads. Set to "" to disable
-# and use whatever the default route is; if the named interface doesn't
-# exist/resolve on your machine this warns and falls back to the default
-# route automatically, so it's safe to leave as-is elsewhere.
-MLX_DOWNLOAD_INTERFACE="${MLX_DOWNLOAD_INTERFACE:-en7}"
+# Network interface to bind model downloads to. Empty (default) uses
+# whatever the default route is. Opt in by setting this to a specific
+# interface name (e.g. "en7") if your setup needs it - for example, some
+# VPN clients (GlobalProtect was observed doing this) reset every connection
+# to huggingface.co outright when the VPN tunnel is the default route, and
+# binding to a real Ethernet/Wi-Fi interface bypasses that. If the named
+# interface doesn't exist/resolve on your machine this warns and falls back
+# to the default route automatically.
+MLX_DOWNLOAD_INTERFACE="${MLX_DOWNLOAD_INTERFACE:-}"
 
 # How much RAM (GB) to leave free for the OS/other apps; the rest is made
 # available to the GPU (iogpu.wired_limit_mb) for model weights + KV cache.
