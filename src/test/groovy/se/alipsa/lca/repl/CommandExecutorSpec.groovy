@@ -84,6 +84,51 @@ class CommandExecutorSpec extends Specification {
     1 * shellCommands.gitPush(false, true) >> "pushed"
   }
 
+  def "execute respects an explicit /git-push --confirm false instead of forcing confirmation back on"() {
+    // Regression guard: "parseBoolean(x) ?: true" treats a parsed `false` as absent under
+    // Groovy's Elvis operator, silently re-enabling the confirmation prompt even when the
+    // caller explicitly asked to skip it.
+    when:
+    executor.execute('/git-push --confirm false')
+
+    then:
+    1 * shellCommands.gitPush(false, false) >> "pushed"
+  }
+
+  def "execute parses /gitapply flags and forwards them to ShellCommands.gitApply"() {
+    when:
+    String result = executor.execute('/gitapply --patch-file p.diff --cached')
+
+    then:
+    1 * shellCommands.gitApply(null, "p.diff", true, true, true) >> "applied"
+    result == "applied"
+  }
+
+  def "execute respects an explicit /gitapply --check false and --confirm false"() {
+    when:
+    executor.execute('/gitapply --patch-file p.diff --check false --confirm false')
+
+    then:
+    1 * shellCommands.gitApply(null, "p.diff", false, false, false) >> "applied"
+  }
+
+  def "execute parses /apply flags and forwards them to ShellCommands.applyPatch"() {
+    when:
+    String result = executor.execute('/apply --patch-file p.diff')
+
+    then:
+    1 * shellCommands.applyPatch("", "p.diff", true, true) >> "applied"
+    result == "applied"
+  }
+
+  def "execute respects an explicit /apply --dry-run false and --confirm false"() {
+    when:
+    executor.execute('/apply --patch-file p.diff --dry-run false --confirm false')
+
+    then:
+    1 * shellCommands.applyPatch("", "p.diff", false, false) >> "applied"
+  }
+
   def "execute parses /model flags and forwards them to ShellCommands.model"() {
     when:
     String result = executor.execute('/model --set gpt-oss:20b --session s1')

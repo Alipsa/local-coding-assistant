@@ -301,8 +301,8 @@ class CommandExecutor {
       patch,
       patchFile,
       parseBoolean(parsed.cached) ?: false,
-      parseBoolean(parsed.check) ?: true,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.check, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
@@ -313,8 +313,8 @@ class CommandExecutor {
     shellCommands.applyPatch(
       patch,
       patchFile,
-      parseBoolean(parsed.dryRun) ?: true,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.dryRun, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
@@ -382,7 +382,7 @@ class CommandExecutor {
     Map<String, Object> parsed = parseArgs(args)
     shellCommands.gitPush(
       parseBoolean(parsed.force) ?: false,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
