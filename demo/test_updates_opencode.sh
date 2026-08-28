@@ -21,7 +21,7 @@ set -e
 source ./test_helpers.sh
 source ./openCodeMlx
 _install_opencode_via_curl() { return 1; }
-PATH="/usr/bin:/bin:/usr/local/bin" HOME="$1" ensure_opencode_current 2>&1
+PATH="/usr/bin:/bin" HOME="$1" ensure_opencode_current 2>&1
 TESTEOF
 
   # Run it; with the bug (bare call), set -e aborts before printing error.
@@ -48,17 +48,22 @@ trap 'rm -rf "$work"' EXIT
 # Step 3), which tests override directly as a bash function instead.
 REAL_PATH="/usr/bin:/bin:/usr/local/bin"
 
-# Scenarios A/B/E below all assume opencode is NOT resolvable on REAL_PATH, so that
-# ensure_opencode_current takes its "not found -> install" branch. That assumption is a
-# property of the machine running this test, not of the code under test: on a machine
-# where a real `opencode` binary lives in /usr/bin, /bin, or /usr/local/bin, these
-# scenarios would silently exercise the "already installed -> opencode upgrade" branch
-# instead - running a REAL network-touching "opencode upgrade" against the machine's own
-# install, rather than the intended install-simulation path. Guard explicitly instead of
-# inheriting the absence: skip (not fail) when the precondition doesn't hold, since this
-# is an environment property, not a code defect.
-if PATH="$REAL_PATH" command -v opencode >/dev/null 2>&1; then
-  echo "SKIP: a real 'opencode' is resolvable on REAL_PATH ($REAL_PATH) in this" >&2
+# Scenarios A/B/E need a PATH where opencode is NOT resolvable, so that
+# ensure_opencode_current takes its "not found -> install" branch, but where coreutils
+# (mkdir/cat/chmod, used by the install-simulation overrides above) still are. Deliberately
+# excludes /usr/local/bin, unlike REAL_PATH above: it's the one realistic place a
+# system-wide `opencode` might actually be symlinked to on this project's target platform
+# (macOS/Homebrew) - the official installer puts it in ~/.opencode/bin, which was never on
+# REAL_PATH to begin with. /usr/bin and /bin alone cover the coreutils these scenarios need.
+NOT_INSTALLED_PATH="/usr/bin:/bin"
+
+# Guarded rather than assumed outright: even /usr/bin:/bin could theoretically contain a
+# real `opencode` on some machine this hasn't been tested against. If so, skip (not fail)
+# rather than let these scenarios silently exercise the "already installed -> opencode
+# upgrade" branch instead - a REAL network-touching command against whatever opencode
+# install actually exists, run under a test that thinks it's simulating "not installed".
+if PATH="$NOT_INSTALLED_PATH" command -v opencode >/dev/null 2>&1; then
+  echo "SKIP: a real 'opencode' is resolvable on PATH=$NOT_INSTALLED_PATH in this" >&2
   echo "environment - scenarios A, B and E cannot safely simulate 'not installed' here" >&2
   echo "(would run a real 'opencode upgrade' instead). Skipping those three checks." >&2
   NOT_INSTALLED_SCENARIOS_SAFE=0
@@ -79,7 +84,7 @@ INNER
     chmod +x "$home_a/.opencode/bin/opencode"
   }
   (
-    PATH="$REAL_PATH" HOME="$home_a" ensure_opencode_current >/dev/null 2>&1
+    PATH="$NOT_INSTALLED_PATH" HOME="$home_a" ensure_opencode_current >/dev/null 2>&1
   )
   check "not-installed + install produces a binary -> returns 0" "0" "$?"
 
@@ -88,7 +93,7 @@ INNER
   home_b="$work/b_home"
   _install_opencode_via_curl() { :; }
   (
-    PATH="$REAL_PATH" HOME="$home_b" ensure_opencode_current >/dev/null 2>&1
+    PATH="$NOT_INSTALLED_PATH" HOME="$home_b" ensure_opencode_current >/dev/null 2>&1
   )
   check "not-installed + install produces no binary -> returns 1 (hard error)" "1" "$?"
 fi
@@ -128,9 +133,9 @@ check "already-installed + install-only mode -> upgrade was NOT invoked" "0" "$(
 # Scenario E: opencode not on PATH, install fails (returns 1), ensure_opencode_current
 # is called under `set -e`. Verify that the function's return 1 is reached (not aborted
 # by set -e when _install_opencode_via_curl exits with status 1). The function should
-# return 1 to the outer subshell (not die uncontrolled). Same REAL_PATH-must-lack-opencode
-# assumption as scenarios A/B (test_set_e_with_failed_install hardcodes it internally) -
-# guarded above, so only run this when that guard held.
+# return 1 to the outer subshell (not die uncontrolled). Same NOT_INSTALLED_PATH
+# assumption as scenarios A/B (test_set_e_with_failed_install hardcodes the same
+# "/usr/bin:/bin" internally) - guarded above, so only run this when that guard held.
 if [[ "$NOT_INSTALLED_SCENARIOS_SAFE" -eq 1 ]]; then
   test_set_e_with_failed_install
   check "install fails under set -e -> function returns 1 (not aborted by set -e)" "0" "$?"
