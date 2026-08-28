@@ -1342,6 +1342,9 @@ Try:
     @ShellOption(defaultValue = "200", help = "Max tokens to generate") int maxTokens,
     @ShellOption(defaultValue = "default", help = "Session id") String session
   ) {
+    if (maxTokens <= 0) {
+      return "Max tokens must be positive."
+    }
     ModelRegistry.Health health = modelRegistry.checkHealth()
     if (!health.reachable) {
       return "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
@@ -1380,16 +1383,16 @@ Try:
       body.append("Reported context length: ").append(contextLength).append(" tokens\n")
     }
     body.append("Prompt tokens: ").append(result.promptEvalCount)
-      .append(" (").append(String.format("%.2f", result.promptTokensPerSecond)).append(" tok/s)\n")
+      .append(" (").append(String.format(Locale.ROOT, "%.2f", result.promptTokensPerSecond)).append(" tok/s)\n")
     body.append("Generated tokens: ").append(result.evalCount)
-      .append(" (").append(String.format("%.2f", result.evalTokensPerSecond)).append(" tok/s)\n")
+      .append(" (").append(String.format(Locale.ROOT, "%.2f", result.evalTokensPerSecond)).append(" tok/s)\n")
     body.append("Load duration: ").append(formatDurationSeconds(result.loadDurationNanos)).append("\n")
     body.append("Total duration: ").append(formatDurationSeconds(result.totalDurationNanos))
     formatSection("Benchmark", body.toString())
   }
 
   private static String formatDurationSeconds(long nanos) {
-    String.format("%.2fs", nanos / 1_000_000_000d)
+    String.format(Locale.ROOT, "%.2fs", nanos / 1_000_000_000d)
   }
 
   @ShellMethod(

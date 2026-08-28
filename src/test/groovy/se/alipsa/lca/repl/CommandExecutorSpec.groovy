@@ -85,6 +85,29 @@ class CommandExecutorSpec extends Specification {
   }
 
   @Unroll
+  def "'/#name' dispatches instead of falling through to the unknown-command fallback"() {
+    // Guards against the asymmetric drift risk this class's KNOWN_COMMANDS set otherwise has:
+    // a case added to execute()'s switch but not mirrored into KNOWN_COMMANDS would keep
+    // routing that command through the LLM intent classifier instead of dispatching it
+    // directly - exactly the bug /benchmark hit. This doesn't prove the converse (a stale
+    // KNOWN_COMMANDS entry whose switch case was removed), only that everything the bypass
+    // claims to handle actually does.
+    when:
+    String result = executor.execute("/${name}")
+
+    then:
+    result != "Unknown command: /${name}. Type /help for available commands."
+    executor.isKnownCommand("/${name}")
+
+    where:
+    name << [
+      "chat", "plan", "implement", "review", "search", "run", "edit", "paste",
+      "gitapply", "git-apply", "git-push", "apply", "status", "diff", "tree", "codesearch",
+      "mcp", "reviewlog", "compact", "help", "health", "benchmark"
+    ]
+  }
+
+  @Unroll
   def "isKnownCommand('#input') == #expected"() {
     expect:
     executor.isKnownCommand(input) == expected

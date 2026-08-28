@@ -231,6 +231,7 @@ class LcaScriptSpec extends Specification {
   def "models.sh derives its model list from lca and installs the same models"() {
     given:
     Path scriptPath = projectRoot().resolve("models.sh")
+    Path homeDir = tempDir.resolve("home-models-sh")
     Path binDir = tempDir.resolve("bin-models-sh")
     Files.createDirectories(binDir)
     Path ollamaLog = tempDir.resolve("models-sh-ollama.log")
@@ -243,6 +244,7 @@ class LcaScriptSpec extends Specification {
       scriptPath,
       [],
       [
+        HOME: homeDir.toString(),
         PATH: binDir.toString() + File.pathSeparator + System.getenv("PATH"),
         LCA_OLLAMA_LOG: ollamaLog.toString()
       ]
@@ -263,6 +265,44 @@ class LcaScriptSpec extends Specification {
     modelfileSectionFor(log, "qwen3.8-review").contains("PARAMETER num_gpu 99")
     !modelfileSectionFor(log, "gpt-oss-64k").contains("PARAMETER num_batch")
     !modelfileSectionFor(log, "gpt-oss-64k").contains("PARAMETER num_gpu")
+  }
+
+  def "models.sh rebuilds a custom model when only its context or extra params changed, base model id unchanged"() {
+    given:
+    // Mirrors lca's own regression test: models.sh's createCustomModel must fingerprint the
+    // full desired Modelfile recipe (base id + context + extra params), not just whether a
+    // model with this name already exists - the exact gap that let a stale custom model keep
+    // serving silently after a context/parameter-only edit.
+    Path scriptPath = projectRoot().resolve("models.sh")
+    Path homeDir = tempDir.resolve("home-models-sh-rebuild")
+    Path binDir = tempDir.resolve("bin-models-sh-rebuild")
+    Files.createDirectories(binDir)
+    Path ollamaLog = tempDir.resolve("models-sh-rebuild-ollama.log")
+    Path ollamaState = tempDir.resolve("models-sh-rebuild-ollama-state.txt")
+    Files.writeString(ollamaState, "qwen3.8:27b\tsame-base-id\nqwen3.8-review:latest\texisting-custom-id\n")
+    Path modelStateDir = homeDir.resolve(".lca").resolve("model_state")
+    Files.createDirectories(modelStateDir)
+    // Same base id the stub will report now, but recorded against the pre-tuning signature
+    // (empty extra params) - i.e. the base model itself never changed.
+    Files.writeString(modelStateDir.resolve("qwen3.8-review.id"), "same-base-id|131072|")
+    writeStubOllama(binDir, ollamaState)
+
+    when:
+    def result = runScript(
+      scriptPath,
+      [],
+      [
+        HOME: homeDir.toString(),
+        PATH: binDir.toString() + File.pathSeparator + System.getenv("PATH"),
+        LCA_OLLAMA_LOG: ollamaLog.toString()
+      ]
+    )
+
+    then:
+    result.exitCode == 0
+    result.output.contains("Rebuilding qwen3.8-review")
+    !result.output.contains("qwen3.8-review is up to date")
+    modelfileSectionFor(Files.readString(ollamaLog), "qwen3.8-review").contains("PARAMETER num_gpu 99")
   }
 
   private static String modelfileSectionFor(String log, String modelName) {

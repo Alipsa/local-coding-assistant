@@ -373,11 +373,14 @@ class CommandExecutor {
 
   private String executeBenchmark(String args) {
     Map<String, Object> parsed = parseArgs(args)
+    // Not "parseInt(...) ?: 200": Groovy truthiness treats 0 as falsy, so an explicit
+    // "--max-tokens 0" would otherwise silently become 200 instead of being rejected.
+    Integer maxTokens = parsed.maxTokens != null ? parseInt(parsed.maxTokens) : null
     shellCommands.benchmark(
       parsed.model as String,
       parsed.prompt as String,
       parsed.promptFile as String,
-      parseInt(parsed.maxTokens) ?: 200,
+      maxTokens != null ? maxTokens : 200,
       parsed.session as String ?: "default"
     )
   }
