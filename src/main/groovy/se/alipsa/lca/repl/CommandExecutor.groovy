@@ -21,7 +21,23 @@ import java.util.regex.Pattern
 class CommandExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CommandExecutor)
-  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/(\w+)\s*([\s\S]*)/)
+  // [\w-] (not \w alone) so hyphenated command names (/git-apply, /git-push) are captured whole
+  // instead of being truncated at the first hyphen.
+  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/([\w-]+)\s*([\s\S]*)/)
+
+  /**
+   * Command names this class actually dispatches in {@link #execute}'s switch (kept in sync with
+   * it by hand — small, stable list). Used by {@link #isKnownCommand} so the REPL can bypass the
+   * LLM intent classifier for input that's already an unambiguous, literal slash command: routing
+   * a verbatim "/benchmark --model x" through a small classifier risks it being reinterpreted as
+   * something else entirely (observed: misrouted to /run, which then tried to execute "benchmark"
+   * as a literal shell binary).
+   */
+  private static final Set<String> KNOWN_COMMANDS = Set.of(
+    "chat", "plan", "implement", "review", "search", "run", "edit", "paste",
+    "gitapply", "git-apply", "git-push", "apply", "status", "diff", "tree", "codesearch",
+    "mcp", "reviewlog", "compact", "help", "health", "benchmark", "exit", "quit"
+  )
 
   private final ShellCommands shellCommands
   private final McpCommands mcpCommands
@@ -73,6 +89,8 @@ class CommandExecutor {
       case "gitapply":
       case "git-apply":
         return executeGitApply(args)
+      case "git-push":
+        return executeGitPush(args)
       case "apply":
         return executeApply(args)
       case "status":
@@ -93,6 +111,8 @@ class CommandExecutor {
         return shellCommands.help()
       case "health":
         return shellCommands.health()
+      case "benchmark":
+        return executeBenchmark(args)
       case "exit":
       case "quit":
         // Trigger system exit
@@ -101,6 +121,19 @@ class CommandExecutor {
       default:
         return "Unknown command: /${command}. Type /help for available commands."
     }
+  }
+
+  /**
+   * True when {@code input} is already a literal, well-formed slash command this class can
+   * dispatch on its own (e.g. "/benchmark --model x"). Callers use this to skip the LLM intent
+   * classifier entirely for unambiguous input, routing straight to {@link #execute}.
+   */
+  boolean isKnownCommand(String input) {
+    if (input == null) {
+      return false
+    }
+    Matcher matcher = COMMAND_PATTERN.matcher(input.trim())
+    matcher.matches() && KNOWN_COMMANDS.contains(matcher.group(1).toLowerCase())
   }
 
   /**
@@ -327,6 +360,25 @@ class CommandExecutor {
       parseInt(parsed.page) ?: 1,
       parsed.since as String,
       parseBoolean(parsed.noColor) ?: false
+    )
+  }
+
+  private String executeGitPush(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.gitPush(
+      parseBoolean(parsed.force) ?: false,
+      parseBoolean(parsed.confirm) ?: true
+    )
+  }
+
+  private String executeBenchmark(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.benchmark(
+      parsed.model as String,
+      parsed.prompt as String,
+      parsed.promptFile as String,
+      parseInt(parsed.maxTokens) ?: 200,
+      parsed.session as String ?: "default"
     )
   }
 

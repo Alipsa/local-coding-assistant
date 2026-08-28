@@ -166,6 +166,14 @@ class JLineRepl {
       return
     }
 
+    if (commandExecutor.isKnownCommand(trimmed)) {
+      String result = commandExecutor.execute(trimmed)
+      if (result != null && !result.trim().isEmpty()) {
+        terminal.writer().println(result)
+      }
+      return
+    }
+
     processInput(trimmed)
   }
 

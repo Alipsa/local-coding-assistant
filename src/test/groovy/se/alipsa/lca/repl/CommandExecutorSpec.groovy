@@ -5,6 +5,7 @@ import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.shell.McpCommands
 import se.alipsa.lca.shell.ShellCommands
 import spock.lang.Specification
+import spock.lang.Unroll
 
 class CommandExecutorSpec extends Specification {
 
@@ -44,6 +45,64 @@ class CommandExecutorSpec extends Specification {
     then:
     1 * shellCommands.runCommand("gh pr list --state open", 60000L, 8000, "default", true, false) >> "ran"
     result == "ran"
+  }
+
+  def "execute parses /benchmark flags and forwards them to ShellCommands.benchmark"() {
+    given:
+    String command = '/benchmark --model qwen3.8-review --prompt-file review-prompt.txt --max-tokens 50'
+
+    when:
+    String result = executor.execute(command)
+
+    then:
+    1 * shellCommands.benchmark("qwen3.8-review", null, "review-prompt.txt", 50, "default") >> "benchmarked"
+    result == "benchmarked"
+  }
+
+  def "execute defaults /benchmark's max-tokens and session when not given"() {
+    when:
+    executor.execute('/benchmark')
+
+    then:
+    1 * shellCommands.benchmark(null, null, null, 200, "default") >> "benchmarked"
+  }
+
+  def "execute parses /git-push flags and forwards them to ShellCommands.gitPush"() {
+    when:
+    String result = executor.execute('/git-push --force')
+
+    then:
+    1 * shellCommands.gitPush(true, true) >> "pushed"
+    result == "pushed"
+  }
+
+  def "execute defaults /git-push's force and confirm when not given"() {
+    when:
+    executor.execute('/git-push')
+
+    then:
+    1 * shellCommands.gitPush(false, true) >> "pushed"
+  }
+
+  @Unroll
+  def "isKnownCommand('#input') == #expected"() {
+    expect:
+    executor.isKnownCommand(input) == expected
+
+    where:
+    input                                  || expected
+    "/health"                              || true
+    "/benchmark --model x"                 || true
+    "/BENCHMARK --model x"                 || true
+    "/review --code \"x\""                 || true
+    "/gitapply --patch x"                  || true
+    "/git-apply --patch x"                 || true
+    "/git-push --force"                    || true
+    "/model --set foo"                     || false
+    "/frobnicate"                          || false
+    "review this please"                   || false
+    null                                   || false
+    ""                                     || false
   }
 
   def "executePasteContent forwards directly to ShellCommands.paste without re-parsing"() {

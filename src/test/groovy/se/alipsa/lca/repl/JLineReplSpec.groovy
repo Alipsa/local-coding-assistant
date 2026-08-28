@@ -85,4 +85,26 @@ class JLineReplSpec extends Specification {
     1 * bangCommandHandler.handle("! git status", "default", false) >> "Command: git status\nExit: 0 (success)"
     0 * intentRouter.routeDetails(_)
   }
+
+  def "a literal known slash command dispatches directly, bypassing intent routing"() {
+    when:
+    repl.handleInput("/benchmark --model qwen3.8-review --prompt-file x.groovy")
+
+    then:
+    1 * commandExecutor.isKnownCommand("/benchmark --model qwen3.8-review --prompt-file x.groovy") >> true
+    1 * commandExecutor.execute("/benchmark --model qwen3.8-review --prompt-file x.groovy") >> "Model: qwen3.8-review"
+    0 * intentRouter.routeDetails(_)
+  }
+
+  def "an unrecognized slash command still routes through the intent classifier"() {
+    given:
+    def plan = new IntentRoutingPlan(commands: [], confidence: 1.0d, explanation: null)
+
+    when:
+    repl.handleInput("/frobnicate")
+
+    then:
+    1 * commandExecutor.isKnownCommand("/frobnicate") >> false
+    1 * intentRouter.routeDetails("/frobnicate") >> new IntentRoutingOutcome(plan: plan, result: null)
+  }
 }

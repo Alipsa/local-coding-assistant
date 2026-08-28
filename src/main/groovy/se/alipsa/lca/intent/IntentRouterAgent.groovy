@@ -38,7 +38,7 @@ class IntentRouterAgent {
     ModelRegistry modelRegistry,
     IntentRouterParser parser,
     @Value('${assistant.intent.model:tinyllama}') String model,
-    @Value('${assistant.intent.fallback-model:gpt-oss:20b}') String fallbackModel,
+    @Value('${assistant.intent.fallback-model}') String fallbackModel,
     @Value('${assistant.intent.temperature:0.0}') double temperature,
     @Value('${assistant.intent.max-tokens:256}') int maxTokens,
     @Value('${assistant.intent.confidence-threshold:0.8}') double confidenceThreshold,
