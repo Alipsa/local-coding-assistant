@@ -19,8 +19,13 @@ REAL_PATH="/usr/bin:/bin:/usr/local/bin"
 bin_a="$work/a"; mkdir -p "$bin_a"
 log_a="$work/a.log"
 make_stub "$bin_a" pip 0 "$log_a"
-# no python3 stub -> `python3 -m mlx_vlm.server --help` fails against the real system
-# interpreter (which has no mlx_vlm module), simulating "not installed"
+# Explicitly stub python3 to fail ensure_mlx_vlm_current's "python3 -m mlx_vlm.server
+# --help" check, rather than relying on the real system python3 lacking mlx_vlm: "not
+# installed" is a property of this test's stub, not of whatever python3 environment the
+# machine running it happens to have. A machine where mlx_vlm is importable from the
+# default python3 (e.g. a shared/activated venv) would otherwise silently take the
+# "already installed" branch instead, making this scenario a no-op.
+make_stub "$bin_a" python3 1 "$log_a"
 (
   PATH="$bin_a:$REAL_PATH" ensure_mlx_vlm_current >/dev/null 2>&1
 )
@@ -31,6 +36,7 @@ check "not-installed -> pip carries the shared transformers pin" "1" "$(grep -c 
 bin_b="$work/b"; mkdir -p "$bin_b"
 log_b="$work/b.log"
 make_stub "$bin_b" pip 1 "$log_b"
+make_stub "$bin_b" python3 1 "$log_b"   # force "not installed", see scenario A
 (
   PATH="$bin_b:$REAL_PATH" ensure_mlx_vlm_current >/dev/null 2>&1
 )
