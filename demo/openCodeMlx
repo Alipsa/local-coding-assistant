@@ -154,15 +154,17 @@ ensure_mlx_lm_current() {
 # ensure_mlx_vlm_current: same not-installed/hard-error vs
 # already-installed/warn-and-continue pattern as ensure_mlx_lm_current
 # above, but for mlx-vlm - only needed when the selected model turns out to
-# be vision-capable (see detect_model_backend). Deliberately does not pin
-# transformers here: mlx-lm's own pin above already constrains the shared
-# venv, and guessing a separate mlx-vlm-specific range without evidence
-# risks a silent version conflict between the two packages.
+# be vision-capable (see detect_model_backend). Carries the same transformers
+# pin as ensure_mlx_lm_current: both packages share this one venv, so an
+# unconstrained "pip install mlx-vlm" is free to upgrade transformers past
+# 5.13 to satisfy its own metadata - which breaks mlx-lm's AutoTokenizer.
+# register call at import time, silently taking down mlx_lm.server (still
+# used unconditionally for the small background model) on the next launch.
 ensure_mlx_vlm_current() {
   local mode="${1:-update}"
   if ! python3 -m mlx_vlm.server --help >/dev/null 2>&1; then
     echo "mlx-vlm not found in venv, installing..."
-    if ! pip install --upgrade pip mlx-vlm; then
+    if ! pip install --upgrade pip mlx-vlm "transformers>=5.7,<5.13"; then
       echo "Error: mlx-vlm installation failed, cannot continue" >&2
       return 1
     fi
@@ -174,7 +176,7 @@ ensure_mlx_vlm_current() {
   fi
 
   echo "Checking for mlx-vlm updates..."
-  if ! pip install --upgrade pip mlx-vlm; then
+  if ! pip install --upgrade pip mlx-vlm "transformers>=5.7,<5.13"; then
     echo "Warning: mlx-vlm update check failed, continuing with existing installation." >&2
   fi
   return 0
@@ -278,6 +280,16 @@ _download_via() {
     huggingface) _download_via_huggingface "$model_id" "$local_dir" ;;
     *) echo "Unknown download source: $source" >&2; return 1 ;;
   esac
+}
+
+# _quant_suffix <model_id>: echoes the trailing "<N>bit" quantization token
+# from an MLX model id (e.g. "mlx-community/Qwen3.8-27B-4bit" -> "4bit"), or
+# nothing if the id doesn't end in one. Used to fail fast on a draft/main
+# quant mismatch (see the MLX_DRAFT_MODEL check in main()) rather than
+# silently serving a mismatched drafter.
+_quant_suffix() {
+  local model_id="$1"
+  [[ "$model_id" =~ ([0-9]+bit)$ ]] && echo "${BASH_REMATCH[1]}"
 }
 
 # detect_model_backend <model_dir>: echoes "mlx_vlm" if the downloaded
@@ -495,12 +507,30 @@ main() {
     fi
   fi
 
+  # Speculative decoding is only wired up on the mlx_vlm path below (--draft-model is never
+  # passed to plain mlx_lm.server) - downloading a multi-GB drafter for a model served via
+  # mlx_lm would just be discarded, so gate on the detected backend too, not MLX_DRAFT_MODEL
+  # alone. Also fail fast on a quant mismatch: the drafter borrows token embeddings and the LM
+  # head from MLX_MODEL at runtime, so it must share the exact same base checkpoint and quant
+  # level, and nothing downstream would catch a mismatch on its own.
   LOCAL_DRAFT_MODEL_DIR=""
-  if [[ -n "${MLX_DRAFT_MODEL:-}" ]]; then
+  if [[ -n "${MLX_DRAFT_MODEL:-}" && "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]]; then
+    main_quant=$(_quant_suffix "$MLX_MODEL")
+    draft_quant=$(_quant_suffix "$MLX_DRAFT_MODEL")
+    if [[ -n "$main_quant" && -n "$draft_quant" && "$main_quant" != "$draft_quant" ]]; then
+      echo "Error: MLX_DRAFT_MODEL ($MLX_DRAFT_MODEL, quant $draft_quant) does not match" >&2
+      echo "MLX_MODEL's quant ($MLX_MODEL, quant $main_quant). The drafter must be derived" >&2
+      echo "from the exact same base checkpoint and quant level as MLX_MODEL. Disable" >&2
+      echo "speculative decoding (MLX_DRAFT_MODEL=\"\") or pick a matching drafter." >&2
+      exit 1
+    fi
     LOCAL_DRAFT_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_DRAFT_MODEL" | tr '/' '-')"
     if ! sync_model "$MLX_DRAFT_MODEL" "$LOCAL_DRAFT_MODEL_DIR" "$PRIMARY" "$FALLBACK" "$ensure_mode"; then
       exit 1
     fi
+  elif [[ -n "${MLX_DRAFT_MODEL:-}" ]]; then
+    echo "Warning: MLX_DRAFT_MODEL is set but $MLX_MODEL is served via mlx_lm; speculative" >&2
+    echo "decoding here is only wired up for the mlx_vlm backend. Ignoring MLX_DRAFT_MODEL." >&2
   fi
 
   LOCAL_SMALL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_SMALL_MODEL" | tr '/' '--')"
@@ -631,8 +661,10 @@ EOF
         kill -9 "$pid" 2>/dev/null
       fi
     }
+    local main_server_label="mlx_lm.server (main)"
+    [[ "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]] && main_server_label="mlx_vlm.server (main)"
     stop_and_report "mlx_lm.server (small)" "${SMALL_SERVER_PID:-}" &
-    stop_and_report "mlx_lm.server (main)" "${SERVER_PID:-}" &
+    stop_and_report "$main_server_label" "${SERVER_PID:-}" &
     wait
 
     # Reap here, in this shell (the servers' actual parent) - by now each
@@ -648,7 +680,14 @@ EOF
   trap cleanup EXIT INT TERM HUP
 
   if [[ "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]]; then
-    MAIN_CACHE_LIMIT="$MLX_CONTEXT_LIMIT"
+    # mlx-vlm has no --prompt-cache-bytes equivalent; --max-kv-size takes a token count, not
+    # bytes, so it can't reuse MLX_PROMPT_CACHE_BYTES directly the way the mlx_lm branch does.
+    # Reusing MLX_CONTEXT_LIMIT (128k tokens by default) as a stand-in is unverified and may not
+    # actually bind the same GPU-memory budget the kernel-panic guard above was sized around -
+    # this model's real per-token KV footprint hasn't been measured. Override with
+    # MLX_VLM_MAX_KV_SIZE once that's been profiled (e.g. watch iogpu.wired_limit_mb headroom
+    # while serving a large prompt) rather than trusting this default for a memory-safety guard.
+    MAIN_CACHE_LIMIT="${MLX_VLM_MAX_KV_SIZE:-$MLX_CONTEXT_LIMIT}"
   else
     MAIN_CACHE_LIMIT="$MLX_PROMPT_CACHE_BYTES"
   fi
