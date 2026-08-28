@@ -18,41 +18,23 @@ import java.util.stream.Collectors
 class DemoTestScriptsSpec extends Specification {
 
   private static final long TIMEOUT_SECONDS = 120L
+  private static final long GIT_TIMEOUT_SECONDS = 30L
 
   @Unroll
   def "demo test script passes: #scriptName"() {
     given:
     Path scriptPath = demoDir().resolve(scriptName)
-
-    when:
     ProcessBuilder processBuilder = new ProcessBuilder("bash", scriptPath.toString())
     processBuilder.directory(demoDir().toFile())
     processBuilder.redirectErrorStream(true)
-    Process process = processBuilder.start()
-    // Read stdout on a separate thread: some of these scripts resolve tools (opencode,
-    // python3, pip) off the ambient PATH and can reach a real, network-touching command
-    // on a misconfigured environment. process.inputStream.text blocks until the stream
-    // closes, so a hung subprocess would hang here even before any waitFor() timeout is
-    // reached - the reader has to run concurrently with the bounded wait below, not before it.
-    StringBuilder outputBuffer = new StringBuilder()
-    Thread reader = new Thread({ ->
-      process.inputStream.eachLine { line -> outputBuffer.append(line).append('\n') }
-    } as Runnable)
-    reader.daemon = true
-    reader.start()
 
-    boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-    if (!finished) {
-      process.destroyForcibly()
-      process.waitFor(5, TimeUnit.SECONDS)
-    }
-    reader.join(5000)
-    String output = outputBuffer.toString()
+    when:
+    ProcessResult result = runBounded(processBuilder, TIMEOUT_SECONDS)
 
     then:
-    finished
-    process.exitValue() == 0
-    !output.contains("FAIL:")
+    result.finished
+    result.exitCode == 0
+    !result.output.contains("FAIL:")
 
     where:
     scriptName << demoTestScriptNames()
@@ -64,36 +46,39 @@ class DemoTestScriptsSpec extends Specification {
 
   private static List<String> demoTestScriptNames() {
     List<String> tracked = gitTrackedDemoTestScripts()
-    Files.list(demoDir()).withCloseable { stream ->
+    List<String> names = Files.list(demoDir()).withCloseable { stream ->
       stream.map { it.fileName.toString() }
         .filter { it.startsWith("test_") && it.endsWith(".sh") && it != "test_helpers.sh" }
         .filter { tracked.contains(it) }
         .sorted()
         .collect(Collectors.toList())
     }
+    // Spock already errors ("Data provider has no data") on an empty where: list rather than
+    // silently running zero iterations, but that generic message doesn't say WHY the list is
+    // empty. Fail with a diagnosis instead: this filters to git-tracked names, so an empty
+    // result almost certainly means the tracked-files lookup came back empty (e.g. demo/ not
+    // tracked from this checkout), not that the demo/ directory itself has no test scripts.
+    assert !names.isEmpty() : "no demo test scripts discovered under ${demoDir()} " +
+      "(${tracked.size()} git-tracked demo/ entries) - check gitTrackedDemoTestScripts()"
+    names
   }
 
   /**
    * Restricts discovery to files git actually tracks under demo/, so an untracked scratch
    * script (e.g. a developer's local demo/test_whatever.sh) doesn't silently join the build.
-   * Falls back to "no filtering" (empty exclusion) only if git itself is unavailable, since a
-   * missing git binary is an environment problem this spec shouldn't mask a script list over.
+   * Falls back to "no filtering" (unfiltered disk listing) only if the git subprocess itself
+   * fails or times out, since a missing/hung git is an environment problem this spec shouldn't
+   * mask a script list over.
    */
   private static List<String> gitTrackedDemoTestScripts() {
     ProcessBuilder processBuilder = new ProcessBuilder("git", "ls-files", "demo")
     processBuilder.directory(demoDir().parent.toFile())
     processBuilder.redirectErrorStream(true)
-    Process process = processBuilder.start()
-    String output = process.inputStream.text
-    boolean finished = process.waitFor(30, TimeUnit.SECONDS)
-    if (!finished) {
-      process.destroyForcibly()
+    ProcessResult result = runBounded(processBuilder, GIT_TIMEOUT_SECONDS)
+    if (!result.finished || result.exitCode != 0) {
       return demoTestScriptNamesOnDisk()
     }
-    if (process.exitValue() != 0) {
-      return demoTestScriptNamesOnDisk()
-    }
-    output.readLines()
+    result.output.readLines()
       .findAll { it.startsWith("demo/") }
       .collect { it.substring("demo/".length()) }
   }
@@ -102,5 +87,47 @@ class DemoTestScriptsSpec extends Specification {
     Files.list(demoDir()).withCloseable { stream ->
       stream.map { it.fileName.toString() }.collect(Collectors.toList())
     }
+  }
+
+  private static final class ProcessResult {
+    final boolean finished
+    final int exitCode
+    final String output
+
+    ProcessResult(boolean finished, int exitCode, String output) {
+      this.finished = finished
+      this.exitCode = exitCode
+      this.output = output
+    }
+  }
+
+  /**
+   * Runs processBuilder to completion (or forcibly kills it past timeoutSeconds), reading its
+   * output concurrently rather than before the bounded wait. process.inputStream.text (or
+   * .eachLine on the main thread) blocks until the stream closes, so a hung subprocess would
+   * hang there even before any waitFor() timeout is reached - the read has to happen on a
+   * separate thread that runs alongside the bounded wait, not sequentially before it, or the
+   * timeout is decorative. Uses StringBuffer (not StringBuilder): on the timeout path the
+   * reader thread may still be writing when reader.join(5000) returns without the thread
+   * having terminated, so the subsequent toString() read has no happens-before guarantee from
+   * join() alone and needs the reader's own internal synchronization instead.
+   */
+  private static ProcessResult runBounded(ProcessBuilder processBuilder, long timeoutSeconds) {
+    Process process = processBuilder.start()
+    StringBuffer outputBuffer = new StringBuffer()
+    Thread reader = new Thread({ ->
+      process.inputStream.eachLine { line -> outputBuffer.append(line).append('\n') }
+    } as Runnable)
+    reader.daemon = true
+    reader.start()
+
+    boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+    if (!finished) {
+      process.destroyForcibly()
+      process.waitFor(5, TimeUnit.SECONDS)
+    }
+    reader.join(5000)
+    int exitCode = finished ? process.exitValue() : -1
+    new ProcessResult(finished, exitCode, outputBuffer.toString())
   }
 }
