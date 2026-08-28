@@ -230,7 +230,7 @@ class CommandExecutor {
       parseBoolean(parsed.staged) ?: false,
       parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
       parseBoolean(parsed.noColor) ?: false,
-      parseBoolean(parsed.logReview) ?: true,
+      parseBooleanFlag(parsed.logReview, true),
       parseBoolean(parsed.security) ?: false,
       parseBoolean(parsed.sast) ?: false,
       parseBoolean(parsed.withThinking) ?: parseBoolean(parsed.reasoning) ?: false,
@@ -247,7 +247,7 @@ class CommandExecutor {
       parsed.session as String ?: "default",
       parsed.provider as String ?: "duckduckgo",
       parseLong(parsed.timeout) ?: 15000L,
-      parseBoolean(parsed.headless) ?: true,
+      parseBooleanFlag(parsed.headless, true),
       parsed.enableWebSearch != null ? parseBoolean(parsed.enableWebSearch) : null
     )
   }
@@ -260,7 +260,7 @@ class CommandExecutor {
       parseLong(parsed.timeout) ?: 60000L,
       parseInt(parsed.maxOutputChars) ?: 8000,
       parsed.session as String ?: "default",
-      parseBoolean(parsed.confirm) ?: true,
+      parseBooleanFlag(parsed.confirm, true),
       false // agentRequested
     )
   }
@@ -412,12 +412,16 @@ class CommandExecutor {
   private String executeContext(String args) {
     Map<String, Object> parsed = parseArgs(args)
     String filePath = parsed.filePath as String ?: firstWord(parsed)
+    // Not "parseInt(...) ?: 2": ShellCommands.context accepts --padding 0 (requireMin(padding,
+    // 0, ...)), but Groovy's ?: treats a parsed 0 as absent, same trap fixed for /benchmark's
+    // --max-tokens 0.
+    Integer padding = parsed.padding != null ? parseInt(parsed.padding) : null
     shellCommands.context(
       filePath,
       parseInt(parsed.start),
       parseInt(parsed.end),
       parsed.symbol as String,
-      parseInt(parsed.padding) ?: 2
+      padding != null ? padding : 2
     )
   }
 

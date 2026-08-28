@@ -35,6 +35,15 @@ class CommandExecutorSpec extends Specification {
     result == "Invalid command format. Expected: /command [args]"
   }
 
+  def "execute respects an explicit /review --log-review false instead of forcing logging back on"() {
+    when:
+    executor.execute('/review --code "x" --log-review false')
+
+    then:
+    1 * shellCommands.review("x", "", "default", null, null, null, null, null, false,
+      ReviewSeverity.LOW, false, false, false, false, false, null) >> "reviewed"
+  }
+
   def "execute forwards the --command flag text to ShellCommands.runCommand"() {
     given:
     String command = '/run --command "gh pr list --state open"'
@@ -45,6 +54,30 @@ class CommandExecutorSpec extends Specification {
     then:
     1 * shellCommands.runCommand("gh pr list --state open", 60000L, 8000, "default", true, false) >> "ran"
     result == "ran"
+  }
+
+  def "execute respects an explicit /run --confirm false instead of forcing confirmation back on"() {
+    when:
+    executor.execute('/run --command "ls" --confirm false')
+
+    then:
+    1 * shellCommands.runCommand("ls", 60000L, 8000, "default", false, false) >> "ran"
+  }
+
+  def "execute defaults /search's headless flag to true"() {
+    when:
+    executor.execute('/search foo')
+
+    then:
+    1 * shellCommands.search("foo", 5, "default", "duckduckgo", 15000L, true, null) >> "results"
+  }
+
+  def "execute respects an explicit /search --headless false instead of forcing it back on"() {
+    when:
+    executor.execute('/search foo --headless false')
+
+    then:
+    1 * shellCommands.search("foo", 5, "default", "duckduckgo", 15000L, false, null) >> "results"
   }
 
   def "execute parses /benchmark flags and forwards them to ShellCommands.benchmark"() {
@@ -161,6 +194,17 @@ class CommandExecutorSpec extends Specification {
 
     then:
     1 * shellCommands.context("src/Foo.groovy", null, null, "myMethod", 2) >> "context"
+  }
+
+  def "execute respects an explicit /context --padding 0 instead of falling back to the default"() {
+    // Regression guard: ShellCommands.context accepts 0 padding (requireMin(padding, 0, ...)),
+    // but "parseInt(x) ?: 2" would treat a parsed 0 as absent - the same trap fixed for
+    // /benchmark's --max-tokens 0.
+    when:
+    executor.execute('/context src/Foo.groovy --symbol myMethod --padding 0')
+
+    then:
+    1 * shellCommands.context("src/Foo.groovy", null, null, "myMethod", 0) >> "context"
   }
 
   def "execute dispatches /version to ShellCommands.version"() {
