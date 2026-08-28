@@ -36,7 +36,8 @@ class CommandExecutor {
   private static final Set<String> KNOWN_COMMANDS = Set.of(
     "chat", "plan", "implement", "review", "search", "run", "edit", "paste",
     "gitapply", "git-apply", "git-push", "apply", "status", "diff", "tree", "codesearch",
-    "mcp", "reviewlog", "compact", "help", "health", "benchmark", "exit", "quit"
+    "mcp", "reviewlog", "compact", "help", "health", "benchmark", "exit", "quit",
+    "model", "context", "version", "stage", "revert", "commit-suggest", "applyblocks"
   )
 
   private final ShellCommands shellCommands
@@ -113,6 +114,20 @@ class CommandExecutor {
         return shellCommands.health()
       case "benchmark":
         return executeBenchmark(args)
+      case "model":
+        return executeModel(args)
+      case "context":
+        return executeContext(args)
+      case "version":
+        return shellCommands.version()
+      case "stage":
+        return executeStage(args)
+      case "revert":
+        return executeRevert(args)
+      case "commit-suggest":
+        return executeCommitSuggest(args)
+      case "applyblocks":
+        return executeApplyBlocks(args)
       case "exit":
       case "quit":
         // Trigger system exit
@@ -385,6 +400,78 @@ class CommandExecutor {
     )
   }
 
+  private String executeModel(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.model(
+      parsed.set as String,
+      parsed.session as String ?: "default",
+      parseBoolean(parsed.list) ?: false
+    )
+  }
+
+  private String executeContext(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.context(
+      filePath,
+      parseInt(parsed.start),
+      parseInt(parsed.end),
+      parsed.symbol as String,
+      parseInt(parsed.padding) ?: 2
+    )
+  }
+
+  private String executeStage(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    List<String> paths = null
+    if (parsed.paths) {
+      paths = (parsed.paths as String).split(',').toList()
+    } else if (parsed.words && !(parsed.words as List).isEmpty()) {
+      paths = parsed.words as List<String>
+    }
+    shellCommands.stage(
+      paths,
+      parsed.file as String,
+      parsed.hunks as String,
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeRevert(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.revert(
+      filePath,
+      parseBooleanFlag(parsed.dryRun, false),
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeCommitSuggest(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.commitSuggest(
+      parsed.session as String ?: "default",
+      parsed.model as String,
+      parsed.temperature as Double,
+      parsed.maxTokens as Integer,
+      parsed.hint as String,
+      parseBooleanFlag(parsed.secretScan, true),
+      parseBooleanFlag(parsed.allowSecrets, false)
+    )
+  }
+
+  private String executeApplyBlocks(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.applyBlocks(
+      filePath,
+      parsed.blocks as String,
+      parsed.blocksFile as String,
+      parseBooleanFlag(parsed.dryRun, true),
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
   private String executeCompact(String args) {
     Map<String, Object> parsed = parseArgs(args)
     shellCommands.compact(parsed.session as String ?: "default")
@@ -482,6 +569,15 @@ class CommandExecutor {
     return words ? words.join(" ") : ""
   }
 
+  /**
+   * First positional word, for commands whose required file-path argument is more natural typed
+   * bare (e.g. "/context src/Foo.groovy --symbol bar") than behind an explicit --file-path flag.
+   */
+  private String firstWord(Map<String, Object> parsed) {
+    List<String> words = parsed.words as List<String>
+    words && !words.isEmpty() ? words[0] : null
+  }
+
   /** Normalizes a kebab-case CLI flag name (e.g. {@code no-color}) to the camelCase map key
    * every {@code executeXxx} method reads (e.g. {@code noColor}). A no-op for flags with no
    * hyphen, so already-camelCase flags like {@code --maxTokens} are unaffected. */
@@ -509,6 +605,18 @@ class CommandExecutor {
       log.warn("Invalid persona: {}", value)
       return null
     }
+  }
+
+  /**
+   * Resolves a boolean flag against a non-false default without Groovy's {@code ?:} truthiness
+   * trap: {@code parseBoolean(value) ?: defaultValue} silently turns an explicit "--flag false"
+   * back into {@code defaultValue} whenever that default is {@code true}, since Elvis treats the
+   * parsed {@code false} itself as absent (the same class of bug fixed for /benchmark's
+   * --max-tokens 0). Only missing/unparsable input falls back to {@code defaultValue}.
+   */
+  private boolean parseBooleanFlag(Object value, boolean defaultValue) {
+    Boolean parsed = parseBoolean(value)
+    parsed != null ? parsed : defaultValue
   }
 
   private Boolean parseBoolean(Object value) {
