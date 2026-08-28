@@ -9,6 +9,9 @@ check "extracts an 8bit suffix" "8bit" "$(_quant_suffix 'mlx-community/Qwen3.8-2
 check "extracts a multi-digit bit suffix" "16bit" "$(_quant_suffix 'mlx-community/Some-Model-16bit')"
 check "empty for a model id with no quant suffix" "" "$(_quant_suffix 'mlx-community/Qwen3-Coder-Next')"
 check "does not match a mid-string bit token" "" "$(_quant_suffix 'mlx-community/8bit-prefixed-model')"
+check "extracts the bit count from a DWQ-qualified id" "4bit" "$(_quant_suffix 'mlx-community/Qwen3.8-27B-4bit-DWQ')"
+check "extracts the bit count from an underscore-qualified id" "8bit" "$(_quant_suffix 'mlx-community/Qwen3.8-27B-8bit_dwq')"
+check "does not treat a multi-word non-quant tail as a qualifier" "" "$(_quant_suffix 'mlx-community/8bit-prefixed-model-name')"
 
 # Regression guard: main() runs under `set -e`, and its call sites assign the result via bare
 # "main_quant=$(_quant_suffix "$MLX_MODEL")" - not inside an if/while condition, so under set -e

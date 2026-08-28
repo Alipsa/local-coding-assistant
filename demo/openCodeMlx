@@ -286,18 +286,21 @@ _download_via() {
   esac
 }
 
-# _quant_suffix <model_id>: echoes the trailing "<N>bit" quantization token
-# from an MLX model id (e.g. "mlx-community/Qwen3.8-27B-4bit" -> "4bit"), or
-# nothing if the id doesn't end in one. Used to fail fast on a draft/main
-# quant mismatch (see the MLX_DRAFT_MODEL check in main()) rather than
-# silently serving a mismatched drafter.
+# _quant_suffix <model_id>: echoes the trailing "<N>bit" quantization token from an MLX model
+# id (e.g. "mlx-community/Qwen3.8-27B-4bit" -> "4bit", "...-4bit-DWQ" -> "4bit"), or nothing if
+# the id doesn't end in one. Used to fail fast on a draft/main quant mismatch (see the
+# MLX_DRAFT_MODEL check in main()) rather than silently serving a mismatched drafter.
+# The optional trailing "([-_][A-Za-z]+)?" allows exactly one quantization-method qualifier
+# after the bit count (DWQ, AWQ, etc.) - NOT "*" (zero-or-more), which would let an arbitrary
+# multi-word tail re-match: "8bit-prefixed-model" must stay a non-match, since nothing about
+# that id says its quant level is 8bit.
 _quant_suffix() {
   local model_id="$1"
   # Deliberately always returns 0: a bare "x=$(_quant_suffix ...)" assignment under main()'s
   # set -e takes the exit status of the command substitution, so a no-match model id (which
   # [[ ... ]] reports as status 1) would otherwise silently kill the whole script right after
   # the ~27GB model download, with no error message and no cleanup trap installed yet.
-  if [[ "$model_id" =~ ([0-9]+bit)$ ]]; then
+  if [[ "$model_id" =~ ([0-9]+bit)([-_][A-Za-z]+)?$ ]]; then
     echo "${BASH_REMATCH[1]}"
   fi
   return 0
