@@ -33,7 +33,7 @@ class BatchTestModelConfiguration {
 
   @Bean
   LlmService batchTestLlm(ChatModel chatModel) {
-    new SpringAiLlmService("qwen3.6:35b-a3b", "test", chatModel)
+    new SpringAiLlmService("qwen3.8:27b", "test", chatModel)
   }
 
   @Bean

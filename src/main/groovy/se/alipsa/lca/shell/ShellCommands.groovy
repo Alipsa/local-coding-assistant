@@ -228,6 +228,7 @@ Do not execute any commands.
     commands.put("/!", "Execute a shell command directly (alias: /sh).")
     commands.put("/apply", "Apply a unified diff patch with confirmation.")
     commands.put("/applyBlocks", "Apply Search-and-Replace blocks to a file.")
+    commands.put("/benchmark", "Measure raw Ollama inference speed (tokens/sec) for a model.")
     commands.put("/chat", "Send a prompt to the coding assistant.")
     commands.put("/codesearch", "Search repository files with ripgrep.")
     commands.put("/commit-suggest", "Draft a commit message from staged changes.")
@@ -1325,6 +1326,73 @@ Try:
       return "Ollama reachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
     }
     "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
+  }
+
+  private static final String DEFAULT_BENCHMARK_PROMPT =
+    "Write a one-paragraph explanation of how binary search works, then show a short example in Groovy."
+
+  @ShellMethod(
+    key = ["/benchmark"],
+    value = "Measure raw Ollama inference speed (tokens/sec) for a model."
+  )
+  String benchmark(
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Model to benchmark (default: active session model)") String model,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Prompt text to send") String prompt,
+    @ShellOption(defaultValue = ShellOption.NULL, help = "Read the prompt from a file instead of --prompt") String promptFile,
+    @ShellOption(defaultValue = "200", help = "Max tokens to generate") int maxTokens,
+    @ShellOption(defaultValue = "default", help = "Session id") String session
+  ) {
+    if (maxTokens <= 0) {
+      return "Max tokens must be positive."
+    }
+    ModelRegistry.Health health = modelRegistry.checkHealth()
+    if (!health.reachable) {
+      return "Ollama unreachable at ${modelRegistry.getBaseUrl()}: ${health.message}"
+    }
+    String targetModel = model ?: (sessionState.getOrCreate(session).getModel() ?: sessionState.getDefaultModel())
+    if (!targetModel) {
+      return "No model configured. Specify one with /benchmark --model <name>."
+    }
+    List<String> available = modelRegistry.listModels()
+    if (!available.isEmpty() && !available.any { it.equalsIgnoreCase(targetModel) }) {
+      return "Model '${targetModel}' not found. Available: ${String.join(', ', available)}"
+    }
+    String effectivePrompt
+    if (promptFile) {
+      try {
+        effectivePrompt = fileEditingTool.readFile(promptFile)
+      } catch (IllegalArgumentException e) {
+        return "Could not read prompt file: ${e.message}"
+      }
+    } else {
+      effectivePrompt = prompt ?: DEFAULT_BENCHMARK_PROMPT
+    }
+    if (effectivePrompt.trim().isEmpty()) {
+      return "Prompt is empty."
+    }
+    ModelRegistry.BenchmarkResult result
+    try {
+      result = modelRegistry.benchmark(targetModel, effectivePrompt, maxTokens)
+    } catch (Exception e) {
+      return "Benchmark failed: ${e.message}"
+    }
+    Integer contextLength = modelRegistry.contextLength(targetModel)
+    StringBuilder body = new StringBuilder()
+    body.append("Model: ").append(targetModel).append("\n")
+    if (contextLength != null) {
+      body.append("Reported context length: ").append(contextLength).append(" tokens\n")
+    }
+    body.append("Prompt tokens: ").append(result.promptEvalCount)
+      .append(" (").append(String.format(Locale.ROOT, "%.2f", result.promptTokensPerSecond)).append(" tok/s)\n")
+    body.append("Generated tokens: ").append(result.evalCount)
+      .append(" (").append(String.format(Locale.ROOT, "%.2f", result.evalTokensPerSecond)).append(" tok/s)\n")
+    body.append("Load duration: ").append(formatDurationSeconds(result.loadDurationNanos)).append("\n")
+    body.append("Total duration: ").append(formatDurationSeconds(result.totalDurationNanos))
+    formatSection("Benchmark", body.toString())
+  }
+
+  private static String formatDurationSeconds(long nanos) {
+    String.format(Locale.ROOT, "%.2fs", nanos / 1_000_000_000d)
   }
 
   @ShellMethod(

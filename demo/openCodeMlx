@@ -6,15 +6,44 @@
 ############################################################
 
 # --- User-tunable settings ---
-# Model to run - comment one out, uncomment the other to switch.
-MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit}"
+# Model to run - comment one out, uncomment the other to switch. The serving
+# backend (mlx-lm vs mlx-vlm) is auto-detected per model from its downloaded
+# config.json (see detect_model_backend), so switching this line alone is
+# enough even between a vision-capable model and a text-only one.
+MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3.8-27B-4bit}"
+#MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3.8-27B-8bit}"
+#MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit}"
 #MLX_MODEL="${MLX_MODEL:-mlx-community/Qwen3-Coder-Next-4bit}"
+
+# Optional speculative-decoding draft model, paired with MLX_MODEL above via
+# mlx_vlm.server's --draft-model/--draft-kind flags (mlx-vlm backend only -
+# see detect_model_backend/start_mlx_server_instance). This checkpoint holds
+# only the MTP drafter weights, not a full model - it borrows token
+# embeddings and the LM head from MLX_MODEL at runtime, so it must be
+# derived from the exact same base checkpoint (same model, same quant
+# level) as whatever MLX_MODEL points at above. Set to "" to disable
+# speculative decoding and serve MLX_MODEL alone. Defaults to disabled:
+# benchmarked via mlx_vlm.generate --verbose against MLX_MODEL above, this
+# drafter only accepted ~55% of its drafted tokens, so paying for both the
+# draft and target model every round was a net loss - 12.5 tokens-per-sec
+# generation with the drafter enabled vs 21.3 tokens-per-sec without it.
+MLX_DRAFT_MODEL="${MLX_DRAFT_MODEL:-}"
 
 # Small/fast model used for lightweight background tasks (e.g. session title
 # generation) so those don't wait on the full-size model. Served by its own
 # second mlx_lm.server instance (see MLX_SMALL_PORT below) so opencode's
 # small_model role never needs Ollama.
 MLX_SMALL_MODEL="${MLX_SMALL_MODEL:-mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit}"
+
+# Network interface to bind model downloads to. Empty (default) uses
+# whatever the default route is. Opt in by setting this to a specific
+# interface name (e.g. "en7") if your setup needs it - for example, some
+# VPN clients (GlobalProtect was observed doing this) reset every connection
+# to huggingface.co outright when the VPN tunnel is the default route, and
+# binding to a real Ethernet/Wi-Fi interface bypasses that. If the named
+# interface doesn't exist/resolve on your machine this warns and falls back
+# to the default route automatically.
+MLX_DOWNLOAD_INTERFACE="${MLX_DOWNLOAD_INTERFACE:-}"
 
 # How much RAM (GB) to leave free for the OS/other apps; the rest is made
 # available to the GPU (iogpu.wired_limit_mb) for model weights + KV cache.
@@ -126,11 +155,101 @@ ensure_mlx_lm_current() {
   return 0
 }
 
+# ensure_mlx_vlm_current: same not-installed/hard-error vs
+# already-installed/warn-and-continue pattern as ensure_mlx_lm_current
+# above, but for mlx-vlm - only needed when the selected model turns out to
+# be vision-capable (see detect_model_backend). Carries the same transformers
+# pin as ensure_mlx_lm_current: both packages share this one venv, so an
+# unconstrained "pip install mlx-vlm" is free to upgrade transformers past
+# 5.13 to satisfy its own metadata - which breaks mlx-lm's AutoTokenizer.
+# register call at import time, silently taking down mlx_lm.server (still
+# used unconditionally for the small background model) on the next launch.
+ensure_mlx_vlm_current() {
+  local mode="${1:-update}"
+  if ! python3 -m mlx_vlm.server --help >/dev/null 2>&1; then
+    echo "mlx-vlm not found in venv, installing..."
+    if ! pip install --upgrade pip mlx-vlm "transformers>=5.7,<5.13"; then
+      echo "Error: mlx-vlm installation failed, cannot continue" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if [[ "$mode" == "install-only" ]]; then
+    return 0
+  fi
+
+  echo "Checking for mlx-vlm updates..."
+  if ! pip install --upgrade pip mlx-vlm "transformers>=5.7,<5.13"; then
+    echo "Warning: mlx-vlm update check failed, continuing with existing installation." >&2
+  fi
+  return 0
+}
+
+# _resolve_download_source_ip: resolves MLX_DOWNLOAD_INTERFACE (if set) to
+# a local IP address via macOS's ipconfig, so model downloads can be bound
+# to that interface (see MLX_DOWNLOAD_INTERFACE comment above). Echoes the
+# IP, or nothing if unset or unresolvable (falls back to default routing).
+_resolve_download_source_ip() {
+  [[ -z "${MLX_DOWNLOAD_INTERFACE:-}" ]] && return 0
+  local ip
+  ip=$(ipconfig getifaddr "$MLX_DOWNLOAD_INTERFACE" 2>/dev/null)
+  if [[ -z "$ip" ]]; then
+    echo "Warning: could not resolve an IP for interface $MLX_DOWNLOAD_INTERFACE, downloading via default route." >&2
+    return 0
+  fi
+  echo "$ip"
+}
+
+# _source_ip_bind_python_prelude <ip>: echoes python source that
+# monkey-patches socket.socket so every outgoing connection binds to <ip>
+# first. urllib3 (which huggingface_hub/modelscope's HTTP stack sits on)
+# implements its own connection setup rather than delegating to stdlib's
+# socket.create_connection, so patching that wouldn't intercept these
+# requests - subclassing socket.socket itself is the reliable way to force
+# every HTTP stack's outgoing connections over a specific interface.
+# Echoes nothing if <ip> is empty (download proceeds via default routing).
+_source_ip_bind_python_prelude() {
+  local ip="$1"
+  [[ -z "$ip" ]] && return 0
+  cat <<PYEOF
+import socket
+_orig_socket = socket.socket
+class _BoundSocket(_orig_socket):
+    def connect(self, address):
+        try:
+            self.bind(('$ip', 0))
+        except OSError:
+            pass
+        return super().connect(address)
+    def connect_ex(self, address):
+        try:
+            self.bind(('$ip', 0))
+        except OSError:
+            pass
+        return super().connect_ex(address)
+socket.socket = _BoundSocket
+PYEOF
+}
+
 # _download_via_huggingface <model_id> <local_dir>
 _download_via_huggingface() {
   local model_id="$1" local_dir="$2"
   echo "Downloading $model_id from Hugging Face Hub to $local_dir..."
-  python3 -c "
+  # hf_xet (huggingface_hub's fast-transfer backend, used automatically when
+  # the hf_xet package is installed) has its own Rust networking stack that
+  # bypasses the socket.socket bind below entirely - confirmed live to hang
+  # indefinitely (0% CPU, no progress) on this author's network when xet
+  # transfers can't get through, even though plain-requests API/metadata
+  # calls (which do honor the bind) succeed fine. Disable it whenever we're
+  # actually binding to a specific interface, since that binding is the
+  # whole point and xet silently defeats it.
+  local xet_env=()
+  if [[ -n "${DOWNLOAD_SOURCE_IP:-}" ]]; then
+    xet_env=(HF_HUB_DISABLE_XET=1)
+  fi
+  env "${xet_env[@]}" python3 -c "
+$(_source_ip_bind_python_prelude "${DOWNLOAD_SOURCE_IP:-}")
 import sys
 try:
     from huggingface_hub import snapshot_download
@@ -146,6 +265,7 @@ _download_via_modelscope() {
   local model_id="$1" local_dir="$2"
   echo "Downloading $model_id from ModelScope to $local_dir..."
   python3 -c "
+$(_source_ip_bind_python_prelude "${DOWNLOAD_SOURCE_IP:-}")
 import sys
 try:
     from modelscope import snapshot_download
@@ -164,6 +284,49 @@ _download_via() {
     huggingface) _download_via_huggingface "$model_id" "$local_dir" ;;
     *) echo "Unknown download source: $source" >&2; return 1 ;;
   esac
+}
+
+# _quant_suffix <model_id>: echoes the trailing "<N>bit" quantization token from an MLX model
+# id (e.g. "mlx-community/Qwen3.8-27B-4bit" -> "4bit", "...-4bit-DWQ" -> "4bit"), or nothing if
+# the id doesn't end in one. Used to fail fast on a draft/main quant mismatch (see the
+# MLX_DRAFT_MODEL check in main()) rather than silently serving a mismatched drafter.
+# The optional trailing "([-_][A-Za-z]+)?" allows exactly one quantization-method qualifier
+# after the bit count (DWQ, AWQ, etc.) - NOT "*" (zero-or-more), which would let an arbitrary
+# multi-word tail re-match: "8bit-prefixed-model" must stay a non-match, since nothing about
+# that id says its quant level is 8bit.
+_quant_suffix() {
+  local model_id="$1"
+  # Deliberately always returns 0: a bare "x=$(_quant_suffix ...)" assignment under main()'s
+  # set -e takes the exit status of the command substitution, so a no-match model id (which
+  # [[ ... ]] reports as status 1) would otherwise silently kill the whole script right after
+  # the ~27GB model download, with no error message and no cleanup trap installed yet.
+  if [[ "$model_id" =~ ([0-9]+bit)([-_][A-Za-z]+)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  fi
+  return 0
+}
+
+# detect_model_backend <model_dir>: echoes "mlx_vlm" if the downloaded
+# model's config.json declares a vision_config (i.e. it's a
+# vision-language checkpoint that mlx_lm.server can't load - see
+# https://github.com/ml-explore/mlx-lm and mlx-vlm's own architecture
+# registration), else "mlx_lm". Defaults to "mlx_lm" on any read/parse
+# failure so existing text-only models keep behaving exactly as before.
+detect_model_backend() {
+  local model_dir="$1"
+  if python3 -c "
+import json, sys
+try:
+    with open('$model_dir/config.json') as f:
+        cfg = json.load(f)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if 'vision_config' in cfg else 1)
+" 2>/dev/null; then
+    echo "mlx_vlm"
+  else
+    echo "mlx_lm"
+  fi
 }
 
 # sync_model <model_id> <local_dir> <primary> <fallback>
@@ -258,7 +421,7 @@ main() {
     MLX_SMALL_PROMPT_CACHE_BYTES="${MLX_SMALL_PROMPT_CACHE_BYTES:-$(( GPU_WIRED_LIMIT * 1024 * 1024 / 10 ))}"
 
     if [[ $RAM_GB -lt 64 ]]; then
-      echo "Warning: $MLX_MODEL may need ~45GB for weights + KV cache and may not fit"
+      echo "Warning: $MLX_MODEL may need ~25GB for weights + KV cache and may not fit"
       echo "in ${RAM_GB}GB RAM. Override with a smaller/lower-bit model via the"
       echo "MLX_MODEL environment variable if you hit an OOM."
     fi
@@ -333,6 +496,8 @@ main() {
     fi
   fi
 
+  DOWNLOAD_SOURCE_IP=$(_resolve_download_source_ip)
+
   LOCAL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_MODEL" | tr '/' '--')"
 
   # Defaults to ModelScope-first: HF is blocked in this author's environment,
@@ -346,6 +511,40 @@ main() {
 
   if ! sync_model "$MLX_MODEL" "$LOCAL_MODEL_DIR" "$PRIMARY" "$FALLBACK" "$ensure_mode"; then
     exit 1
+  fi
+
+  MAIN_MODEL_BACKEND=$(detect_model_backend "$LOCAL_MODEL_DIR")
+  if [[ "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]]; then
+    echo "$MLX_MODEL is a vision-language checkpoint, serving it via mlx-vlm instead of mlx-lm..."
+    if ! ensure_mlx_vlm_current "$ensure_mode"; then
+      exit 1
+    fi
+  fi
+
+  # Speculative decoding is only wired up on the mlx_vlm path below (--draft-model is never
+  # passed to plain mlx_lm.server) - downloading a multi-GB drafter for a model served via
+  # mlx_lm would just be discarded, so gate on the detected backend too, not MLX_DRAFT_MODEL
+  # alone. Also fail fast on a quant mismatch: the drafter borrows token embeddings and the LM
+  # head from MLX_MODEL at runtime, so it must share the exact same base checkpoint and quant
+  # level, and nothing downstream would catch a mismatch on its own.
+  LOCAL_DRAFT_MODEL_DIR=""
+  if [[ -n "${MLX_DRAFT_MODEL:-}" && "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]]; then
+    main_quant=$(_quant_suffix "$MLX_MODEL")
+    draft_quant=$(_quant_suffix "$MLX_DRAFT_MODEL")
+    if [[ -n "$main_quant" && -n "$draft_quant" && "$main_quant" != "$draft_quant" ]]; then
+      echo "Error: MLX_DRAFT_MODEL ($MLX_DRAFT_MODEL, quant $draft_quant) does not match" >&2
+      echo "MLX_MODEL's quant ($MLX_MODEL, quant $main_quant). The drafter must be derived" >&2
+      echo "from the exact same base checkpoint and quant level as MLX_MODEL. Disable" >&2
+      echo "speculative decoding (MLX_DRAFT_MODEL=\"\") or pick a matching drafter." >&2
+      exit 1
+    fi
+    LOCAL_DRAFT_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_DRAFT_MODEL" | tr '/' '-')"
+    if ! sync_model "$MLX_DRAFT_MODEL" "$LOCAL_DRAFT_MODEL_DIR" "$PRIMARY" "$FALLBACK" "$ensure_mode"; then
+      exit 1
+    fi
+  elif [[ -n "${MLX_DRAFT_MODEL:-}" ]]; then
+    echo "Warning: MLX_DRAFT_MODEL is set but $MLX_MODEL is served via mlx_lm; speculative" >&2
+    echo "decoding here is only wired up for the mlx_vlm backend. Ignoring MLX_DRAFT_MODEL." >&2
   fi
 
   LOCAL_SMALL_MODEL_DIR="$MLX_DIR/models/$(echo "$MLX_SMALL_MODEL" | tr '/' '--')"
@@ -388,16 +587,37 @@ EOF
   }
 
   start_mlx_server_instance() {
-    local label="$1" model_dir="$2" port="$3" log_file="$4" pid_var_name="$5" model_id="$6" model_env_var="$7" prefill_step_size="$8" prompt_cache_bytes="$9"
+    local label="$1" model_dir="$2" port="$3" log_file="$4" pid_var_name="$5" model_id="$6" model_env_var="$7" prefill_step_size="$8" cache_limit="$9" backend="${10:-mlx_lm}" draft_model_dir="${11:-}"
 
-    echo "Starting $label with model $model_id on port $port..."
-    mlx_lm.server \
-      --model "$model_dir" \
-      --host 127.0.0.1 \
-      --port "$port" \
-      --prefill-step-size "$prefill_step_size" \
-      --prompt-cache-bytes "$prompt_cache_bytes" \
-      >> "$log_file" 2>&1 &
+    echo "Starting $label with model $model_id on port $port (backend: $backend)..."
+    if [[ "$backend" == "mlx_vlm" ]]; then
+      # mlx-vlm has no --prompt-cache-bytes equivalent; --max-kv-size (token
+      # count, reusing the same context-limit knob) is its closest analogue
+      # for bounding KV-cache growth per the OOM-guard rationale above.
+      # --trust-remote-code included per observed mlx-vlm usage for this
+      # architecture family.
+      local draft_args=()
+      if [[ -n "$draft_model_dir" ]]; then
+        draft_args=(--draft-model "$draft_model_dir" --draft-kind mtp)
+      fi
+      python3 -m mlx_vlm.server \
+        --model "$model_dir" \
+        --host 127.0.0.1 \
+        --port "$port" \
+        --prefill-step-size "$prefill_step_size" \
+        --max-kv-size "$cache_limit" \
+        --trust-remote-code \
+        "${draft_args[@]}" \
+        >> "$log_file" 2>&1 &
+    else
+      mlx_lm.server \
+        --model "$model_dir" \
+        --host 127.0.0.1 \
+        --port "$port" \
+        --prefill-step-size "$prefill_step_size" \
+        --prompt-cache-bytes "$cache_limit" \
+        >> "$log_file" 2>&1 &
+    fi
     printf -v "$pid_var_name" '%s' "$!"
 
     echo "Waiting for $label to come up (first run may need to load a large model into memory, this can take a while - Ctrl+C to abort)..."
@@ -455,8 +675,10 @@ EOF
         kill -9 "$pid" 2>/dev/null
       fi
     }
+    local main_server_label="mlx_lm.server (main)"
+    [[ "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]] && main_server_label="mlx_vlm.server (main)"
     stop_and_report "mlx_lm.server (small)" "${SMALL_SERVER_PID:-}" &
-    stop_and_report "mlx_lm.server (main)" "${SERVER_PID:-}" &
+    stop_and_report "$main_server_label" "${SERVER_PID:-}" &
     wait
 
     # Reap here, in this shell (the servers' actual parent) - by now each
@@ -471,11 +693,24 @@ EOF
   # server process last time.
   trap cleanup EXIT INT TERM HUP
 
-  if ! start_mlx_server_instance "mlx_lm.server (main)" "$LOCAL_MODEL_DIR" "$MLX_PORT" "$MLX_DIR/server.log" "SERVER_PID" "$MLX_MODEL" "MLX_MODEL" "$MLX_PREFILL_STEP_SIZE" "$MLX_PROMPT_CACHE_BYTES"; then
+  if [[ "$MAIN_MODEL_BACKEND" == "mlx_vlm" ]]; then
+    # mlx-vlm has no --prompt-cache-bytes equivalent; --max-kv-size takes a token count, not
+    # bytes, so it can't reuse MLX_PROMPT_CACHE_BYTES directly the way the mlx_lm branch does.
+    # Reusing MLX_CONTEXT_LIMIT (128k tokens by default) as a stand-in is unverified and may not
+    # actually bind the same GPU-memory budget the kernel-panic guard above was sized around -
+    # this model's real per-token KV footprint hasn't been measured. Override with
+    # MLX_VLM_MAX_KV_SIZE once that's been profiled (e.g. watch iogpu.wired_limit_mb headroom
+    # while serving a large prompt) rather than trusting this default for a memory-safety guard.
+    MAIN_CACHE_LIMIT="${MLX_VLM_MAX_KV_SIZE:-$MLX_CONTEXT_LIMIT}"
+  else
+    MAIN_CACHE_LIMIT="$MLX_PROMPT_CACHE_BYTES"
+  fi
+
+  if ! start_mlx_server_instance "main model server" "$LOCAL_MODEL_DIR" "$MLX_PORT" "$MLX_DIR/server.log" "SERVER_PID" "$MLX_MODEL" "MLX_MODEL" "$MLX_PREFILL_STEP_SIZE" "$MAIN_CACHE_LIMIT" "$MAIN_MODEL_BACKEND" "$LOCAL_DRAFT_MODEL_DIR"; then
     exit 1
   fi
 
-  if ! start_mlx_server_instance "mlx_lm.server (small)" "$LOCAL_SMALL_MODEL_DIR" "$MLX_SMALL_PORT" "$MLX_DIR/small_server.log" "SMALL_SERVER_PID" "$MLX_SMALL_MODEL" "MLX_SMALL_MODEL" "$MLX_SMALL_PREFILL_STEP_SIZE" "$MLX_SMALL_PROMPT_CACHE_BYTES"; then
+  if ! start_mlx_server_instance "small model server" "$LOCAL_SMALL_MODEL_DIR" "$MLX_SMALL_PORT" "$MLX_DIR/small_server.log" "SMALL_SERVER_PID" "$MLX_SMALL_MODEL" "MLX_SMALL_MODEL" "$MLX_SMALL_PREFILL_STEP_SIZE" "$MLX_SMALL_PROMPT_CACHE_BYTES" "mlx_lm"; then
     exit 1
   fi
 

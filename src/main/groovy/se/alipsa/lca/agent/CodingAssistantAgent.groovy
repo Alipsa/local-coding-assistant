@@ -177,7 +177,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
   CodingAssistantAgent(
     @Value('${snippetWordCount:200}') int snippetWordCount,
     @Value('${reviewWordCount:150}') int reviewWordCount,
-    @Value('${assistant.llm.model:qwen3.6:35b-a3b}') String llmModel,
+    @Value('${assistant.llm.model}') String llmModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
     @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
     @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,

@@ -1682,6 +1682,85 @@ class ShellCommandsSpec extends Specification {
     cmds.health().contains("unreachable")
   }
 
+  def "benchmark reports tokens per second and context length for the resolved model"() {
+    given:
+    ModelRegistry.BenchmarkResult result = new ModelRegistry.BenchmarkResult(
+      "qwen3.8-review", 22391331208L, 7425792167L, 19, 774138000L, 190, 14189978000L)
+    ModelRegistry registry = Stub() {
+      checkHealth() >> new ModelRegistry.Health(true, "ok")
+      listModels() >> ["qwen3.8-review"]
+      benchmark("qwen3.8-review", _, 200) >> result
+      contextLength("qwen3.8-review") >> 131072
+    }
+    ShellCommands cmds = benchmarkCommandsFor(registry)
+
+    when:
+    String out = cmds.benchmark("qwen3.8-review", null, null, 200, "default")
+
+    then:
+    out.contains("qwen3.8-review")
+    out.contains("131072")
+    out.contains("19")
+    out.contains("190")
+  }
+
+  def "benchmark reports unreachable when Ollama is down"() {
+    given:
+    ModelRegistry registry = Stub() {
+      checkHealth() >> new ModelRegistry.Health(false, "connection refused")
+      getBaseUrl() >> "http://localhost:11434"
+    }
+    ShellCommands cmds = benchmarkCommandsFor(registry)
+
+    expect:
+    cmds.benchmark(null, null, null, 200, "default").contains("unreachable")
+  }
+
+  def "benchmark rejects an unknown model"() {
+    given:
+    ModelRegistry registry = Stub() {
+      checkHealth() >> new ModelRegistry.Health(true, "ok")
+      listModels() >> ["known-model"]
+    }
+    ShellCommands cmds = benchmarkCommandsFor(registry)
+
+    when:
+    String out = cmds.benchmark("unknown-model", null, null, 200, "default")
+
+    then:
+    out.contains("not found")
+    out.contains("known-model")
+  }
+
+  def "benchmark reads the prompt from --prompt-file"() {
+    given:
+    ModelRegistry.BenchmarkResult result = new ModelRegistry.BenchmarkResult("m", 1L, 1L, 1, 1L, 1, 1L)
+    ModelRegistry registry = Stub() {
+      checkHealth() >> new ModelRegistry.Health(true, "ok")
+      listModels() >> ["m"]
+      benchmark("m", "file contents", 200) >> result
+      contextLength("m") >> null
+    }
+    fileEditingTool.readFile("prompt.txt") >> "file contents"
+    ShellCommands cmds = benchmarkCommandsFor(registry)
+
+    expect:
+    cmds.benchmark("m", null, "prompt.txt", 200, "default").contains("Model: m")
+  }
+
+  def "benchmark surfaces a missing prompt file"() {
+    given:
+    ModelRegistry registry = Stub() {
+      checkHealth() >> new ModelRegistry.Health(true, "ok")
+      listModels() >> ["m"]
+    }
+    fileEditingTool.readFile("missing.txt") >> { throw new IllegalArgumentException("File missing.txt does not exist") }
+    ShellCommands cmds = benchmarkCommandsFor(registry)
+
+    expect:
+    cmds.benchmark("m", null, "missing.txt", 200, "default").contains("does not exist")
+  }
+
   def "version returns resolved version"() {
     given:
     ShellCommands versioned = new ShellCommands(
@@ -2640,6 +2719,43 @@ class ShellCommandsSpec extends Specification {
 
     then: "the Tests: section citation never enters summary.findings, so it never reaches checkFileReferences"
     !response.contains("not found in the project")
+  }
+
+  private ShellCommands benchmarkCommandsFor(ModelRegistry registry) {
+    new ShellCommands(
+      agent,
+      ai,
+      sessionState,
+      editorLauncher,
+      fileEditingTool,
+      Mock(se.alipsa.lca.tools.ToolCallParser),
+      gitTool,
+      Stub(CodeSearchTool),
+      new ContextPacker(),
+      new ContextBudgetManager(10000, 0, new TokenEstimator(), 2, -1),
+      commandRunner,
+      commandPolicy,
+      registry,
+      agentPlatform,
+      contextRepository,
+      tempDir.resolve("benchmark.log").toString(),
+      null,
+      null,
+      shellSettings,
+      intentRoutingState,
+      intentRoutingSettings
+      ,
+      Mock(se.alipsa.lca.validation.RequestValidator),
+      Mock(se.alipsa.lca.validation.ClarificationDialog),
+      null,
+      null,
+      null,
+      null,
+      contextCompactor,
+      80000,
+      30000,
+      null
+    )
   }
 
   private ShellCommands commitCommandsFor(GitTool repoGit) {

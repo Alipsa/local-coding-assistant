@@ -21,7 +21,24 @@ import java.util.regex.Pattern
 class CommandExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CommandExecutor)
-  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/(\w+)\s*([\s\S]*)/)
+  // [\w-] (not \w alone) so hyphenated command names (/git-apply, /git-push) are captured whole
+  // instead of being truncated at the first hyphen.
+  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/([\w-]+)\s*([\s\S]*)/)
+
+  /**
+   * Command names this class actually dispatches in {@link #execute}'s switch (kept in sync with
+   * it by hand — small, stable list). Used by {@link #isKnownCommand} so the REPL can bypass the
+   * LLM intent classifier for input that's already an unambiguous, literal slash command: routing
+   * a verbatim "/benchmark --model x" through a small classifier risks it being reinterpreted as
+   * something else entirely (observed: misrouted to /run, which then tried to execute "benchmark"
+   * as a literal shell binary).
+   */
+  private static final Set<String> KNOWN_COMMANDS = Set.of(
+    "chat", "plan", "implement", "review", "search", "run", "edit", "paste",
+    "gitapply", "git-apply", "git-push", "apply", "status", "diff", "tree", "codesearch",
+    "mcp", "reviewlog", "compact", "help", "health", "benchmark", "exit", "quit",
+    "model", "context", "version", "stage", "revert", "commit-suggest", "applyblocks"
+  )
 
   private final ShellCommands shellCommands
   private final McpCommands mcpCommands
@@ -73,6 +90,8 @@ class CommandExecutor {
       case "gitapply":
       case "git-apply":
         return executeGitApply(args)
+      case "git-push":
+        return executeGitPush(args)
       case "apply":
         return executeApply(args)
       case "status":
@@ -93,6 +112,22 @@ class CommandExecutor {
         return shellCommands.help()
       case "health":
         return shellCommands.health()
+      case "benchmark":
+        return executeBenchmark(args)
+      case "model":
+        return executeModel(args)
+      case "context":
+        return executeContext(args)
+      case "version":
+        return shellCommands.version()
+      case "stage":
+        return executeStage(args)
+      case "revert":
+        return executeRevert(args)
+      case "commit-suggest":
+        return executeCommitSuggest(args)
+      case "applyblocks":
+        return executeApplyBlocks(args)
       case "exit":
       case "quit":
         // Trigger system exit
@@ -101,6 +136,19 @@ class CommandExecutor {
       default:
         return "Unknown command: /${command}. Type /help for available commands."
     }
+  }
+
+  /**
+   * True when {@code input} is already a literal, well-formed slash command this class can
+   * dispatch on its own (e.g. "/benchmark --model x"). Callers use this to skip the LLM intent
+   * classifier entirely for unambiguous input, routing straight to {@link #execute}.
+   */
+  boolean isKnownCommand(String input) {
+    if (input == null) {
+      return false
+    }
+    Matcher matcher = COMMAND_PATTERN.matcher(input.trim())
+    matcher.matches() && KNOWN_COMMANDS.contains(matcher.group(1).toLowerCase())
   }
 
   /**
@@ -182,7 +230,7 @@ class CommandExecutor {
       parseBoolean(parsed.staged) ?: false,
       parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
       parseBoolean(parsed.noColor) ?: false,
-      parseBoolean(parsed.logReview) ?: true,
+      parseBooleanFlag(parsed.logReview, true),
       parseBoolean(parsed.security) ?: false,
       parseBoolean(parsed.sast) ?: false,
       parseBoolean(parsed.withThinking) ?: parseBoolean(parsed.reasoning) ?: false,
@@ -199,7 +247,7 @@ class CommandExecutor {
       parsed.session as String ?: "default",
       parsed.provider as String ?: "duckduckgo",
       parseLong(parsed.timeout) ?: 15000L,
-      parseBoolean(parsed.headless) ?: true,
+      parseBooleanFlag(parsed.headless, true),
       parsed.enableWebSearch != null ? parseBoolean(parsed.enableWebSearch) : null
     )
   }
@@ -212,7 +260,7 @@ class CommandExecutor {
       parseLong(parsed.timeout) ?: 60000L,
       parseInt(parsed.maxOutputChars) ?: 8000,
       parsed.session as String ?: "default",
-      parseBoolean(parsed.confirm) ?: true,
+      parseBooleanFlag(parsed.confirm, true),
       false // agentRequested
     )
   }
@@ -253,8 +301,8 @@ class CommandExecutor {
       patch,
       patchFile,
       parseBoolean(parsed.cached) ?: false,
-      parseBoolean(parsed.check) ?: true,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.check, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
@@ -265,8 +313,8 @@ class CommandExecutor {
     shellCommands.applyPatch(
       patch,
       patchFile,
-      parseBoolean(parsed.dryRun) ?: true,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.dryRun, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
@@ -327,6 +375,104 @@ class CommandExecutor {
       parseInt(parsed.page) ?: 1,
       parsed.since as String,
       parseBoolean(parsed.noColor) ?: false
+    )
+  }
+
+  private String executeGitPush(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.gitPush(
+      parseBoolean(parsed.force) ?: false,
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeBenchmark(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    // Not "parseInt(...) ?: 200": Groovy truthiness treats 0 as falsy, so an explicit
+    // "--max-tokens 0" would otherwise silently become 200 instead of being rejected.
+    Integer maxTokens = parsed.maxTokens != null ? parseInt(parsed.maxTokens) : null
+    shellCommands.benchmark(
+      parsed.model as String,
+      parsed.prompt as String,
+      parsed.promptFile as String,
+      maxTokens != null ? maxTokens : 200,
+      parsed.session as String ?: "default"
+    )
+  }
+
+  private String executeModel(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.model(
+      parsed.set as String,
+      parsed.session as String ?: "default",
+      parseBoolean(parsed.list) ?: false
+    )
+  }
+
+  private String executeContext(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    // Not "parseInt(...) ?: 2": ShellCommands.context accepts --padding 0 (requireMin(padding,
+    // 0, ...)), but Groovy's ?: treats a parsed 0 as absent, same trap fixed for /benchmark's
+    // --max-tokens 0.
+    Integer padding = parsed.padding != null ? parseInt(parsed.padding) : null
+    shellCommands.context(
+      filePath,
+      parseInt(parsed.start),
+      parseInt(parsed.end),
+      parsed.symbol as String,
+      padding != null ? padding : 2
+    )
+  }
+
+  private String executeStage(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    List<String> paths = null
+    if (parsed.paths) {
+      paths = (parsed.paths as String).split(',').toList()
+    } else if (parsed.words && !(parsed.words as List).isEmpty()) {
+      paths = parsed.words as List<String>
+    }
+    shellCommands.stage(
+      paths,
+      parsed.file as String,
+      parsed.hunks as String,
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeRevert(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.revert(
+      filePath,
+      parseBooleanFlag(parsed.dryRun, false),
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeCommitSuggest(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    shellCommands.commitSuggest(
+      parsed.session as String ?: "default",
+      parsed.model as String,
+      parsed.temperature as Double,
+      parsed.maxTokens as Integer,
+      parsed.hint as String,
+      parseBooleanFlag(parsed.secretScan, true),
+      parseBooleanFlag(parsed.allowSecrets, false)
+    )
+  }
+
+  private String executeApplyBlocks(String args) {
+    Map<String, Object> parsed = parseArgs(args)
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.applyBlocks(
+      filePath,
+      parsed.blocks as String,
+      parsed.blocksFile as String,
+      parseBooleanFlag(parsed.dryRun, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
@@ -427,6 +573,15 @@ class CommandExecutor {
     return words ? words.join(" ") : ""
   }
 
+  /**
+   * First positional word, for commands whose required file-path argument is more natural typed
+   * bare (e.g. "/context src/Foo.groovy --symbol bar") than behind an explicit --file-path flag.
+   */
+  private String firstWord(Map<String, Object> parsed) {
+    List<String> words = parsed.words as List<String>
+    words && !words.isEmpty() ? words[0] : null
+  }
+
   /** Normalizes a kebab-case CLI flag name (e.g. {@code no-color}) to the camelCase map key
    * every {@code executeXxx} method reads (e.g. {@code noColor}). A no-op for flags with no
    * hyphen, so already-camelCase flags like {@code --maxTokens} are unaffected. */
@@ -454,6 +609,18 @@ class CommandExecutor {
       log.warn("Invalid persona: {}", value)
       return null
     }
+  }
+
+  /**
+   * Resolves a boolean flag against a non-false default without Groovy's {@code ?:} truthiness
+   * trap: {@code parseBoolean(value) ?: defaultValue} silently turns an explicit "--flag false"
+   * back into {@code defaultValue} whenever that default is {@code true}, since Elvis treats the
+   * parsed {@code false} itself as absent (the same class of bug fixed for /benchmark's
+   * --max-tokens 0). Only missing/unparsable input falls back to {@code defaultValue}.
+   */
+  private boolean parseBooleanFlag(Object value, boolean defaultValue) {
+    Boolean parsed = parseBoolean(value)
+    parsed != null ? parsed : defaultValue
   }
 
   private Boolean parseBoolean(Object value) {

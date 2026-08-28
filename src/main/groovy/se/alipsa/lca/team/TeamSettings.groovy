@@ -25,10 +25,10 @@ class TeamSettings {
 
   TeamSettings(
     @Value('${assistant.team.enabled:false}') boolean enabled,
-    @Value('${assistant.team.architect-model:${assistant.llm.model:qwen3.6-128k:latest}}') String architectModel,
-    @Value('${assistant.team.engineer-model:${assistant.llm.model:qwen3.6-128k:latest}}') String engineerModel,
-    @Value('${assistant.team.dispatcher-model:${assistant.llm.model:qwen3.6-128k:latest}}') String dispatcherModel,
-    @Value('${assistant.team.reviewer-model:${assistant.llm.model:qwen3.6-128k:latest}}') String reviewerModel,
+    @Value('${assistant.team.architect-model:${assistant.llm.model}}') String architectModel,
+    @Value('${assistant.team.engineer-model:${assistant.llm.model}}') String engineerModel,
+    @Value('${assistant.team.dispatcher-model:${assistant.llm.model}}') String dispatcherModel,
+    @Value('${assistant.team.reviewer-model:${assistant.llm.model}}') String reviewerModel,
     @Value('${assistant.team.dispatcher-temperature:0.1}') double dispatcherTemperature,
     @Value('${assistant.team.architect-temperature:0.3}') double architectTemperature,
     @Value('${assistant.team.engineer-temperature:0.2}') double engineerTemperature,
