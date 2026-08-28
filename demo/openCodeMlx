@@ -293,7 +293,14 @@ _download_via() {
 # silently serving a mismatched drafter.
 _quant_suffix() {
   local model_id="$1"
-  [[ "$model_id" =~ ([0-9]+bit)$ ]] && echo "${BASH_REMATCH[1]}"
+  # Deliberately always returns 0: a bare "x=$(_quant_suffix ...)" assignment under main()'s
+  # set -e takes the exit status of the command substitution, so a no-match model id (which
+  # [[ ... ]] reports as status 1) would otherwise silently kill the whole script right after
+  # the ~27GB model download, with no error message and no cleanup trap installed yet.
+  if [[ "$model_id" =~ ([0-9]+bit)$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  fi
+  return 0
 }
 
 # detect_model_backend <model_dir>: echoes "mlx_vlm" if the downloaded
