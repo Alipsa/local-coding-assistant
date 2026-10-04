@@ -61,7 +61,7 @@ applies to every write, not just startup.
 | Case | Result |
 |---|---|
 | Jackson 3 reads a `metadata.json` written by Jackson 2 (numeric `Instant`s, e.g. `1791108930.123456789`) | ✅ identical `MemoryEntry` |
-| Older LCA (Jackson 2) reads Jackson 3 output (ISO-8601 `Instant` strings) | ✅ downgrade-safe |
+| Earlier snapshots (Jackson 2) read Jackson 3 output (ISO-8601 `Instant` strings) | ✅ downgrade-safe |
 | Jackson 2 `vectors.json` (`Map<String, float[]>`) read by Jackson 3 | ✅ |
 | Lenient parsing via `JsonReadFeature` (unquoted names, single quotes, trailing comma) | ✅ |
 | `StepAction` `@JsonCreator` fallback under Jackson 3 (`ADD_FILE` → `CREATE`) | ✅ |
