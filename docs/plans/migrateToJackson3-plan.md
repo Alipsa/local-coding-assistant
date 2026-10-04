@@ -52,10 +52,26 @@ Embabel deserialises structured output with Jackson 3, so the spec is testing th
 
 ## Steps
 
+### 0. Capture legacy fixtures first (before changing any code)
+
+On the current Jackson 2 code, write a small memory index with the real `MemoryMetadataStore` and
+`SimpleCosineMemoryIndex`, then commit the files as test resources:
+
+- `src/test/resources/memory/jackson2/metadata.json`: at least one `Instant` with full nanosecond
+  precision (e.g. `2026-10-04T10:15:30.123456789Z`, written as `1791108930.123456789`), one with
+  zero nanoseconds, and one entry with `projectId: null`.
+- `src/test/resources/memory/jackson2/vectors.json`: vectors that include values with no exact
+  decimal form (e.g. `0.1f`) and negative values.
+
+These fixtures are the only way to keep testing the real legacy format after the migration, because
+ordinary round-trip tests only exercise the new mapper.
+
 ### 1. `pom.xml`
 
-- Remove `com.fasterxml.jackson.core:jackson-databind` and
-  `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
+- Remove `com.fasterxml.jackson.core:jackson-databind`.
+- Change `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` to `<scope>test</scope>`. The
+  downgrade-compatibility spec (step 7) needs it to read files the way LCA ≤ 1.2.x does, and
+  `jinjava` doesn't bring it in.
 - Add `tools.jackson.core:jackson-databind` without a version, because Spring Boot's BOM manages it
   (3.1.5). Today it only reaches LCA indirectly through `jackson-module-kotlin`.
 - Update the comment above the dependency.
@@ -92,9 +108,15 @@ private static final ObjectMapper lenientMapper = JsonMapper.builder()
 ### 5. `McpCommands` and `McpConfigLoader`
 
 - Only the imports change, because both already `catch (Exception)`.
-- Behaviour change: `/mcp call x_y {"a":1} extra` now fails with "Invalid JSON arguments" instead of
-  silently ignoring `extra`. Keep the strict behaviour for typed input and mention it in the release
-  notes.
+- Behaviour changes from `FAIL_ON_TRAILING_TOKENS`, which is on by default in Jackson 3 (see the
+  [Jackson 3 migration guide](https://github.com/FasterXML/jackson/blob/main/jackson3/MIGRATING_TO_JACKSON_3.md)):
+  - `/mcp call x_y {"a":1} extra` now fails with "Invalid JSON arguments" instead of silently
+    ignoring `extra`. Keep the strict behaviour for typed input.
+  - `McpConfigLoader.loadServers()`: an MCP config file with trailing content (e.g. a stray `}` after
+    the root object) now throws, and the whole file is skipped with a warning. Every server defined
+    in that file disappears; servers from the other config files still load. Jackson 2 ignored the
+    trailing content. Keep the strict behaviour, since a malformed file should not half-load, but
+    document it (step 8).
 
 ### 6. `StepActionSpec`
 
@@ -103,11 +125,46 @@ Jackson 3.
 
 ### 7. New Spock tests
 
-- A corrupt `metadata.json` or `vectors.json` logs a warning and the store still constructs. Cover
-  both stores.
-- A Jackson 2-format `metadata.json` with numeric `Instant`s loads correctly.
-- `ToolCallParser` accepts an MCP call with trailing text inside the matched braces, e.g.
-  `mcp_s_t({"a":1} x })`.
+**Load failures** (both stores):
+
+- A corrupt `metadata.json` or `vectors.json` logs a warning and the store still constructs.
+
+**Persistence failures** (both stores):
+
+- When the Jackson write fails, the mutation returns `false` instead of throwing. That keeps
+  `MemoryStore.remember()`'s rollback working (`MemoryStore.groovy:55-70` checks the `indexed`/`stored`
+  flags).
+- To trigger a write failure, use a value whose getter throws. Jackson 3 wraps it in
+  `DatabindException`, a `JacksonException` (verified):
+  - `MemoryMetadataStore`: `put(new ExplodingEntry(...))`, where `ExplodingEntry extends MemoryEntry`
+    and overrides `getContent()` to throw. Also cover `putAll` and `remove`.
+  - `SimpleCosineMemoryIndex`: put an object with a throwing getter into `index.@vectors` (Groovy
+    ignores generics), then call `upsert`/`delete`, and assert that `upsert` returns `false` and
+    `delete` doesn't throw.
+- Optional, existing issue: `persist()` leaves the `*.json.tmp` file behind when the write fails.
+  Deleting it in a `finally` block (or on failure) would let the test also assert that no temporary
+  file remains.
+
+**Legacy and downgrade compatibility** (uses the step 0 fixtures):
+
+- New store reads the `jackson2/metadata.json` fixture. Assert exact `Instant` equality, including
+  `getNano() == 123456789` and the zero-nanosecond entry, and that `projectId` is `null`.
+- New index reads the `jackson2/vectors.json` fixture. Assert `Arrays.equals` against the expected
+  `float[]` values.
+- Downgrade: write entries with the new store, then read the file with a Jackson 2 `ObjectMapper` plus
+  `JavaTimeModule`, configured exactly as `MemoryMetadataStore` is on `main` today. Assert the entries
+  are equal, nanoseconds included. Do the same for vectors with a plain Jackson 2 `ObjectMapper`. This
+  keeps the check inside `./mvnw test` rather than relying on a one-off script.
+
+**MCP parsing:**
+
+- `McpCommandsSpec`: `/mcp call srv_tool {"a":1} extra` returns a message containing
+  "Invalid JSON arguments", and `0 * registry.callTool(_, _, _)`.
+- `McpConfigLoaderSpec`: given two config files where the second has a trailing `}`, the servers
+  from the first file load, the second file's servers are absent, and no exception escapes.
+- `ToolCallParserMcpSpec`: an MCP call with trailing text inside the matched braces, e.g.
+  `mcp_s_t({"a":1} x })`, is still parsed, because the lenient mapper disables
+  `FAIL_ON_TRAILING_TOKENS`.
 
 ### 8. Documentation
 
@@ -115,6 +172,12 @@ Jackson 3.
   - Memory metadata timestamps are now written as ISO-8601 strings. Existing files still load, and
     older LCA versions can read the new files.
   - `/mcp call` now rejects trailing text after the JSON arguments.
+  - An MCP config file with trailing content after the root JSON object is now skipped entirely,
+    with a warning. Its servers are not loaded until the file is fixed.
+- No user documentation describes MCP config files yet (`docs/commands.md` doesn't cover `/mcp`;
+  config is set by `assistant.mcp.servers-configuration`). The release note is enough. If an MCP
+  section is added to `docs/commands.md` later, it should mention that a malformed file is skipped
+  entirely.
 - Leave `docs/superpowers/plans/2026-06-09-mcp-support.md` alone. It is a historical plan that
   still shows the Jackson 2 code.
 
