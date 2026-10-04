@@ -14,14 +14,11 @@ class McpToolPromptBuilderSpec extends Specification {
       count: [type: 'integer', description: 'How many items']
     ]
 
-    McpSchema.JsonSchema inputSchema = new McpSchema.JsonSchema(
-      'object',
-      properties,
-      ['name'],
-      null,
-      null,
-      null
-    )
+    Map<String, Object> inputSchema = [
+      type: 'object',
+      properties: properties,
+      required: ['name']
+    ]
 
     McpSchema.Tool tool = new McpSchema.Tool(
       'test-tool',
@@ -63,14 +60,11 @@ class McpToolPromptBuilderSpec extends Specification {
       param3: [type: 'boolean', description: 'Third parameter with yet another long description']
     ]
 
-    McpSchema.JsonSchema inputSchema = new McpSchema.JsonSchema(
-      'object',
-      properties,
-      ['param1', 'param2'],
-      null,
-      null,
-      null
-    )
+    Map<String, Object> inputSchema = [
+      type: 'object',
+      properties: properties,
+      required: ['param1', 'param2']
+    ]
 
     List<McpSchema.Tool> tools = []
     for (int i = 1; i <= 10; i++) {
@@ -146,9 +140,9 @@ class McpToolPromptBuilderSpec extends Specification {
     McpToolPromptBuilder builder = new McpToolPromptBuilder(3000)
 
     List<McpSchema.Resource> resources = [
-      new McpSchema.Resource('file:///test.txt', 'test.txt', 'A test file', null, null),
-      new McpSchema.Resource('http://example.com/data', 'remote data', 'Remote resource', null, null),
-      new McpSchema.Resource('file:///config.json', null, null, null, null) // no name or description
+      new McpSchema.Resource('file:///test.txt', 'test.txt', null, 'A test file', null, null, null, null),
+      new McpSchema.Resource('http://example.com/data', 'remote data', null, 'Remote resource', null, null, null, null),
+      new McpSchema.Resource('file:///config.json', 'config.json', null, null, null, null, null, null) // no description
     ]
 
     when:
@@ -183,7 +177,7 @@ class McpToolPromptBuilderSpec extends Specification {
     prompt == ''
   }
 
-  def "handles tools with no input schema"() {
+  def "handles tools with no parameter definitions"() {
     given:
     McpToolPromptBuilder builder = new McpToolPromptBuilder(3000)
 
@@ -191,7 +185,7 @@ class McpToolPromptBuilderSpec extends Specification {
       'simple-tool',
       null,
       'A simple tool with no parameters',
-      null,
+      [:],
       null,
       null,
       null
@@ -214,14 +208,11 @@ class McpToolPromptBuilderSpec extends Specification {
     given:
     McpToolPromptBuilder builder = new McpToolPromptBuilder(3000)
 
-    McpSchema.JsonSchema inputSchema = new McpSchema.JsonSchema(
-      'object',
-      [:],
-      [],
-      null,
-      null,
-      null
-    )
+    Map<String, Object> inputSchema = [
+      type: 'object',
+      properties: [:],
+      required: []
+    ]
 
     McpSchema.Tool tool = new McpSchema.Tool(
       'empty-schema-tool',
@@ -250,14 +241,11 @@ class McpToolPromptBuilderSpec extends Specification {
     given:
     McpToolPromptBuilder builder = new McpToolPromptBuilder(0)
 
-    McpSchema.JsonSchema inputSchema = new McpSchema.JsonSchema(
-      'object',
-      [param: [type: 'string', description: 'A parameter']],
-      [],
-      null,
-      null,
-      null
-    )
+    Map<String, Object> inputSchema = [
+      type: 'object',
+      properties: [param: [type: 'string', description: 'A parameter']],
+      required: []
+    ]
 
     McpSchema.Tool tool = new McpSchema.Tool(
       'test-tool',
@@ -292,7 +280,7 @@ class McpToolPromptBuilderSpec extends Specification {
       'long-desc-tool',
       null,
       longDescription,
-      null,
+      [:],
       null,
       null,
       null
@@ -315,9 +303,9 @@ class McpToolPromptBuilderSpec extends Specification {
     given:
     McpToolPromptBuilder builder = new McpToolPromptBuilder(3000)
 
-    McpSchema.Tool toolA = new McpSchema.Tool('tool-a', null, 'Tool from server A', null, null, null, null)
-    McpSchema.Tool toolB = new McpSchema.Tool('tool-b', null, 'Tool from server B', null, null, null, null)
-    McpSchema.Tool toolC = new McpSchema.Tool('tool-c', null, 'Tool from server C', null, null, null, null)
+    McpSchema.Tool toolA = new McpSchema.Tool('tool-a', null, 'Tool from server A', [:], null, null, null)
+    McpSchema.Tool toolB = new McpSchema.Tool('tool-b', null, 'Tool from server B', [:], null, null, null)
+    McpSchema.Tool toolC = new McpSchema.Tool('tool-c', null, 'Tool from server C', [:], null, null, null)
 
     Map<String, List<McpSchema.Tool>> toolsByServer = new LinkedHashMap<>()
     toolsByServer.put('server-a', [toolA])
@@ -348,14 +336,11 @@ class McpToolPromptBuilderSpec extends Specification {
       param2: [type: 'integer']
     ]
 
-    McpSchema.JsonSchema inputSchema = new McpSchema.JsonSchema(
-      'object',
-      properties,
-      ['param1'],
-      null,
-      null,
-      null
-    )
+    Map<String, Object> inputSchema = [
+      type: 'object',
+      properties: properties,
+      required: ['param1']
+    ]
 
     McpSchema.Tool tool = new McpSchema.Tool(
       'minimal-params',

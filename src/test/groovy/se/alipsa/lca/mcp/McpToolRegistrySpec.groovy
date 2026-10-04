@@ -17,7 +17,7 @@ class McpToolRegistrySpec extends Specification {
   def "registers server and lists tools"() {
     given:
     McpSyncClient client = Mock(McpSyncClient)
-    McpSchema.Tool tool = new McpSchema.Tool("test-tool", null, "A test tool", null, null, null, null)
+    McpSchema.Tool tool = new McpSchema.Tool("test-tool", null, "A test tool", [:], null, null, null)
     McpSchema.ListToolsResult toolsResult = new McpSchema.ListToolsResult([tool], null)
     McpSchema.ListResourcesResult resourcesResult = new McpSchema.ListResourcesResult([], null)
     McpSchema.ListPromptsResult promptsResult = new McpSchema.ListPromptsResult([], null)
@@ -39,7 +39,7 @@ class McpToolRegistrySpec extends Specification {
   def "marks server unhealthy and excludes its tools"() {
     given:
     McpSyncClient client = Mock(McpSyncClient)
-    McpSchema.Tool tool = new McpSchema.Tool("my-tool", null, "desc", null, null, null, null)
+    McpSchema.Tool tool = new McpSchema.Tool("my-tool", null, "desc", [:], null, null, null)
     client.listTools() >> new McpSchema.ListToolsResult([tool], null)
     client.listResources() >> new McpSchema.ListResourcesResult([], null)
     client.listPrompts() >> new McpSchema.ListPromptsResult([], null)
@@ -59,8 +59,8 @@ class McpToolRegistrySpec extends Specification {
     McpSyncClient clientA = Mock(McpSyncClient)
     McpSyncClient clientB = Mock(McpSyncClient)
 
-    McpSchema.Tool toolA = new McpSchema.Tool("tool-a", null, "Tool A", null, null, null, null)
-    McpSchema.Tool toolB = new McpSchema.Tool("tool-b", null, "Tool B", null, null, null, null)
+    McpSchema.Tool toolA = new McpSchema.Tool("tool-a", null, "Tool A", [:], null, null, null)
+    McpSchema.Tool toolB = new McpSchema.Tool("tool-b", null, "Tool B", [:], null, null, null)
 
     clientA.listTools() >> new McpSchema.ListToolsResult([toolA], null)
     clientA.listResources() >> new McpSchema.ListResourcesResult([], null)
@@ -136,8 +136,8 @@ class McpToolRegistrySpec extends Specification {
     McpSyncClient clientA = Mock(McpSyncClient)
     McpSyncClient clientB = Mock(McpSyncClient)
 
-    McpSchema.Tool toolA = new McpSchema.Tool("tool-a", null, "Tool A", null, null, null, null)
-    McpSchema.Tool toolB = new McpSchema.Tool("tool-b", null, "Tool B", null, null, null, null)
+    McpSchema.Tool toolA = new McpSchema.Tool("tool-a", null, "Tool A", [:], null, null, null)
+    McpSchema.Tool toolB = new McpSchema.Tool("tool-b", null, "Tool B", [:], null, null, null)
 
     clientA.listTools() >> new McpSchema.ListToolsResult([toolA], null)
     clientA.listResources() >> new McpSchema.ListResourcesResult([], null)
@@ -188,7 +188,9 @@ class McpToolRegistrySpec extends Specification {
     client.listPrompts() >> new McpSchema.ListPromptsResult([], null)
     registry.registerServer("server-a", client)
 
-    McpSchema.CallToolResult expected = new McpSchema.CallToolResult("result text", false)
+    McpSchema.CallToolResult expected = new McpSchema.CallToolResult(
+      [new McpSchema.TextContent("result text")], false, null, null
+    )
     client.callTool(_ as McpSchema.CallToolRequest) >> expected
 
     when:
@@ -201,7 +203,7 @@ class McpToolRegistrySpec extends Specification {
   def "markHealthy restores server after being unhealthy"() {
     given:
     McpSyncClient client = Mock(McpSyncClient)
-    McpSchema.Tool tool = new McpSchema.Tool("tool-x", null, "desc", null, null, null, null)
+    McpSchema.Tool tool = new McpSchema.Tool("tool-x", null, "desc", [:], null, null, null)
     client.listTools() >> new McpSchema.ListToolsResult([tool], null)
     client.listResources() >> new McpSchema.ListResourcesResult([], null)
     client.listPrompts() >> new McpSchema.ListPromptsResult([], null)
@@ -225,7 +227,9 @@ class McpToolRegistrySpec extends Specification {
   def "listResources filters by health"() {
     given:
     McpSyncClient client = Mock(McpSyncClient)
-    McpSchema.Resource resource = new McpSchema.Resource("file:///test", "test.txt", "A resource", null, null)
+    McpSchema.Resource resource = new McpSchema.Resource(
+      "file:///test", "test.txt", null, "A resource", null, null, null, null
+    )
     client.listTools() >> new McpSchema.ListToolsResult([], null)
     client.listResources() >> new McpSchema.ListResourcesResult([resource], null)
     client.listPrompts() >> new McpSchema.ListPromptsResult([], null)
@@ -267,7 +271,7 @@ class McpToolRegistrySpec extends Specification {
   def "refreshCapabilities handles partial support gracefully"() {
     given: "a server that supports tools but throws on resources and prompts"
     McpSyncClient client = Mock(McpSyncClient)
-    McpSchema.Tool tool = new McpSchema.Tool("working-tool", null, "works", null, null, null, null)
+    McpSchema.Tool tool = new McpSchema.Tool("working-tool", null, "works", [:], null, null, null)
     client.listTools() >> new McpSchema.ListToolsResult([tool], null)
     client.listResources() >> { throw new UnsupportedOperationException("no resources") }
     client.listPrompts() >> { throw new UnsupportedOperationException("no prompts") }
@@ -305,7 +309,9 @@ class McpToolRegistrySpec extends Specification {
   def "readResource uses URI-to-server mapping for direct lookup"() {
     given:
     McpSyncClient client = Mock(McpSyncClient)
-    McpSchema.Resource resource = new McpSchema.Resource("file:///data.csv", "data.csv", "A CSV file", null, null)
+    McpSchema.Resource resource = new McpSchema.Resource(
+      "file:///data.csv", "data.csv", null, "A CSV file", null, null, null, null
+    )
     client.listTools() >> new McpSchema.ListToolsResult([], null)
     client.listResources() >> new McpSchema.ListResourcesResult([resource], null)
     client.listPrompts() >> new McpSchema.ListPromptsResult([], null)
@@ -326,7 +332,9 @@ class McpToolRegistrySpec extends Specification {
     McpSyncClient clientA = Mock(McpSyncClient)
     McpSyncClient clientB = Mock(McpSyncClient)
 
-    McpSchema.Resource resource = new McpSchema.Resource("file:///data.csv", "data.csv", "A CSV", null, null)
+    McpSchema.Resource resource = new McpSchema.Resource(
+      "file:///data.csv", "data.csv", null, "A CSV", null, null, null, null
+    )
     clientA.listTools() >> new McpSchema.ListToolsResult([], null)
     clientA.listResources() >> new McpSchema.ListResourcesResult([resource], null)
     clientA.listPrompts() >> new McpSchema.ListPromptsResult([], null)

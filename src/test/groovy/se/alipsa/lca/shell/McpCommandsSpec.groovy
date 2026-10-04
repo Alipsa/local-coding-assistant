@@ -19,7 +19,7 @@ class McpCommandsSpec extends Specification {
     given:
     registry.getServerNames() >> (["bq"] as Set)
     registry.getServerHealth() >> ["bq": new McpToolRegistry.ServerHealth(true, null)]
-    McpSchema.Tool tool = new McpSchema.Tool("query", null, "Run a query", null, null, null, null)
+    McpSchema.Tool tool = new McpSchema.Tool("query", null, "Run a query", [:], null, null, null)
     registry.listTools("bq") >> [tool]
 
     when:
@@ -114,8 +114,8 @@ class McpCommandsSpec extends Specification {
 
   def "tools lists available tools"() {
     given:
-    McpSchema.Tool tool1 = new McpSchema.Tool("query", null, "Run SQL", null, null, null, null)
-    McpSchema.Tool tool2 = new McpSchema.Tool("list_tables", null, "List tables", null, null, null, null)
+    McpSchema.Tool tool1 = new McpSchema.Tool("query", null, "Run SQL", [:], null, null, null)
+    McpSchema.Tool tool2 = new McpSchema.Tool("list_tables", null, "List tables", [:], null, null, null)
     registry.listTools("bq") >> [tool1, tool2]
 
     when:
@@ -129,7 +129,7 @@ class McpCommandsSpec extends Specification {
 
   def "tools with no server lists all tools"() {
     given:
-    McpSchema.Tool tool = new McpSchema.Tool("query", null, "Run SQL", null, null, null, null)
+    McpSchema.Tool tool = new McpSchema.Tool("query", null, "Run SQL", [:], null, null, null)
     registry.listTools(null) >> [tool]
 
     when:
@@ -169,7 +169,9 @@ class McpCommandsSpec extends Specification {
 
   def "resources lists available resources"() {
     given:
-    McpSchema.Resource resource = new McpSchema.Resource("file:///data.csv", "data.csv", "A CSV file", null, null)
+    McpSchema.Resource resource = new McpSchema.Resource(
+      "file:///data.csv", "data.csv", null, "A CSV file", null, null, null, null
+    )
     registry.listResources("fs") >> [resource]
 
     when:

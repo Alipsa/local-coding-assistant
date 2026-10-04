@@ -105,11 +105,11 @@ class McpToolPromptBuilder {
       sb.append(": ${truncate(tool.description(), 200)}")
     }
 
-    McpSchema.JsonSchema inputSchema = tool.inputSchema()
-    if (inputSchema && inputSchema.properties()) {
+    Map<String, Object> inputSchema = tool.inputSchema()
+    if (inputSchema && inputSchema.get('properties')) {
       sb.append('\n  Parameters:')
-      Map<String, Object> properties = inputSchema.properties()
-      List<String> required = inputSchema.required() ?: []
+      Map<String, Object> properties = (Map<String, Object>) inputSchema.get('properties')
+      List<String> required = (List<String>) inputSchema.get('required') ?: []
 
       properties.each { String paramName, Object paramDef ->
         sb.append("\n    - ${paramName}")

@@ -24,8 +24,10 @@ class McpToolExecutorSpec extends Specification {
       arguments: [key: 'value']
     )
     McpSchema.CallToolResult result = new McpSchema.CallToolResult(
-      [new McpSchema.TextContent(null, null, 'success result')],
-      false
+      [new McpSchema.TextContent('success result')],
+      false,
+      null,
+      null
     )
 
     when:
@@ -97,8 +99,10 @@ class McpToolExecutorSpec extends Specification {
       arguments: [key1: 'value1', key2: 'value2']
     )
     McpSchema.CallToolResult result = new McpSchema.CallToolResult(
-      [new McpSchema.TextContent(null, null, 'result')],
-      false
+      [new McpSchema.TextContent('result')],
+      false,
+      null,
+      null
     )
 
     when:
@@ -118,8 +122,10 @@ class McpToolExecutorSpec extends Specification {
       arguments: [:]
     )
     McpSchema.CallToolResult result = new McpSchema.CallToolResult(
-      [new McpSchema.TextContent(null, null, 'tool error message')],
-      true
+      [new McpSchema.TextContent('tool error message')],
+      true,
+      null,
+      null
     )
 
     when:
@@ -156,8 +162,10 @@ class McpToolExecutorSpec extends Specification {
       arguments: null
     )
     McpSchema.CallToolResult result = new McpSchema.CallToolResult(
-      [new McpSchema.TextContent(null, null, 'result')],
-      false
+      [new McpSchema.TextContent('result')],
+      false,
+      null,
+      null
     )
 
     when:
