@@ -32,7 +32,7 @@ class GuiTurnControllerSpec extends Specification {
   def "high-confidence single command emits one message and no note"() {
     given:
     router.routeDetails("do it") >> new IntentRoutingOutcome(new IntentRoutingPlan(["/chat"], 0.95d, "clear"), null)
-    executor.execute("/chat") >> "hello"
+    executor.executeRouted("/chat") >> "hello"
 
     when:
     TurnResult result = controller.process("do it", sink)
@@ -59,8 +59,8 @@ class GuiTurnControllerSpec extends Specification {
     given:
     router.routeDetails("both") >>
       new IntentRoutingOutcome(new IntentRoutingPlan(["/plan", "/review"], 0.9d, "x"), null)
-    executor.execute("/plan") >> "planned"
-    executor.execute("/review") >> "reviewed"
+    executor.executeRouted("/plan") >> "planned"
+    executor.executeRouted("/review") >> "reviewed"
 
     when:
     controller.process("both", sink)
@@ -75,7 +75,7 @@ class GuiTurnControllerSpec extends Specification {
     routerResult.usedSecondOpinion = true
     router.routeDetails("maybe") >>
       new IntentRoutingOutcome(new IntentRoutingPlan(["/chat"], 0.5d, "meh"), routerResult)
-    executor.execute("/chat") >> "answer"
+    executor.executeRouted("/chat") >> "answer"
 
     when:
     controller.process("maybe", sink)

@@ -89,7 +89,7 @@ This auto-configures Spring Boot to scan and register all `@Agent`-annotated cla
 **4. IntentRouterAgent**
 - **File**: `src/main/groovy/se/alipsa/lca/intent/IntentRouterAgent.groovy`
 - **Purpose**: Natural language understanding - maps user input to slash commands
-- **Model**: Uses lightweight `tinyllama` for fast classification
+- **Model**: Uses the cheapest configured model (`gpt-oss-64k:latest` by default) for classification
 
 #### Embabel API Examples
 
@@ -139,18 +139,19 @@ LCA exclusively uses Ollama for all AI capabilities, ensuring complete privacy a
 
 | Model             | Purpose                          | Temperature                 | Configuration                  |
 |-------------------|----------------------------------|-----------------------------|--------------------------------|
-| `qwen3.6:35b-a3b` | Primary code generation & review | 0.7 (craft) / 0.35 (review) | `embabel.models.default-llm`   |
-| `gpt-oss:20b`     | Fallback/cheaper model           | 0.35                        | `embabel.models.llms.cheapest` |
-| `tinyllama`       | Intent routing (NLU)             | 0.0                         | `assistant.intent.model`       |
+| `qwen3.8-192k:latest` | Primary code generation | 0.7 (craft) / 0.1 (review) | `embabel.models.default-llm`   |
+| `qwen3.8-review:latest` | Code review | 0.1 | `assistant.llm.review-model` |
+| `gpt-oss-64k:latest`     | Fallback/cheaper model           | per task                        | `embabel.models.llms.cheapest` |
+| `gpt-oss-64k:latest` | Intent routing (NLU)             | 0.1                         | `assistant.intent.model`       |
 
 #### Integration Architecture
 
-**Configuration**: `src/main/resources/application.properties:2`
+**Model configuration**: `src/main/bin/lca` (canonical recipes); application properties consume `LCA_*` exports.
 ```properties
 spring.ai.ollama.base-url=http://localhost:11434
-embabel.models.default-llm=qwen3.6:35b-a3b
-embabel.models.llms.best=qwen3.6:35b-a3b
-embabel.models.llms.cheapest=gpt-oss:20b
+embabel.models.default-llm=${LCA_CHAT_MODEL:qwen3.8-192k:latest}
+embabel.models.llms.best=${embabel.models.default-llm}
+embabel.models.llms.cheapest=${LCA_FALLBACK_MODEL:gpt-oss-64k:latest}
 ```
 
 **Model Discovery**:
@@ -178,8 +179,8 @@ Response streamed/returned as JSON
 From `ModelRegistry.resolveModel()`:
 1. User-specified model (via `--model` flag)
 2. Session-configured model
-3. Default model (`qwen3.6:35b-a3b`)
-4. Fallback model (`gpt-oss:20b`)
+3. Default model (`qwen3.8-192k:latest`)
+4. Fallback model (`gpt-oss-64k:latest`)
 5. Any available model from `modelRegistry.listModels()`
 
 ---
@@ -235,7 +236,7 @@ LCA uses a custom JLine-based REPL that replaced the original Spring Shell imple
 - **Purpose**: Maps natural language to structured commands
 - **Example**: "review my code for bugs" → `/review --security`
 - **Confidence Threshold**: 0.8 (configurable)
-- **Temperature**: 0.0 for deterministic classification
+- **Temperature**: 0.1 for low-variance classification
 
 **4. SessionState**
 - **File**: `src/main/groovy/se/alipsa/lca/shell/SessionState.groovy`
@@ -321,7 +322,7 @@ User: /chat --prompt "explain this function"
   │     │     └─→ HTTP GET http://localhost:11434/api/tags
   │     │
   │     ├─→ resolveModel(model)
-  │     │     └─→ ModelRegistry: qwen3.6:35b-a3b or fallback
+  │     │     └─→ ModelRegistry: qwen3.8-192k:latest or fallback
   │     │
   │     ├─→ sessionState.update(model, temperature)
   │     │
@@ -340,7 +341,7 @@ User: /chat --prompt "explain this function"
   │                             │
   │                             └─→ http://localhost:11434/api/generate
   │                                   {
-  │                                     "model": "qwen3.6:35b-a3b",
+  │                                     "model": "qwen3.8-192k:latest",
   │                                     "prompt": "[combined prompt]",
   │                                     "temperature": 0.7
   │                                   }
@@ -373,11 +374,11 @@ User: "create a metod in StatsCalculator to calculate fibonacci" (natural langua
   │           │     - User input
   │           │
   │           ├─→ ai.withLlm(LlmOptions
-  │           │       .withModel("tinyllama")
-  │           │       .withTemperature(0.0))
+  │           │       .withModel("gpt-oss-64k:latest")
+  │           │       .withTemperature(0.1))
   │           │     .generateText(routingPrompt)
   │           │       │
-  │           │       └─→ Ollama processes with tinyllama
+  │           │       └─→ Ollama processes with gpt-oss-64k:latest
   │           │
   │           └─→ Response: {
   │                 "command": "/plan",
@@ -404,10 +405,11 @@ User: "create a metod in StatsCalculator to calculate fibonacci" (natural langua
 - `src/main/groovy/se/alipsa/lca/intent/IntentCommandRouter.groovy`
 - `src/main/groovy/se/alipsa/lca/intent/IntentRouterParser.groovy`
 
-**Configuration**: `src/main/resources/application.properties:42-44`
+**Configuration**: `src/main/resources/application.properties`
 ```properties
 assistant.intent.enabled=true
-assistant.intent.model=tinyllama
+assistant.intent.model=${embabel.models.llms.cheapest}
+assistant.intent.temperature=0.1
 assistant.intent.confidence-threshold=0.8
 ```
 
@@ -439,8 +441,8 @@ User: /review --paths src/main/groovy --security
   │                 │     - Expected format (Findings + Tests)
   │                 │
   │                 └─→ ai.withLlm(LlmOptions
-  │                       .withModel("qwen3.6:35b-a3b")
-  │                       .withTemperature(0.35))  // Lower for determinism
+  │                       .withModel("qwen3.8-review:latest")
+  │                       .withTemperature(0.1))  // Lower for determinism
   │                     .withPromptContributor(SECURITY_REVIEWER)
   │                     .generateText(reviewPrompt)
   │                       │
@@ -473,14 +475,15 @@ User: /review --paths src/main/groovy --security
 
 ### Model Configuration
 
-**Primary Models**: `src/main/resources/application.properties:12-17`
+**Primary Models**: `src/main/bin/lca` defines names and recipes shared with `models.sh`.
+The launcher exports model values consumed by `src/main/resources/application.properties`.
 ```properties
-embabel.models.default-llm=qwen3.6:35b-a3b
-embabel.models.llms.best=qwen3.6:35b-a3b
-embabel.models.llms.cheapest=gpt-oss:20b
+embabel.models.default-llm=${LCA_CHAT_MODEL:qwen3.8-192k:latest}
+embabel.models.llms.best=${embabel.models.default-llm}
+embabel.models.llms.cheapest=${LCA_FALLBACK_MODEL:gpt-oss-64k:latest}
 
-assistant.llm.model=${embabel.models.default-llm:qwen3.6:35b-a3b}
-assistant.llm.fallback-model=${embabel.models.llms.cheapest:gpt-oss:20b}
+assistant.llm.model=${embabel.models.default-llm:qwen3.8-192k:latest}
+assistant.llm.fallback-model=${embabel.models.llms.cheapest:gpt-oss-64k:latest}
 ```
 
 ### Temperature Strategy
@@ -490,13 +493,13 @@ Different tasks require different levels of creativity vs. determinism:
 | Task Type                   | Temperature | Rationale                                               |
 |-----------------------------|-------------|---------------------------------------------------------|
 | **Code Generation (Craft)** | 0.7         | Higher creativity for varied, innovative solutions      |
-| **Code Review**             | 0.35        | More deterministic for consistent, reliable analysis    |
-| **Intent Routing**          | 0.0         | Perfect determinism for reliable command classification |
+| **Code Review**             | 0.1         | More deterministic for consistent, reliable analysis    |
+| **Intent Routing**          | 0.1         | Low variance for reliable command classification        |
 
-**Configuration**: `src/main/resources/application.properties:26-27`
+**Configuration**: `src/main/resources/application.properties`
 ```properties
 assistant.llm.temperature.craft=0.7
-assistant.llm.temperature.review=0.35
+assistant.llm.temperature.review=0.1
 ```
 
 ### Ollama Connection Settings
@@ -770,7 +773,7 @@ Prevents destructive or unauthorized shell commands.
 
 ### Local-Only Mode
 
-**Configuration**: `src/main/resources/application.properties:8`
+**Configuration**: `src/main/resources/application.properties`
 ```properties
 assistant.local-only=true
 ```
@@ -863,8 +866,8 @@ assistant.api.oidc.issuer=https://your-issuer.com
 - Discoverability: Users don't need to memorize slash commands
 
 **Implementation**:
-- Lightweight `tinyllama` model for fast classification
-- Temperature 0.0 for deterministic routing
+- Cheapest configured model (`gpt-oss-64k:latest` by default) for classification
+- Temperature 0.1 for low-variance routing
 - Confidence threshold to prevent misrouting
 
 **Trade-offs**:
@@ -879,8 +882,8 @@ assistant.api.oidc.issuer=https://your-issuer.com
 
 **Temperatures**:
 - Craft (0.7): Creative code generation
-- Review (0.35): Consistent analysis
-- Intent (0.0): Deterministic classification
+- Review (0.1): Consistent analysis
+- Intent (0.1): Low-variance classification
 
 **Rationale**:
 - Code generation benefits from variety and creativity
@@ -922,11 +925,9 @@ assistant.api.oidc.issuer=https://your-issuer.com
 ### Prerequisites
 1. **Java 21+**: `java -version`
 2. **Ollama**: Install from [ollama.ai](https://ollama.ai)
-3. **Models**: Pull required models:
+3. **Models**: Start Ollama, then install the base and custom models:
    ```bash
-   ollama pull qwen3.6:35b-a3b
-   ollama pull gpt-oss:20b
-   ollama pull tinyllama
+   ./models.sh
    ```
 
 ### Building
@@ -946,10 +947,12 @@ java -jar target/local-coding-assistant-1.1.1.jar \
 ```
 
 ### Configuration
-Edit `src/main/resources/application.properties` or provide environment variables:
+Edit model names, contexts and recipes in `src/main/bin/lca`, then run `lca update` or `./models.sh`.
+For source/IDE runs, supply matching model environment variables. Configure the Ollama endpoint
+in `src/main/resources/application.properties` or via the environment:
 ```bash
 export SPRING_AI_OLLAMA_BASE_URL=http://localhost:11434
-export EMBABEL_MODELS_DEFAULT_LLM=qwen3.6:35b-a3b
+export LCA_CHAT_MODEL=qwen3.8-192k:latest
 ```
 
 ---

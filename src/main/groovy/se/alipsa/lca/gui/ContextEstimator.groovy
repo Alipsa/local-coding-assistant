@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicReference
 @CompileStatic
 class ContextEstimator {
 
+  private static final String DEFAULT_CONTEXT_WINDOW = "131072"
+
   private final SessionState sessionState
   private final TokenEstimator tokenEstimator
   private final ModelRegistry modelRegistry
@@ -37,12 +39,12 @@ class ContextEstimator {
     SessionState sessionState,
     TokenEstimator tokenEstimator,
     ModelRegistry modelRegistry,
-    @Value('${lca.gui.default-context-window:131072}') int defaultContextWindow
+    @Value('${lca.gui.default-context-window:' + DEFAULT_CONTEXT_WINDOW + '}') int defaultContextWindow
   ) {
     this.sessionState = sessionState
     this.tokenEstimator = tokenEstimator
     this.modelRegistry = modelRegistry
-    this.defaultContextWindow = defaultContextWindow > 0 ? defaultContextWindow : 131072
+    this.defaultContextWindow = defaultContextWindow > 0 ? defaultContextWindow : Integer.parseInt(DEFAULT_CONTEXT_WINDOW)
   }
 
   int estimatedTokens(String sessionId) {

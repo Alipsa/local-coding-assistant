@@ -15,7 +15,12 @@ REAL_PATH="/usr/bin:/bin:/usr/local/bin"
 bin_a="$work/a"; mkdir -p "$bin_a"
 log_a="$work/a.log"
 make_stub "$bin_a" pip 0 "$log_a"
-# no mlx_lm.server stub -> `command -v`/direct exec fails, simulating "not installed"
+# Explicitly stub mlx_lm.server to fail ensure_mlx_lm_current's "mlx_lm.server --help"
+# check, rather than relying on it being absent from $REAL_PATH: "not installed" is a
+# property of this test's stub, not of whatever the machine running it happens to have
+# on PATH. A machine with a real mlx_lm.server on /usr/local/bin would otherwise
+# silently take the "already installed" branch instead, making this scenario a no-op.
+make_stub "$bin_a" mlx_lm.server 1 "$log_a"
 (
   PATH="$bin_a:$REAL_PATH" ensure_mlx_lm_current >/dev/null 2>&1
 )
@@ -26,6 +31,7 @@ check "not-installed + pip install succeeds -> pip was invoked with --upgrade" "
 bin_b="$work/b"; mkdir -p "$bin_b"
 log_b="$work/b.log"
 make_stub "$bin_b" pip 1 "$log_b"
+make_stub "$bin_b" mlx_lm.server 1 "$log_b"   # force "not installed", see scenario A
 (
   PATH="$bin_b:$REAL_PATH" ensure_mlx_lm_current >/dev/null 2>&1
 )

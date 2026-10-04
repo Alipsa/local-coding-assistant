@@ -10,8 +10,8 @@ These settings control how natural language input is routed into commands.
 
 ```properties
 assistant.intent.enabled=true
-assistant.intent.model=tinyllama
-assistant.intent.fallback-model=gpt-oss:20b
+assistant.intent.model=${embabel.models.llms.cheapest}
+assistant.intent.fallback-model=${embabel.models.default-llm}
 assistant.intent.temperature=0.1
 assistant.intent.max-tokens=256
 assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
@@ -34,6 +34,24 @@ Options:
 - `--max-tokens`: Override max tokens.
 - `--system-prompt`: Extra system prompt guidance.
 - `--show-reasoning`, `--with-thinking`: Show the LLM's reasoning process (if supported by the model).
+
+## benchmark (/benchmark)
+Measure raw Ollama inference speed, including generated tokens per second and prompt evaluation speed.
+This sends the prompt directly to Ollama; it does not execute assistant tools.
+
+Usage:
+`/benchmark --model qwen3.8-review:latest --prompt "Explain this code" --max-tokens 200`
+
+For a source file:
+`/benchmark --model qwen3.8-review:latest --prompt-file src/Foo.groovy --max-tokens 500`
+
+Options:
+
+- `--model`: Model to measure; defaults to the active session model.
+- `--prompt`: Prompt text; defaults to a built-in benchmark prompt when omitted.
+- `--prompt-file`: Read a workspace file as the prompt; takes precedence over `--prompt`.
+- `--max-tokens`: Positive generation limit; defaults to `200`.
+- `--session`: Session whose active model is used; defaults to `default`.
 
 ## config (/config)
 View or update shell settings.
