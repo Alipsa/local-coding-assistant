@@ -85,7 +85,7 @@ class LcaScriptSpec extends Specification {
   }
 
   @Unroll
-  def "run ensures required models before starting the programme (#scriptName)"() {
+  def "#arguments ensures required models (#scriptName)"() {
     given:
     assumeScriptAvailable(scriptName)
     Path scriptPath = projectRoot().resolve("src/main/bin/${scriptName}")
@@ -103,7 +103,7 @@ class LcaScriptSpec extends Specification {
     when:
     def result = runScript(
       scriptPath,
-      [],
+      arguments,
       [
         HOME: homeDir.toString(),
         PATH: binDir.toString() + File.pathSeparator + System.getenv("PATH"),
@@ -118,13 +118,20 @@ class LcaScriptSpec extends Specification {
     def log = Files.readString(ollamaLog)
     log.contains("pull qwen3.6:35b-a3b")
     log.contains("pull gpt-oss:20b")
-    log.contains("create qwen3.6-128k")
-    log.contains("create gpt-oss-64k")
-    log.contains("create qwen3.6-review")
-    Files.exists(javaLog)
+    log.contains("pull nomic-embed-text:latest")
+    if (arguments != ['update']) {
+      assert log.contains("create qwen3.6-128k")
+      assert log.contains("create gpt-oss-64k")
+      assert log.contains("create qwen3.6-review")
+      assert Files.exists(javaLog)
+    }
 
     where:
-    scriptName << scriptNames()
+    scriptName | arguments
+    'lca'      | []
+    'lca'      | ['gui']
+    'lcaGui'   | []
+    'lca'      | ['update']
   }
 
   private static Path projectRoot() {

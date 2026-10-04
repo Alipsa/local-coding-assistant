@@ -70,6 +70,9 @@ class BatchModeIntegrationSpec extends Specification {
     result.exitCode != 0
     result.output.contains("Embedding model 'missing-test-embedding' for role")
     result.output.contains("is not available: Choices are []")
+    result.output.contains("APPLICATION FAILED TO START")
+    result.output.contains("ollama pull missing-test-embedding")
+    result.output.contains("Then restart lca or lca gui.")
   }
 
   private void initRepo() {

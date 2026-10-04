@@ -76,7 +76,8 @@ must be pulled locally before starting the CLI, batch mode or GUI:
 ollama pull nomic-embed-text:latest
 ```
 
-`models.sh` does this automatically as part of the standard local model setup.
+`lca` (including `lca gui`/`lcaGui`) and `models.sh` pull this model automatically
+as part of the standard local model setup.
 
 Embabel validates the configured embedding model roles when the application starts.
 With the default configuration, a missing model prevents startup even when

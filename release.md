@@ -6,6 +6,9 @@
 - Ollama must be running with `nomic-embed-text:latest` pulled before starting the CLI,
   batch mode or GUI. Embabel now validates configured embedding model roles at startup,
   including when memory is disabled.
+- The `lca` and `lcaGui` launchers now install the required embedding model. Existing users
+  should download the updated `lca` launcher and re-run `lca` (or `lca gui`), or run
+  `ollama pull nomic-embed-text:latest` manually before starting the upgraded application.
 - Updated the ranking model property to `embabel.agent.platform.ranking.llm`.
 
 ## Version 1.2.0, 2026-01-16
