@@ -40,6 +40,28 @@ class DemoTestScriptsSpec extends Specification {
     scriptName << demoTestScriptNames()
   }
 
+  def "timeout terminates a script and its child process"() {
+    given:
+    Path pidFile = Files.createTempFile('lca-demo-child-', '.pid')
+    ProcessHandle child = null
+    ProcessBuilder processBuilder = new ProcessBuilder(
+      'bash', '-c', 'sleep 60 & echo $! > "$1"; wait', 'demo-test', pidFile.toString())
+    processBuilder.redirectErrorStream(true)
+
+    when:
+    ProcessResult result = runBounded(processBuilder, 2L)
+    child = ProcessHandle.of(Long.parseLong(Files.readString(pidFile).trim())).orElse(null)
+
+    then:
+    !result.finished
+    result.exitCode == -1
+    child == null || !child.isAlive()
+
+    cleanup:
+    child?.destroyForcibly()
+    Files.deleteIfExists(pidFile)
+  }
+
   private static Path demoDir() {
     Paths.get("").toAbsolutePath().normalize().resolve("demo")
   }
@@ -123,6 +145,9 @@ class DemoTestScriptsSpec extends Specification {
 
     boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
     if (!finished) {
+      process.descendants().withCloseable { descendants ->
+        descendants.forEach { child -> child.destroyForcibly() }
+      }
       process.destroyForcibly()
       process.waitFor(5, TimeUnit.SECONDS)
     }

@@ -7,6 +7,10 @@ import org.springframework.stereotype.Component
 @CompileStatic
 class IntentCommandMapper {
 
+  // Model output must not override confirmation, preview or secret-check safeguards.
+  private static final Set<String> ROUTER_FORBIDDEN_ARGS = Set.of(
+    'confirm', 'dry-run', 'dryRun', 'check', 'force', 'allow-secrets', 'allowSecrets', 'secret-scan', 'secretScan')
+
   private final ContextResolver contextResolver
 
   IntentCommandMapper(ContextResolver contextResolver) {
@@ -251,7 +255,7 @@ class IntentCommandMapper {
       return
     }
     args.each { String key, Object value ->
-      if (!key || excluded.contains(key)) {
+      if (!key || excluded.contains(key) || ROUTER_FORBIDDEN_ARGS.contains(key)) {
         return
       }
       appendOption(builder, key, value)

@@ -4,6 +4,41 @@ import spock.lang.Specification
 
 class IntentCommandMapperSpec extends Specification {
 
+  def "routed run command cannot disable confirmation"() {
+    given:
+    IntentRouterResult result = new IntentRouterResult(
+      [new IntentCommand('/run', [command: 'x', confirm: false])], 0.9d, 'run')
+
+    expect:
+    new IntentCommandMapper(null).map('Run x', result) == ['/run --command "x"']
+  }
+
+  def "routed commands discard safety overrides and preserve ordinary options"() {
+    given:
+    Map<String, Object> args = [reason: 'requested']
+    args[flag] = false
+    IntentRouterResult result = new IntentRouterResult(
+      [new IntentCommand('/git-push', args)], 0.9d, 'push')
+
+    expect:
+    new IntentCommandMapper(null).map('Push changes', result) == ['/git-push --reason "requested"']
+
+    where:
+    flag << ['confirm', 'dry-run', 'dryRun', 'check', 'force', 'allow-secrets',
+             'allowSecrets', 'secret-scan', 'secretScan']
+  }
+
+  def "routed revert cannot disable preview or confirmation"() {
+    given:
+    IntentRouterResult result = new IntentRouterResult(
+      [new IntentCommand('/revert', ['file-path': 'src/Foo.groovy', 'dry-run': false, confirm: false])],
+      0.9d, 'revert')
+
+    expect:
+    new IntentCommandMapper(null).map('Revert file', result) == ['/revert --file-path "src/Foo.groovy"']
+  }
+
+
   def "maps review command with prompt and paths"() {
     given:
     IntentCommandMapper mapper = new IntentCommandMapper(null)

@@ -373,6 +373,17 @@ sync_model() {
   return 0
 }
 
+# Opt in only for model repositories whose Python code you trust:
+# MLX_VLM_TRUST_REMOTE_CODE=1 ./openCodeMlx
+run_mlx_vlm_server() {
+  local trust_args=()
+  if [[ "${MLX_VLM_TRUST_REMOTE_CODE:-0}" == "1" ]]; then
+    trust_args=(--trust-remote-code)
+  fi
+  # Keep the background PID attached to Python so shutdown reaches the server.
+  exec python3 -m mlx_vlm.server "${trust_args[@]}" "$@"
+}
+
 main() {
   set -e
 
@@ -594,19 +605,16 @@ EOF
       # mlx-vlm has no --prompt-cache-bytes equivalent; --max-kv-size (token
       # count, reusing the same context-limit knob) is its closest analogue
       # for bounding KV-cache growth per the OOM-guard rationale above.
-      # --trust-remote-code included per observed mlx-vlm usage for this
-      # architecture family.
       local draft_args=()
       if [[ -n "$draft_model_dir" ]]; then
         draft_args=(--draft-model "$draft_model_dir" --draft-kind mtp)
       fi
-      python3 -m mlx_vlm.server \
+      run_mlx_vlm_server \
         --model "$model_dir" \
         --host 127.0.0.1 \
         --port "$port" \
         --prefill-step-size "$prefill_step_size" \
         --max-kv-size "$cache_limit" \
-        --trust-remote-code \
         "${draft_args[@]}" \
         >> "$log_file" 2>&1 &
     else
