@@ -16,6 +16,8 @@ class MemorySettings {
 
   /**
    * Embedding model used to vectorise memory content and recall queries.
+   * Kept in sync with application.properties' lca.memory.embedding-model chain
+   * (MemorySettingsSpec asserts this default independently of Spring binding).
    */
   String embeddingModel = "nomic-embed-text:latest"
 

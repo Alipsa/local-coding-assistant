@@ -32,9 +32,11 @@ class ModelRegistry {
   private final URI tagsUri
   private final URI showUri
   private final URI psUri
+  private final URI generateUri
   private final boolean remote
   private final HttpClient client
   private final Duration timeout
+  private final Duration benchmarkTimeout
   private final String baseUrl
   private final long cacheTtlMillis
   private final long healthTtlMillis
@@ -50,6 +52,7 @@ class ModelRegistry {
     @Value('${assistant.llm.registry-timeout-millis:4000}') long timeoutMillis,
     @Value('${assistant.llm.model-cache-ttl-millis:30000}') long cacheTtlMillis,
     @Value('${assistant.llm.health-cache-ttl-millis:5000}') long healthTtlMillis,
+    @Value('${assistant.llm.benchmark-timeout-millis:180000}') long benchmarkTimeoutMillis,
     @Nullable HttpClient httpClient
   ) {
     if (baseUrl == null || baseUrl.trim().isEmpty()) {
@@ -60,9 +63,12 @@ class ModelRegistry {
     this.tagsUri = URI.create("${normalized}/api/tags")
     this.showUri = URI.create("${normalized}/api/show")
     this.psUri = URI.create("${normalized}/api/ps")
+    this.generateUri = URI.create("${normalized}/api/generate")
     this.remote = isRemoteHost(tagsUri.getHost())
     long effectiveTimeout = timeoutMillis > 0 ? timeoutMillis : 4000L
     this.timeout = Duration.ofMillis(effectiveTimeout)
+    long effectiveBenchmarkTimeout = benchmarkTimeoutMillis > 0 ? benchmarkTimeoutMillis : 180000L
+    this.benchmarkTimeout = Duration.ofMillis(effectiveBenchmarkTimeout)
     this.cacheTtlMillis = cacheTtlMillis > 0 ? cacheTtlMillis : 30000L
     this.healthTtlMillis = healthTtlMillis > 0 ? healthTtlMillis : 5000L
     this.client = httpClient != null
@@ -296,6 +302,41 @@ class ModelRegistry {
     null
   }
 
+  /**
+   * Calls Ollama's {@code /api/generate} directly (bypassing Spring AI/Embabel, which doesn't
+   * surface Ollama's raw timing fields) to measure raw inference speed for {@code model}. Unlike
+   * {@link #listModels}/{@link #checkHealth}/{@link #contextLength} (which degrade gracefully on
+   * failure since they're polled implicitly for UI purposes), this throws on failure: it's a
+   * deliberate, one-off diagnostic action, so surfacing the real Ollama error is more useful than
+   * a silent null.
+   */
+  BenchmarkResult benchmark(String model, String prompt, int maxTokens) throws IOException {
+    HttpResponse<String> response = fetchGenerate(model, prompt, maxTokens)
+    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+      throw new IOException("Ollama returned status ${response.statusCode()} for model '${model}': ${response.body()}".toString())
+    }
+    Map parsed = (Map) new JsonSlurper().parseText(response.body())
+    new BenchmarkResult(
+      model,
+      asLong(parsed.get("total_duration")),
+      asLong(parsed.get("load_duration")),
+      (int) asLong(parsed.get("prompt_eval_count")),
+      asLong(parsed.get("prompt_eval_duration")),
+      (int) asLong(parsed.get("eval_count")),
+      asLong(parsed.get("eval_duration"))
+    )
+  }
+
+  protected HttpResponse<String> fetchGenerate(String model, String prompt, int maxTokens) throws Exception {
+    String body = JsonOutput.toJson([model: model, prompt: prompt, stream: false, options: [num_predict: maxTokens]])
+    HttpRequest request = HttpRequest.newBuilder(generateUri)
+      .timeout(benchmarkTimeout)
+      .header("Content-Type", "application/json")
+      .POST(HttpRequest.BodyPublishers.ofString(body))
+      .build()
+    client.send(request, HttpResponse.BodyHandlers.ofString())
+  }
+
   protected HttpResponse<String> fetchShow(String model) throws Exception {
     String body = JsonOutput.toJson([name: model])
     HttpRequest request = HttpRequest.newBuilder(showUri)
@@ -347,6 +388,26 @@ class ModelRegistry {
     String name
     long size       // total memory footprint, bytes
     long sizeVram   // portion resident in GPU VRAM, bytes (0 if CPU-only)
+  }
+
+  @Canonical
+  @CompileStatic
+  static class BenchmarkResult {
+    String model
+    long totalDurationNanos
+    long loadDurationNanos
+    int promptEvalCount
+    long promptEvalDurationNanos
+    int evalCount
+    long evalDurationNanos
+
+    double getPromptTokensPerSecond() {
+      promptEvalDurationNanos > 0 ? promptEvalCount / (promptEvalDurationNanos / 1_000_000_000d) : 0d
+    }
+
+    double getEvalTokensPerSecond() {
+      evalDurationNanos > 0 ? evalCount / (evalDurationNanos / 1_000_000_000d) : 0d
+    }
   }
 
   String getBaseUrl() {

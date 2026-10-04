@@ -102,11 +102,11 @@ class ModelRegistrySpec extends Specification {
 
   def "contextLength reads model_info context_length"() {
     given:
-    String json = '{"model_info": {"qwen3.architecture": "qwen3", "qwen3.context_length": 131072}}'
+    String json = '{"model_info": {"qwen3.architecture": "qwen3", "qwen3.context_length": 196608}}'
     ModelRegistry registry = new ShowRegistry(200, json)
 
     expect:
-    registry.contextLength("qwen3.6-128k:latest") == 131072
+    registry.contextLength("qwen3.8-192k:latest") == 196608
   }
 
   def "contextLength returns null when not reported"() {
@@ -148,6 +148,51 @@ class ModelRegistrySpec extends Specification {
       ["qwen3.architecture": "qwen3", "qwen3.context_length": 131072] as Map<String, Object>) == 131072
   }
 
+  def "benchmark computes prompt and eval tokens per second from Ollama's generate response"() {
+    given:
+    String json = '''
+      {"total_duration": 22391331208, "load_duration": 7425792167,
+       "prompt_eval_count": 19, "prompt_eval_duration": 774138000,
+       "eval_count": 190, "eval_duration": 14189978000}
+    '''
+    ModelRegistry registry = new GenerateRegistry(200, json)
+
+    when:
+    ModelRegistry.BenchmarkResult result = registry.benchmark("qwen3.8-review", "hello", 200)
+
+    then:
+    result.promptEvalCount == 19
+    result.evalCount == 190
+    Math.abs(result.promptTokensPerSecond - 24.54d) < 0.1d
+    Math.abs(result.evalTokensPerSecond - 13.39d) < 0.1d
+  }
+
+  def "benchmark returns zero rate when duration is zero"() {
+    given:
+    ModelRegistry registry = new GenerateRegistry(200,
+      '{"eval_count": 5, "eval_duration": 0, "prompt_eval_count": 3, "prompt_eval_duration": 0}')
+
+    when:
+    ModelRegistry.BenchmarkResult result = registry.benchmark("m", "hi", 10)
+
+    then:
+    result.evalTokensPerSecond == 0d
+    result.promptTokensPerSecond == 0d
+  }
+
+  def "benchmark throws on a non-2xx response"() {
+    given:
+    ModelRegistry registry = new GenerateRegistry(500, "model not found")
+
+    when:
+    registry.benchmark("missing-model", "hi", 10)
+
+    then:
+    IOException e = thrown(IOException)
+    e.message.contains("500")
+    e.message.contains("model not found")
+  }
+
   def "contextLengthFromModelInfo falls back to the first match when the architecture key doesn't resolve"() {
     expect:
     ModelRegistry.contextLengthFromModelInfo(
@@ -180,8 +225,8 @@ class ModelRegistrySpec extends Specification {
 
   def "isRemote reflects the configured base URL's host"() {
     expect:
-    !new ModelRegistry("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient()).isRemote()
-    new ModelRegistry("http://ollama.example.com:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient()).isRemote()
+    !new ModelRegistry("http://localhost:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient()).isRemote()
+    new ModelRegistry("http://ollama.example.com:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient()).isRemote()
   }
 
   def "loadedModels parses name/size/size_vram, falling back to the model key for the name"() {
@@ -189,7 +234,7 @@ class ModelRegistrySpec extends Specification {
     ModelRegistry registry = new PsRegistry(200, '''
       {"models": [
         {"name": "mistral:latest", "size": 5137025024, "size_vram": 5137025024},
-        {"model": "qwen3.6:latest", "size": 8000000000}
+        {"model": "qwen3.8:latest", "size": 8000000000}
       ]}
     ''')
 
@@ -201,7 +246,7 @@ class ModelRegistrySpec extends Specification {
     loaded[0].name == "mistral:latest"
     loaded[0].size == 5137025024L
     loaded[0].sizeVram == 5137025024L
-    loaded[1].name == "qwen3.6:latest"
+    loaded[1].name == "qwen3.8:latest"
     loaded[1].size == 8000000000L
     loaded[1].sizeVram == 0L
   }
@@ -261,7 +306,7 @@ class ModelRegistrySpec extends Specification {
     private final String body
 
     ShowRegistry(int status, String body) {
-      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      super("http://localhost:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient())
       this.status = status
       this.body = body
     }
@@ -272,12 +317,28 @@ class ModelRegistrySpec extends Specification {
     }
   }
 
+  private static class GenerateRegistry extends ModelRegistry {
+    private final int status
+    private final String body
+
+    GenerateRegistry(int status, String body) {
+      super("http://localhost:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient())
+      this.status = status
+      this.body = body
+    }
+
+    @Override
+    protected HttpResponse<String> fetchGenerate(String model, String prompt, int maxTokens) throws Exception {
+      [statusCode: { -> status }, body: { -> body }] as HttpResponse
+    }
+  }
+
   private static class PsRegistry extends ModelRegistry {
     private final int status
     private final String body
 
     PsRegistry(int status, String body) {
-      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      super("http://localhost:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient())
       this.status = status
       this.body = body
     }
@@ -293,7 +354,7 @@ class ModelRegistrySpec extends Specification {
     private final List<String> models
 
     FakeRegistry(boolean reachable, List<String> models) {
-      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      super("http://localhost:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient())
       this.reachable = reachable
       this.models = models
     }
@@ -317,7 +378,7 @@ class ModelRegistrySpec extends Specification {
     private final boolean throwOnTags
 
     ErrorRegistry(boolean reachable, boolean throwOnTags) {
-      super("http://localhost:11434", 1000L, 30000L, 5000L, HttpClient.newHttpClient())
+      super("http://localhost:11434", 1000L, 30000L, 5000L, 30000L, HttpClient.newHttpClient())
       this.reachable = reachable
       this.throwOnTags = throwOnTags
     }

@@ -21,7 +21,24 @@ import java.util.regex.Pattern
 class CommandExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CommandExecutor)
-  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/(\w+)\s*([\s\S]*)/)
+  // [\w-] (not \w alone) so hyphenated command names (/git-apply, /git-push) are captured whole
+  // instead of being truncated at the first hyphen.
+  private static final Pattern COMMAND_PATTERN = Pattern.compile(/^\/([\w-]+)\s*([\s\S]*)/)
+
+  /**
+   * Command names this class actually dispatches in {@link #execute}'s switch (kept in sync with
+   * it by hand — small, stable list). Used by {@link #isKnownCommand} so the REPL can bypass the
+   * LLM intent classifier for input that's already an unambiguous, literal slash command: routing
+   * a verbatim "/benchmark --model x" through a small classifier risks it being reinterpreted as
+   * something else entirely (observed: misrouted to /run, which then tried to execute "benchmark"
+   * as a literal shell binary).
+   */
+  private static final Set<String> KNOWN_COMMANDS = Set.of(
+    "chat", "plan", "implement", "review", "search", "run", "edit", "paste",
+    "gitapply", "git-apply", "git-push", "apply", "status", "diff", "tree", "codesearch",
+    "mcp", "reviewlog", "compact", "help", "health", "benchmark", "exit", "quit",
+    "model", "context", "version", "stage", "revert", "commit-suggest", "applyblocks"
+  )
 
   private final ShellCommands shellCommands
   private final McpCommands mcpCommands
@@ -36,6 +53,15 @@ class CommandExecutor {
    * Parses the command and arguments, then calls the appropriate ShellCommands method.
    */
   String execute(String commandLine) {
+    execute(commandLine, false)
+  }
+
+  /** Execute model-routed commands with safety overrides removed after parsing. */
+  String executeRouted(String commandLine) {
+    execute(commandLine, true)
+  }
+
+  private String execute(String commandLine, boolean routed) {
     if (commandLine == null || commandLine.trim().isEmpty()) {
       return null
     }
@@ -53,46 +79,75 @@ class CommandExecutor {
 
     log.debug("Executing command: /{} with args: {}", command, args)
 
+    Map<String, Object> parsed = parseArgs(args)
+    if (routed) {
+      // Apply this after normalisation and parsing, including flags injected through quoted values.
+      ['confirm', 'dryRun', 'check', 'force', 'allowSecrets', 'secretScan'].each { String key ->
+        parsed.remove(key)
+      }
+      if (command.equalsIgnoreCase('revert')) {
+        parsed.dryRun = true
+      }
+    }
+
     switch (command.toLowerCase()) {
       case "chat":
-        return executeChat(args)
+        return executeChat(parsed)
       case "plan":
-        return executePlan(args)
+        return executePlan(parsed)
       case "implement":
-        return executeImplement(args)
+        return executeImplement(parsed)
       case "review":
-        return executeReview(args)
+        return executeReview(parsed)
       case "search":
-        return executeSearch(args)
+        return executeSearch(parsed)
       case "run":
-        return executeRun(args)
+        return executeRun(parsed)
       case "edit":
-        return executeEdit(args)
+        return executeEdit(parsed)
       case "paste":
-        return executePaste(args)
+        return executePaste(parsed)
       case "gitapply":
       case "git-apply":
-        return executeGitApply(args)
+        return executeGitApply(parsed)
+      case "git-push":
+        return executeGitPush(parsed)
       case "apply":
-        return executeApply(args)
+        return executeApply(parsed)
       case "status":
-        return executeStatus(args)
+        return executeStatus(parsed)
       case "diff":
-        return executeDiff(args)
+        return executeDiff(parsed)
       case "tree":
-        return executeTree(args)
+        return executeTree(parsed)
       case "codesearch":
-        return executeCodeSearch(args)
+        return executeCodeSearch(parsed)
       case "mcp":
-        return executeMcp(args)
+        return executeMcp(parsed)
       case "reviewlog":
-        return executeReviewLog(args)
+        return executeReviewLog(parsed)
       case "compact":
-        return executeCompact(args)
+        return executeCompact(parsed)
       case "help":
         return shellCommands.help()
       case "health":
         return shellCommands.health()
+      case "benchmark":
+        return executeBenchmark(parsed)
+      case "model":
+        return executeModel(parsed)
+      case "context":
+        return executeContext(parsed)
+      case "version":
+        return shellCommands.version()
+      case "stage":
+        return executeStage(parsed)
+      case "revert":
+        return executeRevert(parsed)
+      case "commit-suggest":
+        return executeCommitSuggest(parsed)
+      case "applyblocks":
+        return executeApplyBlocks(parsed)
       case "exit":
       case "quit":
         // Trigger system exit
@@ -101,6 +156,19 @@ class CommandExecutor {
       default:
         return "Unknown command: /${command}. Type /help for available commands."
     }
+  }
+
+  /**
+   * True when {@code input} is already a literal, well-formed slash command this class can
+   * dispatch on its own (e.g. "/benchmark --model x"). Callers use this to skip the LLM intent
+   * classifier entirely for unambiguous input, routing straight to {@link #execute}.
+   */
+  boolean isKnownCommand(String input) {
+    if (input == null) {
+      return false
+    }
+    Matcher matcher = COMMAND_PATTERN.matcher(input.trim())
+    matcher.matches() && KNOWN_COMMANDS.contains(matcher.group(1).toLowerCase())
   }
 
   /**
@@ -114,8 +182,7 @@ class CommandExecutor {
     shellCommands.paste(content, "/end", send, session, persona)
   }
 
-  private String executeChat(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeChat(Map<String, Object> parsed) {
     shellCommands.chat(
       extractWords(parsed) as String[],
       parsed.session as String ?: "default",
@@ -130,8 +197,7 @@ class CommandExecutor {
     )
   }
 
-  private String executePlan(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executePlan(Map<String, Object> parsed) {
     shellCommands.plan(
       extractWords(parsed) as String[],
       parsed.session as String ?: "default",
@@ -145,8 +211,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeImplement(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeImplement(Map<String, Object> parsed) {
     shellCommands.implement(
       extractWords(parsed) as String[],
       parsed.session as String ?: "default",
@@ -160,8 +225,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeReview(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeReview(Map<String, Object> parsed) {
     // Parse paths from remaining words or paths flag
     List<String> paths = null
     if (parsed.paths) {
@@ -182,7 +246,7 @@ class CommandExecutor {
       parseBoolean(parsed.staged) ?: false,
       parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
       parseBoolean(parsed.noColor) ?: false,
-      parseBoolean(parsed.logReview) ?: true,
+      parseBooleanFlag(parsed.logReview, true),
       parseBoolean(parsed.security) ?: false,
       parseBoolean(parsed.sast) ?: false,
       parseBoolean(parsed.withThinking) ?: parseBoolean(parsed.reasoning) ?: false,
@@ -190,8 +254,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeSearch(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeSearch(Map<String, Object> parsed) {
     String query = extractPromptValue(parsed)
     shellCommands.search(
       query,
@@ -199,33 +262,30 @@ class CommandExecutor {
       parsed.session as String ?: "default",
       parsed.provider as String ?: "duckduckgo",
       parseLong(parsed.timeout) ?: 15000L,
-      parseBoolean(parsed.headless) ?: true,
+      parseBooleanFlag(parsed.headless, true),
       parsed.enableWebSearch != null ? parseBoolean(parsed.enableWebSearch) : null
     )
   }
 
-  private String executeRun(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeRun(Map<String, Object> parsed) {
     String command = parsed.command as String ?: parsed.cmd as String ?: extractPromptValue(parsed)
     shellCommands.runCommand(
       command,
       parseLong(parsed.timeout) ?: 60000L,
       parseInt(parsed.maxOutputChars) ?: 8000,
       parsed.session as String ?: "default",
-      parseBoolean(parsed.confirm) ?: true,
+      parseBooleanFlag(parsed.confirm, true),
       false // agentRequested
     )
   }
 
-  private String executeStatus(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeStatus(Map<String, Object> parsed) {
     shellCommands.gitStatus(
       parseBoolean(parsed.shortFormat) ?: false
     )
   }
 
-  private String executeEdit(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeEdit(Map<String, Object> parsed) {
     shellCommands.edit(
       parsed.seed as String,
       parseBoolean(parsed.send) ?: false,
@@ -234,8 +294,7 @@ class CommandExecutor {
     )
   }
 
-  private String executePaste(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executePaste(Map<String, Object> parsed) {
     shellCommands.paste(
       parsed.content as String,
       parsed.endMarker as String ?: "/end",
@@ -245,33 +304,30 @@ class CommandExecutor {
     )
   }
 
-  private String executeGitApply(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeGitApply(Map<String, Object> parsed) {
     String patch = parsed.patch as String
     String patchFile = parsed.patchFile as String
     shellCommands.gitApply(
       patch,
       patchFile,
       parseBoolean(parsed.cached) ?: false,
-      parseBoolean(parsed.check) ?: true,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.check, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
-  private String executeApply(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeApply(Map<String, Object> parsed) {
     String patch = parsed.patch as String ?: extractPromptValue(parsed)
     String patchFile = parsed.patchFile as String
     shellCommands.applyPatch(
       patch,
       patchFile,
-      parseBoolean(parsed.dryRun) ?: true,
-      parseBoolean(parsed.confirm) ?: true
+      parseBooleanFlag(parsed.dryRun, true),
+      parseBooleanFlag(parsed.confirm, true)
     )
   }
 
-  private String executeDiff(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeDiff(Map<String, Object> parsed) {
     // Parse paths from remaining words
     List<String> paths = (parsed.words as List<String>) ?: []
     shellCommands.gitDiff(
@@ -282,8 +338,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeTree(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeTree(Map<String, Object> parsed) {
     shellCommands.tree(
       parseInt(parsed.depth) ?: 3,
       parseBoolean(parsed.files) ?: false,
@@ -291,8 +346,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeCodeSearch(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeCodeSearch(Map<String, Object> parsed) {
     String query = parsed.query as String ?: extractPromptValue(parsed)
     List<String> paths = null
     if (parsed.paths) {
@@ -318,8 +372,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeReviewLog(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeReviewLog(Map<String, Object> parsed) {
     shellCommands.reviewLog(
       parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
       parsed.pathFilter as String,
@@ -330,13 +383,101 @@ class CommandExecutor {
     )
   }
 
-  private String executeCompact(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeGitPush(Map<String, Object> parsed) {
+    shellCommands.gitPush(
+      parseBoolean(parsed.force) ?: false,
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeBenchmark(Map<String, Object> parsed) {
+    // Not "parseInt(...) ?: 200": Groovy truthiness treats 0 as falsy, so an explicit
+    // "--max-tokens 0" would otherwise silently become 200 instead of being rejected.
+    Integer maxTokens = parsed.maxTokens != null ? parseInt(parsed.maxTokens) : null
+    shellCommands.benchmark(
+      parsed.model as String,
+      parsed.prompt as String,
+      parsed.promptFile as String,
+      maxTokens != null ? maxTokens : 200,
+      parsed.session as String ?: "default"
+    )
+  }
+
+  private String executeModel(Map<String, Object> parsed) {
+    shellCommands.model(
+      parsed.set as String,
+      parsed.session as String ?: "default",
+      parseBoolean(parsed.list) ?: false
+    )
+  }
+
+  private String executeContext(Map<String, Object> parsed) {
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    // Not "parseInt(...) ?: 2": ShellCommands.context accepts --padding 0 (requireMin(padding,
+    // 0, ...)), but Groovy's ?: treats a parsed 0 as absent, same trap fixed for /benchmark's
+    // --max-tokens 0.
+    Integer padding = parsed.padding != null ? parseInt(parsed.padding) : null
+    shellCommands.context(
+      filePath,
+      parseInt(parsed.start),
+      parseInt(parsed.end),
+      parsed.symbol as String,
+      padding != null ? padding : 2
+    )
+  }
+
+  private String executeStage(Map<String, Object> parsed) {
+    List<String> paths = null
+    if (parsed.paths) {
+      paths = (parsed.paths as String).split(',').toList()
+    } else if (parsed.words && !(parsed.words as List).isEmpty()) {
+      paths = parsed.words as List<String>
+    }
+    shellCommands.stage(
+      paths,
+      parsed.file as String,
+      parsed.hunks as String,
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeRevert(Map<String, Object> parsed) {
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.revert(
+      filePath,
+      parseBooleanFlag(parsed.dryRun, false),
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeCommitSuggest(Map<String, Object> parsed) {
+    shellCommands.commitSuggest(
+      parsed.session as String ?: "default",
+      parsed.model as String,
+      parsed.temperature as Double,
+      parsed.maxTokens as Integer,
+      parsed.hint as String,
+      parseBooleanFlag(parsed.secretScan, true),
+      parseBooleanFlag(parsed.allowSecrets, false)
+    )
+  }
+
+  private String executeApplyBlocks(Map<String, Object> parsed) {
+    String filePath = parsed.filePath as String ?: firstWord(parsed)
+    shellCommands.applyBlocks(
+      filePath,
+      parsed.blocks as String,
+      parsed.blocksFile as String,
+      parseBooleanFlag(parsed.dryRun, true),
+      parseBooleanFlag(parsed.confirm, true)
+    )
+  }
+
+  private String executeCompact(Map<String, Object> parsed) {
     shellCommands.compact(parsed.session as String ?: "default")
   }
 
-  private String executeMcp(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeMcp(Map<String, Object> parsed) {
     List<String> words = parsed.words as List<String>
     String subcommand = words?.isEmpty() ? "status" : words[0]
     String subArgs = words?.size() > 1 ? words.subList(1, words.size()).join(" ") : ""
@@ -427,6 +568,15 @@ class CommandExecutor {
     return words ? words.join(" ") : ""
   }
 
+  /**
+   * First positional word, for commands whose required file-path argument is more natural typed
+   * bare (e.g. "/context src/Foo.groovy --symbol bar") than behind an explicit --file-path flag.
+   */
+  private String firstWord(Map<String, Object> parsed) {
+    List<String> words = parsed.words as List<String>
+    words && !words.isEmpty() ? words[0] : null
+  }
+
   /** Normalizes a kebab-case CLI flag name (e.g. {@code no-color}) to the camelCase map key
    * every {@code executeXxx} method reads (e.g. {@code noColor}). A no-op for flags with no
    * hyphen, so already-camelCase flags like {@code --maxTokens} are unaffected. */
@@ -456,11 +606,25 @@ class CommandExecutor {
     }
   }
 
+  /**
+   * Resolves a boolean flag against a non-false default without Groovy's {@code ?:} truthiness
+   * trap: {@code parseBoolean(value) ?: defaultValue} silently turns an explicit "--flag false"
+   * back into {@code defaultValue} whenever that default is {@code true}, since Elvis treats the
+   * parsed {@code false} itself as absent (the same class of bug fixed for /benchmark's
+   * --max-tokens 0). Only missing/unparsable input falls back to {@code defaultValue}.
+   */
+  private boolean parseBooleanFlag(Object value, boolean defaultValue) {
+    Boolean parsed = parseBoolean(value)
+    parsed != null ? parsed : defaultValue
+  }
+
   private Boolean parseBoolean(Object value) {
     if (value == null) return null
     if (value instanceof Boolean) return (Boolean) value
     String str = value.toString().toLowerCase()
-    return str == "true" || str == "yes" || str == "1"
+    if (str in ['true', 'yes', '1']) return true
+    if (str in ['false', 'no', '0']) return false
+    return null
   }
 
   private Integer parseInt(Object value) {

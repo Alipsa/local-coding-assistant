@@ -67,13 +67,15 @@ class JLineReplSpec extends Specification {
 
   def "single-line input still routes through the intent classifier as before"() {
     given:
-    def plan = new IntentRoutingPlan(commands: [], confidence: 1.0d, explanation: null)
+    def plan = new IntentRoutingPlan(commands: ['/run --command "x" --confirm false'], confidence: 1.0d, explanation: null)
 
     when:
     repl.handleInput("what does this project do")
 
     then:
     1 * intentRouter.routeDetails("what does this project do") >> new IntentRoutingOutcome(plan: plan, result: null)
+    1 * commandExecutor.executeRouted('/run --command "x" --confirm false') >> 'ran'
+    0 * commandExecutor.execute(_)
   }
 
   def "a bang-prefixed line runs as a shell command, bypassing intent routing"() {
@@ -84,5 +86,27 @@ class JLineReplSpec extends Specification {
     1 * bangCommandHandler.isBang("! git status") >> true
     1 * bangCommandHandler.handle("! git status", "default", false) >> "Command: git status\nExit: 0 (success)"
     0 * intentRouter.routeDetails(_)
+  }
+
+  def "a literal known slash command dispatches directly, bypassing intent routing"() {
+    when:
+    repl.handleInput("/benchmark --model qwen3.8-review --prompt-file x.groovy")
+
+    then:
+    1 * commandExecutor.isKnownCommand("/benchmark --model qwen3.8-review --prompt-file x.groovy") >> true
+    1 * commandExecutor.execute("/benchmark --model qwen3.8-review --prompt-file x.groovy") >> "Model: qwen3.8-review"
+    0 * intentRouter.routeDetails(_)
+  }
+
+  def "an unrecognized slash command still routes through the intent classifier"() {
+    given:
+    def plan = new IntentRoutingPlan(commands: [], confidence: 1.0d, explanation: null)
+
+    when:
+    repl.handleInput("/frobnicate")
+
+    then:
+    1 * commandExecutor.isKnownCommand("/frobnicate") >> false
+    1 * intentRouter.routeDetails("/frobnicate") >> new IntentRoutingOutcome(plan: plan, result: null)
   }
 }
