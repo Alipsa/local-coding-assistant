@@ -26,13 +26,13 @@ The project delivers a CLI experience similar to ChatGPT Codex, Gemini CLI, and 
 - **Production-Ready**: Includes code generation, review, git operations, and safety guardrails
 
 ### Tech Stack
-- **Language**: Java 21, Groovy 5.0.3
-- **Framework**: Spring Boot 3.5.7
-- **Agent Framework**: Embabel 0.3.1
+- **Language**: Java 21, Groovy 5.1.3
+- **Framework**: Spring Boot 4.1.1
+- **Agent Framework**: Embabel 1.5.2
 - **LLM Provider**: Ollama (local)
 - **Build Tool**: Maven 3.9.9+
 - **REPL**: Custom JLine 3.x implementation
-- **Testing**: Spock 2.4, JUnit 5
+- **Testing**: Spock 2.4-groovy-5.0, JUnit 6.1.3
 
 ---
 

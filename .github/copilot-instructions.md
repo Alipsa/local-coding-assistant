@@ -3,7 +3,7 @@
 ## Project Overview
 Local-first coding assistant that runs on your machine and talks only to Ollama-served models. 
 The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. 
-Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
+Embabel provides the agent runtime, Spring Boot hosts it, and a custom JLine-based REPL exposes the commands.
 
 ## Technology Stack
 - **Language**: Groovy 5.1.3
@@ -14,7 +14,7 @@ Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell expos
 - **Model Configuration**: `src/main/bin/lca` defines model names and recipes shared with `models.sh`.
 - **JVM**: Java 21
 - **Build Tool**: Maven
-- **Testing Framework**: Spock 2.4-M7-groovy-5.0
+- **Testing Framework**: Spock 2.4-groovy-5.0
 
 ## Coding Conventions
 
@@ -30,7 +30,7 @@ Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell expos
 - Resources and prompts: `src/main/resources/`
 
 ## Testing Guidelines
-- Write unit tests for all new functionality using Spock 2.4-M7-groovy-5.0
+- Write unit tests for all new functionality using Spock 2.4-groovy-5.0
 - Test files should be in Groovy (`.groovy` extension)
 - Name test files with the `Spec` suffix (e.g., `CodingAssistantAgentSpec.groovy`)
 - Follow the existing test patterns in the codebase
@@ -53,7 +53,7 @@ src/main/
 
 ## Development Workflow
 1. Ensure Ollama daemon is running locally
-2. Use Spring Shell for interactive testing (`./scripts/shell.sh`)
+2. Use the JLine REPL for interactive testing (`./run.sh`)
 3. All LLM interactions must go through Ollama (no cloud services)
 4. Focus on CLI-driven workflows for editing, reviewing, and searching code
 
