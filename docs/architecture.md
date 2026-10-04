@@ -89,7 +89,7 @@ This auto-configures Spring Boot to scan and register all `@Agent`-annotated cla
 **4. IntentRouterAgent**
 - **File**: `src/main/groovy/se/alipsa/lca/intent/IntentRouterAgent.groovy`
 - **Purpose**: Natural language understanding - maps user input to slash commands
-- **Model**: Uses lightweight `tinyllama` for fast classification
+- **Model**: Uses the cheapest configured model (`gpt-oss-64k:latest` by default) for classification
 
 #### Embabel API Examples
 
@@ -142,7 +142,7 @@ LCA exclusively uses Ollama for all AI capabilities, ensuring complete privacy a
 | `qwen3.8-192k:latest` | Primary code generation | 0.7 (craft) / 0.1 (review) | `embabel.models.default-llm`   |
 | `qwen3.8-review:latest` | Code review | 0.1 | `assistant.llm.review-model` |
 | `gpt-oss-64k:latest`     | Fallback/cheaper model           | 0.35                        | `embabel.models.llms.cheapest` |
-| `tinyllama`       | Intent routing (NLU)             | 0.0                         | `assistant.intent.model`       |
+| `gpt-oss-64k:latest` | Intent routing (NLU)             | 0.1                         | `assistant.intent.model`       |
 
 #### Integration Architecture
 
@@ -236,7 +236,7 @@ LCA uses a custom JLine-based REPL that replaced the original Spring Shell imple
 - **Purpose**: Maps natural language to structured commands
 - **Example**: "review my code for bugs" → `/review --security`
 - **Confidence Threshold**: 0.8 (configurable)
-- **Temperature**: 0.0 for deterministic classification
+- **Temperature**: 0.1 for low-variance classification
 
 **4. SessionState**
 - **File**: `src/main/groovy/se/alipsa/lca/shell/SessionState.groovy`
@@ -374,11 +374,11 @@ User: "create a metod in StatsCalculator to calculate fibonacci" (natural langua
   │           │     - User input
   │           │
   │           ├─→ ai.withLlm(LlmOptions
-  │           │       .withModel("tinyllama")
-  │           │       .withTemperature(0.0))
+  │           │       .withModel("gpt-oss-64k:latest")
+  │           │       .withTemperature(0.1))
   │           │     .generateText(routingPrompt)
   │           │       │
-  │           │       └─→ Ollama processes with tinyllama
+  │           │       └─→ Ollama processes with gpt-oss-64k:latest
   │           │
   │           └─→ Response: {
   │                 "command": "/plan",
@@ -408,7 +408,8 @@ User: "create a metod in StatsCalculator to calculate fibonacci" (natural langua
 **Configuration**: `src/main/resources/application.properties:42-44`
 ```properties
 assistant.intent.enabled=true
-assistant.intent.model=tinyllama
+assistant.intent.model=${embabel.models.llms.cheapest}
+assistant.intent.temperature=0.1
 assistant.intent.confidence-threshold=0.8
 ```
 
@@ -493,7 +494,7 @@ Different tasks require different levels of creativity vs. determinism:
 |-----------------------------|-------------|---------------------------------------------------------|
 | **Code Generation (Craft)** | 0.7         | Higher creativity for varied, innovative solutions      |
 | **Code Review**             | 0.35        | More deterministic for consistent, reliable analysis    |
-| **Intent Routing**          | 0.0         | Perfect determinism for reliable command classification |
+| **Intent Routing**          | 0.1         | Low variance for reliable command classification        |
 
 **Configuration**: `src/main/resources/application.properties:26-27`
 ```properties
@@ -865,8 +866,8 @@ assistant.api.oidc.issuer=https://your-issuer.com
 - Discoverability: Users don't need to memorize slash commands
 
 **Implementation**:
-- Lightweight `tinyllama` model for fast classification
-- Temperature 0.0 for deterministic routing
+- Cheapest configured model (`gpt-oss-64k:latest` by default) for classification
+- Temperature 0.1 for low-variance routing
 - Confidence threshold to prevent misrouting
 
 **Trade-offs**:
@@ -882,7 +883,7 @@ assistant.api.oidc.issuer=https://your-issuer.com
 **Temperatures**:
 - Craft (0.7): Creative code generation
 - Review (0.35): Consistent analysis
-- Intent (0.0): Deterministic classification
+- Intent (0.1): Low-variance classification
 
 **Rationale**:
 - Code generation benefits from variety and creativity

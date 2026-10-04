@@ -10,8 +10,8 @@ These settings control how natural language input is routed into commands.
 
 ```properties
 assistant.intent.enabled=true
-assistant.intent.model=tinyllama
-assistant.intent.fallback-model=gpt-oss:20b
+assistant.intent.model=${embabel.models.llms.cheapest}
+assistant.intent.fallback-model=${embabel.models.default-llm}
 assistant.intent.temperature=0.1
 assistant.intent.max-tokens=256
 assistant.intent.allowed-commands=/chat,/plan,/review,/edit,/apply,/run,/gitapply,/git-push,/search
