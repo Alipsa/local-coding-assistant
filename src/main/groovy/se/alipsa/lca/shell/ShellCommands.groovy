@@ -781,7 +781,7 @@ Type a command or your next question to proceed.
   /**
    * {@code /review}: Ask the assistant to review code.
    *
-   * @param code Code to review; optional when providing paths or staged diff (default: {@code })
+   * @param code Code to review; optional when providing paths or staged diff (default: empty)
    * @param prompt Review context or request
    * @param session Session id (default: {@code default})
    * @param model Override model
@@ -1094,7 +1094,7 @@ Type a command or your next question to proceed.
    * @param pack Pack results into a single context blob (default: {@code false})
    * @param maxChars Max chars when packing (default: {@code 8000})
    * @param maxTokens Max tokens when packing (0 uses default) (default: {@code 0})
-   * @param caseInsensitive {@code ---i}, {@code --case-insensitive}: Case-insensitive search (default: {@code false})
+   * @param caseInsensitive {@code -i}, {@code --case-insensitive}: Case-insensitive search (default: {@code false})
    */
   String codeSearch(
     String query,
@@ -1142,7 +1142,7 @@ Try:
   /**
    * {@code /edit}: Open default editor to draft a prompt, optionally send to assistant.
    *
-   * @param seed Seed text to prefill in editor (default: {@code })
+   * @param seed Seed text to prefill in editor (default: empty)
    * @param send Send the edited text to /chat when done (default: {@code false})
    * @param session Session id (default: {@code default})
    * @param persona Persona mode when sending (default: {@code CODER})
@@ -1525,7 +1525,7 @@ Try:
    * {@code /!, /sh}: Execute a shell command directly with streaming output.
    *
    * @param command Command to execute (runs via bash -lc)
-   * @param session Session id for history logging (default: {@code DEFAULT_SESSION})
+   * @param session Session id for history logging (default: {@code default})
    */
   String shellCommand(
     String command,
@@ -1764,7 +1764,7 @@ Try:
   }
 
   /**
-   * {@code /applyBlocks}: Apply Search-and-Replace blocks to a file (<<<<SEARCH ... ==== ... >>>>).
+   * {@code /applyBlocks}: Apply Search-and-Replace blocks to a file ({@code <<<<SEARCH ... ==== ... >>>>}).
    *
    * @param filePath Target file path relative to project root
    * @param blocks Blocks text; ignored when blocks-file is set

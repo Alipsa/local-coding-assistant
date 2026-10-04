@@ -38,17 +38,14 @@ class WebApplicationTypeSpec extends Specification {
       @Override
       void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
         environment = event.environment
-        throw new EnvironmentPrepared()
+        throw new SpringApplication.AbandonedRunException()
       }
     })
     try {
       application.run(args)
       throw new AssertionError('Expected startup to stop after environment preparation')
-    } catch (EnvironmentPrepared ignored) {
+    } catch (SpringApplication.AbandonedRunException ignored) {
       return environment
     }
-  }
-
-  private static class EnvironmentPrepared extends RuntimeException {
   }
 }
