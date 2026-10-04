@@ -2,6 +2,7 @@ package se.alipsa.lca.mcp
 
 import io.modelcontextprotocol.spec.McpSchema
 import spock.lang.Specification
+import spock.lang.Unroll
 
 class McpToolPromptBuilderSpec extends Specification {
 
@@ -96,6 +97,31 @@ class McpToolPromptBuilderSpec extends Specification {
     compactEntries.size() > 0 // some tools should be compact
 
     prompt.contains('Call MCP tools with JSON arguments')
+  }
+
+  @Unroll
+  def "malformed schema values do not prevent other servers being described: #schema"() {
+    given:
+    McpToolPromptBuilder builder = new McpToolPromptBuilder(3000)
+    McpSchema.Tool malformed = new McpSchema.Tool('bad', null, 'Malformed schema', schema, null, null, null)
+    McpSchema.Tool valid = new McpSchema.Tool('good', null, 'Valid tool',
+      [properties: [name: [type: 'string']], required: ['name']], null, null, null)
+
+    when:
+    String prompt = builder.buildToolPrompt([first: [malformed], second: [valid]])
+
+    then:
+    prompt.contains('mcp_first_bad')
+    prompt.contains('mcp_second_good')
+    prompt.contains('name (required)')
+    !prompt.contains('value (required)')
+
+    where:
+    schema << [
+      [properties: 'x'],
+      [properties: [value: [type: 'string']], required: 'value'],
+      [properties: [value: [type: 'string']], required: [null, 42]]
+    ]
   }
 
   def "returns empty string when no tools"() {

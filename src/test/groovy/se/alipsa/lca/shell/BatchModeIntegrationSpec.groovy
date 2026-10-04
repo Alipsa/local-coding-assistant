@@ -56,6 +56,22 @@ class BatchModeIntegrationSpec extends Specification {
     result.output.contains("alpha.txt")
   }
 
+  def "startup reports a missing embedding model even when memory is disabled"() {
+    when:
+    ProcessResult result = runBatch(tempDir,
+      "--lca.test.embedding.enabled=false",
+      "--lca.memory.enabled=false",
+      "--embabel.models.default-embedding-model=missing-test-embedding",
+      "--embabel.models.embedding-services.best=missing-test-embedding",
+      "--embabel.models.embedding-services.cheapest=missing-test-embedding",
+      "-c", "/help")
+
+    then:
+    result.exitCode != 0
+    result.output.contains("Embedding model 'missing-test-embedding' for role")
+    result.output.contains("is not available: Choices are []")
+  }
+
   private void initRepo() {
     runGit("init")
     runGit("config", "user.name", "Test User")

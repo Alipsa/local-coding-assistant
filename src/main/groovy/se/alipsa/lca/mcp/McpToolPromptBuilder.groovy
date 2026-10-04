@@ -106,10 +106,14 @@ class McpToolPromptBuilder {
     }
 
     Map<String, Object> inputSchema = tool.inputSchema()
-    if (inputSchema && inputSchema.get('properties')) {
+    Object propertiesValue = inputSchema?.get('properties')
+    if (propertiesValue instanceof Map && !((Map) propertiesValue).isEmpty()) {
       sb.append('\n  Parameters:')
-      Map<String, Object> properties = (Map<String, Object>) inputSchema.get('properties')
-      List<String> required = (List<String>) inputSchema.get('required') ?: []
+      Map<String, Object> properties = (Map<String, Object>) propertiesValue
+      Object requiredValue = inputSchema.get('required')
+      List<String> required = requiredValue instanceof List
+        ? ((List<?>) requiredValue).findAll { it != null }.collect { it.toString() }
+        : []
 
       properties.each { String paramName, Object paramDef ->
         sb.append("\n    - ${paramName}")

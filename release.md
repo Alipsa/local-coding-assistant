@@ -1,5 +1,13 @@
 # Release Notes for the local-coding-assistant
 
+## Version 1.3.0 (unreleased)
+
+- Upgraded to Embabel 1.5.2 and Spring Boot 4.1.1.
+- Ollama must be running with `nomic-embed-text:latest` pulled before starting the CLI,
+  batch mode or GUI. Embabel now validates configured embedding model roles at startup,
+  including when memory is disabled.
+- Updated the ranking model property to `embabel.agent.platform.ranking.llm`.
+
 ## Version 1.2.0, 2026-01-16
 **Highlights**
 - Migrated from Spring Shell to custom JLine REPL for better control and natural language interaction.

@@ -134,6 +134,16 @@
       <version>${jsoup.version}</version>
     </dependency>
 
+    <!-- Local JSON parsing and memory persistence use Jackson 2; Boot manages both Jackson BOMs. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
+
     <!-- Swing GUI (lcaGui): FlatLaf look-and-feel and flexmark Markdown -> HTML rendering -->
     <dependency>
       <groupId>com.formdev</groupId>
