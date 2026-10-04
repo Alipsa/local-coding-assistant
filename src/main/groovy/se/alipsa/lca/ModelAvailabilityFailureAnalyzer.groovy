@@ -9,7 +9,7 @@ import java.util.regex.Pattern
 
 /** Gives local Ollama recovery instructions when Embabel cannot load models at startup. */
 @CompileStatic
-class MissingEmbeddingModelFailureAnalyzer implements FailureAnalyzer {
+class ModelAvailabilityFailureAnalyzer implements FailureAnalyzer {
 
   private static final Pattern MISSING_MODEL = Pattern.compile(
     "(?s)^(LLM|Embedding model) '([^']+)' for role .+ is not available:.*"
@@ -27,7 +27,8 @@ class MissingEmbeddingModelFailureAnalyzer implements FailureAnalyzer {
           'No local models were detected. Ollama may be stopped, unreachable or have no models installed.',
           'Start Ollama with ollama serve at the server configured by spring.ai.ollama.base-url ' +
             '(default http://localhost:11434).\n' +
-            'Re-run the updated lca launcher (or lca gui) to install the required local models.',
+            'Re-run the updated lca launcher (or lca gui), or ./models.sh when running from source, ' +
+            'to install the required local models.',
           cause
         )
       }
@@ -43,7 +44,8 @@ class MissingEmbeddingModelFailureAnalyzer implements FailureAnalyzer {
           ? "Ensure Ollama is running at the configured server and run: ollama pull ${model}\n" +
             'Then restart lca or lca gui.'
           : 'Ensure Ollama is running at the server configured by spring.ai.ollama.base-url.\n' +
-            "Re-run the updated lca launcher (or lca gui) to install or create '${model}'. " +
+            'Re-run the updated lca launcher (or lca gui), or ./models.sh when running from source, ' +
+            "to install or create '${model}'. " +
             'For custom model configurations, install or create the configured model on that server.'
         return new FailureAnalysis(
           description,

@@ -4,7 +4,7 @@ import org.springframework.beans.factory.BeanCreationException
 import spock.lang.Specification
 import spock.lang.Unroll
 
-class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
+class ModelAvailabilityFailureAnalyzerSpec extends Specification {
 
   @Unroll
   def "explains a missing embedding model through a bean creation failure: #model"() {
@@ -14,7 +14,7 @@ class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
     Throwable failure = new BeanCreationException('modelProvider', 'Factory method failed', cause)
 
     when:
-    def analysis = new MissingEmbeddingModelFailureAnalyzer().analyze(failure)
+    def analysis = new ModelAvailabilityFailureAnalyzer().analyze(failure)
 
     then:
     analysis.cause.is(cause)
@@ -29,7 +29,7 @@ class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
 
   def "leaves unrelated startup failures to other analysers"() {
     expect:
-    new MissingEmbeddingModelFailureAnalyzer().analyze(new IllegalStateException('Unrelated failure')) == null
+    new ModelAvailabilityFailureAnalyzer().analyze(new IllegalStateException('Unrelated failure')) == null
   }
 
   def "explains no models detected without recommending a cloud starter"() {
@@ -40,7 +40,7 @@ class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
     Throwable failure = new BeanCreationException('modelProvider', 'Factory method failed', cause)
 
     when:
-    def analysis = new MissingEmbeddingModelFailureAnalyzer().analyze(failure)
+    def analysis = new ModelAvailabilityFailureAnalyzer().analyze(failure)
 
     then:
     analysis.cause.is(cause)
@@ -48,6 +48,7 @@ class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
     analysis.action.contains('ollama serve')
     analysis.action.contains('spring.ai.ollama.base-url')
     analysis.action.contains('Re-run the updated lca launcher')
+    analysis.action.contains('./models.sh when running from source')
     !analysis.description.contains('openai')
     !analysis.action.contains('openai')
   }
@@ -59,7 +60,7 @@ class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
     Throwable failure = new BeanCreationException('modelProvider', 'Factory method failed', cause)
 
     when:
-    def analysis = new MissingEmbeddingModelFailureAnalyzer().analyze(failure)
+    def analysis = new ModelAvailabilityFailureAnalyzer().analyze(failure)
 
     then:
     analysis.cause.is(cause)
@@ -67,6 +68,7 @@ class MissingEmbeddingModelFailureAnalyzerSpec extends Specification {
     !analysis.description.contains('memory')
     analysis.action.contains('Ensure Ollama is running')
     analysis.action.contains('install or create')
+    analysis.action.contains('./models.sh when running from source')
     analysis.action.contains('qwen3.6-128k:latest')
   }
 }
