@@ -108,14 +108,23 @@ class SimpleCosineMemoryIndex implements MemoryIndex {
   }
 
   private synchronized boolean persist() {
+    Path tempFile = null
     try {
-      Path tempFile = Files.createTempFile(vectorFile.parent, "vectors", ".json.tmp")
+      tempFile = Files.createTempFile(vectorFile.parent, "vectors", ".json.tmp")
       objectMapper.writeValue(tempFile.toFile(), vectors)
       Files.move(tempFile, vectorFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
       true
     } catch (IOException | JacksonException e) {
       log.warn("Failed to persist memory vectors to {}: {}", vectorFile, e.message)
       false
+    } finally {
+      if (tempFile != null) {
+        try {
+          Files.deleteIfExists(tempFile)
+        } catch (IOException e) {
+          log.warn("Failed to delete memory temporary file {}: {}", tempFile, e.message)
+        }
+      }
     }
   }
 }

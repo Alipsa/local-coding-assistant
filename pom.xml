@@ -152,12 +152,6 @@
       <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
-      <!-- Read new memory files with the legacy mapper in downgrade-compatibility tests. -->
-      <scope>test</scope>
-    </dependency>
 
     <!-- Swing GUI (lcaGui): FlatLaf look-and-feel and flexmark Markdown -> HTML rendering -->
     <dependency>

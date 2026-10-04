@@ -92,14 +92,23 @@ class MemoryMetadataStore {
   }
 
   private synchronized boolean persist() {
+    Path tempFile = null
     try {
-      Path tempFile = Files.createTempFile(metadataFile.parent, "metadata", ".json.tmp")
+      tempFile = Files.createTempFile(metadataFile.parent, "metadata", ".json.tmp")
       objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), entries)
       Files.move(tempFile, metadataFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
       true
     } catch (IOException | JacksonException e) {
       log.warn("Failed to persist memory metadata to {}: {}", metadataFile, e.message)
       false
+    } finally {
+      if (tempFile != null) {
+        try {
+          Files.deleteIfExists(tempFile)
+        } catch (IOException e) {
+          log.warn("Failed to delete memory temporary file {}: {}", tempFile, e.message)
+        }
+      }
     }
   }
 }

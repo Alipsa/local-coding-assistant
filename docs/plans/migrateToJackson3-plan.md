@@ -103,9 +103,10 @@ ordinary round-trip tests only exercise the new mapper.
 ### 1. `pom.xml`
 
 - Remove `com.fasterxml.jackson.core:jackson-databind`.
-- Change `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` to `<scope>test</scope>`. The
-  downgrade-compatibility spec (step 8) needs it to read files the way LCA ≤ 1.2.x does, and
-  `jinjava` doesn't bring it in.
+- Remove the direct `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` dependency. It remains
+  at compile scope through Embabel's `a2a-java-sdk-spec`, which needs `JavaTimeModule` at runtime.
+  The downgrade-compatibility spec (step 8) also uses it to read files as earlier development
+  snapshots did. No released LCA version before 1.3.0 contained the memory store.
 - Add `tools.jackson.core:jackson-databind` without a version, because Spring Boot's BOM manages it
   (3.1.5). Today it only reaches LCA indirectly through `jackson-module-kotlin`.
 - Update the comment above the dependency.
@@ -188,9 +189,8 @@ Jackson 3.
   - `SimpleCosineMemoryIndex`: put an object with a throwing getter into `index.@vectors` (Groovy
     ignores generics), then call `upsert`/`delete`, and assert that `upsert` returns `false` and
     `delete` doesn't throw.
-- Optional, existing issue: `persist()` leaves the `*.json.tmp` file behind when the write fails.
-  Deleting it in a `finally` block (or on failure) would let the test also assert that no temporary
-  file remains.
+- Delete `*.json.tmp` files in a `finally` block, and assert in the failure tests that no temporary
+  file remains. This also fixes the pre-existing leak when serialisation or the atomic move fails.
 
 **Legacy and downgrade compatibility** (uses the step 0 fixtures):
 
@@ -228,8 +228,8 @@ behaviour, so any later parser change (e.g. to `groovy-json`) would fail them:
 
 ### 9. Documentation
 
-- `release.md` (1.3.0): memory metadata timestamps are now written as ISO-8601 strings. Existing
-  files still load, and older LCA versions can read the new files.
+- `release.md` (1.3.0): application JSON parsing and memory persistence now use Jackson 3.
+  Memory files remain compatible with earlier development snapshots in both directions.
 - No MCP release-note bullets. With `FAIL_ON_TRAILING_TOKENS` disabled, MCP parsing matched
   Jackson 2 on every case tested (see the Jackson 3 results table), and the step 8 tests lock that
   in.

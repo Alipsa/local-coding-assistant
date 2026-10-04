@@ -117,6 +117,7 @@ class JacksonMemoryCompatibilitySpec extends Specification {
     !store.put(broken)
     !store.putAll([entries()[1]])
     Files.readString(directory.resolve('metadata.json')) == before
+    noTemporaryFiles()
 
     when:
     store.remove('zero')
@@ -124,6 +125,7 @@ class JacksonMemoryCompatibilitySpec extends Specification {
     then:
     noExceptionThrown()
     Files.readString(directory.resolve('metadata.json')) == before
+    noTemporaryFiles()
   }
 
   def 'vector serialisation failures return false and deletion does not throw'() {
@@ -136,6 +138,7 @@ class JacksonMemoryCompatibilitySpec extends Specification {
     expect:
     !vectors.upsert('new', 'content')
     Files.readString(directory.resolve('vectors.json')) == before
+    noTemporaryFiles()
 
     when:
     vectors.delete('new')
@@ -143,6 +146,13 @@ class JacksonMemoryCompatibilitySpec extends Specification {
     then:
     noExceptionThrown()
     Files.readString(directory.resolve('vectors.json')) == before
+    noTemporaryFiles()
+  }
+
+  private boolean noTemporaryFiles() {
+    Files.list(directory).withCloseable { paths ->
+      paths.noneMatch { it.fileName.toString().endsWith('.json.tmp') }
+    }
   }
 
   static class ExplodingEntry extends MemoryEntry {

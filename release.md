@@ -3,8 +3,8 @@
 ## Version 1.3.0 (unreleased)
 **Highlights**
 - Upgraded to Embabel 1.5.2 and Spring Boot 4.1.1.
-- Migrated application JSON parsing and memory persistence to Jackson 3. Memory metadata timestamps
-  are now written as ISO-8601 strings; existing files still load, and older LCA versions can read the new files.
+- Migrated application JSON parsing and memory persistence to Jackson 3. Memory files from earlier
+  development snapshots remain compatible, including when returning to a Jackson 2 snapshot.
 - Switched the default local models from Qwen3.6 to Qwen3.8.
 - Added `/benchmark` to measure raw Ollama inference speed.
 - Commands chosen by natural-language routing can no longer turn off confirmations or other safeguards.
