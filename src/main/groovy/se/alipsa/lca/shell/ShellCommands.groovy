@@ -16,9 +16,6 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.SpringBootVersion
-import org.springframework.shell.standard.ShellComponent
-import org.springframework.shell.standard.ShellMethod
-import org.springframework.shell.standard.ShellOption
 import org.springframework.stereotype.Component
 import se.alipsa.lca.agent.CodingAssistantAgent
 import se.alipsa.lca.agent.ChatRequest
@@ -158,37 +155,25 @@ Do not execute any commands.
     lines.join("\n")
   }
 
-  @ShellMethod(key = ["/config"], value = "View or update shell settings.")
+  /**
+   * {@code /config}: View or update shell settings.
+   *
+   * @param autoPaste Enable or disable auto-paste detection (true/false)
+   * @param localOnly {@code --local-only}: Enable or disable local-only mode for this session (true/false)
+   * @param webSearch {@code --web-search}: Set web search for this session (htmlunit/jsoup/disabled/default)
+   * @param webSearchFetcher {@code --web-search-fetcher}: Set web search fetcher for this session
+   *   (htmlunit/jsoup/default)
+   * @param webSearchFallback {@code --web-search-fallback}: Set fallback web search fetcher
+   *   (htmlunit/jsoup/none/default)
+   * @param intent {@code --intent}: Enable or disable intent routing for this session (enabled/disabled/default)
+   */
   String config(
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      help = "Enable or disable auto-paste detection (true/false)"
-    ) Boolean autoPaste,
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      value = "local-only",
-      help = "Enable or disable local-only mode for this session (true/false)"
-    ) Boolean localOnly,
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      value = "web-search",
-      help = "Set web search for this session (htmlunit/jsoup/disabled/default)"
-    ) String webSearch,
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      value = "web-search-fetcher",
-      help = "Set web search fetcher for this session (htmlunit/jsoup/default)"
-    ) String webSearchFetcher,
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      value = "web-search-fallback",
-      help = "Set fallback web search fetcher (htmlunit/jsoup/none/default)"
-    ) String webSearchFallback,
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      value = "intent",
-      help = "Enable or disable intent routing for this session (enabled/disabled/default)"
-    ) String intent
+    Boolean autoPaste,
+    Boolean localOnly,
+    String webSearch,
+    String webSearchFetcher,
+    String webSearchFallback,
+    String intent
   ) {
     if (autoPaste != null) {
       shellSettings.setAutoPasteEnabled(autoPaste)
@@ -222,7 +207,9 @@ Do not execute any commands.
     )
   }
 
-  @ShellMethod(key = ["/help"], value = "Show available slash commands.")
+  /**
+   * {@code /help}: Show available slash commands.
+   */
   String help() {
     Map<String, String> commands = new LinkedHashMap<>()
     commands.put("/!", "Execute a shell command directly (alias: /sh).")
@@ -365,18 +352,33 @@ Do not execute any commands.
     fallbackConfirmationService
   }
 
-  @ShellMethod(key = ["/chat"], value = "Send a prompt to the coding assistant. Usage: /chat \"your question\" or /chat --prompt your question here")
+  /**
+   * {@code /chat}: Send a prompt to the coding assistant. Usage: /chat "your question" or /chat --prompt your question
+   * here
+   *
+   * @param words {@code --prompt}: The chat prompt
+   * @param session Session id (default: {@code default})
+   * @param persona Persona mode: CODER, ARCHITECT, REVIEWER (default: {@code CODER})
+   * @param model Override model
+   * @param temperature Override craft temperature
+   * @param reviewTemperature Override review temperature
+   * @param maxTokens Override max tokens
+   * @param systemPrompt Additional system prompt
+   * @param autoSave Auto-save code blocks (default: {@code false})
+   * @param showReasoning {@code --show-reasoning}, {@code --with-thinking}: Show reasoning process (default: {@code
+   *   false})
+   */
   String chat(
-    @ShellOption(value = "--prompt", arity = -1, help = "The chat prompt") String[] words,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = "CODER", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt,
-    @ShellOption(defaultValue = "false", help = "Auto-save code blocks") boolean autoSave,
-    @ShellOption(value = ["--show-reasoning", "--with-thinking"], defaultValue = "false", help = "Show reasoning process") boolean showReasoning
+    String[] words,
+    String session,
+    PersonaMode persona,
+    String model,
+    Double temperature,
+    Double reviewTemperature,
+    Integer maxTokens,
+    String systemPrompt,
+    boolean autoSave,
+    boolean showReasoning
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /chat \"your question\" or /chat --prompt your question without quotes"
@@ -450,9 +452,13 @@ Do not execute any commands.
     replyText + reasoningSection + (saveNote ?: "") + (followUp ?: "") + (autoCompactNote ?: "")
   }
 
-  @ShellMethod(key = ["/compact"], value = "Summarize and compact conversation history to free up context space.")
+  /**
+   * {@code /compact}: Summarize and compact conversation history to free up context space.
+   *
+   * @param session Session id (default: {@code default})
+   */
   String compact(
-    @ShellOption(defaultValue = "default", help = "Session id") String session
+    String session
   ) {
     ContextCompactor.CompactionResult result = contextCompactor.compact(session)
     if (!result.compacted) {
@@ -485,18 +491,31 @@ Do not execute any commands.
       "— only ${result.messagesBefore} message(s) recorded.)"
   }
 
-  @ShellMethod(key = ["/implement"], value = "Implement changes by creating and modifying files. Usage: /implement your task here OR /implement --prompt \"your task\"")
+  /**
+   * {@code /implement}: Implement changes by creating and modifying files. Usage: /implement your task here OR
+   * /implement --prompt "your task"
+   *
+   * @param words The implementation task
+   * @param session {@code --session}: Session id (default: {@code default})
+   * @param model {@code --model}: Override model
+   * @param temperature {@code --temperature}: Override craft temperature
+   * @param reviewTemperature {@code --review-temperature}: Override review temperature
+   * @param maxTokens {@code --max-tokens}: Override max tokens
+   * @param autoSave {@code --auto-save}: Auto-save code blocks (default: {@code false})
+   * @param skipValidation {@code --skip-validation}: Skip request validation (default: {@code false})
+   * @param showReasoning {@code --show-reasoning}, {@code --with-thinking}: Show reasoning process (default: {@code
+   *   false})
+   */
   String implement(
-    @ShellOption(arity = -1, help = "The implementation task") String[] words,
-    @ShellOption(value = "--session", defaultValue = "default", help = "Session id") String session,
-    @ShellOption(value = "--model", defaultValue = ShellOption.NULL, help = "Override model") String model,
-    @ShellOption(value = "--temperature", defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
-    @ShellOption(value = "--review-temperature", defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
-    @ShellOption(value = "--max-tokens", defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(value = "--auto-save", defaultValue = "false", help = "Auto-save code blocks") boolean autoSave,
-    @ShellOption(value = "--skip-validation", defaultValue = "false", help = "Skip request validation") boolean skipValidation,
-    @ShellOption(value = ["--show-reasoning", "--with-thinking"], defaultValue = "false",
-      help = "Show reasoning process") boolean showReasoning
+    String[] words,
+    String session,
+    String model,
+    Double temperature,
+    Double reviewTemperature,
+    Integer maxTokens,
+    boolean autoSave,
+    boolean skipValidation,
+    boolean showReasoning
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /implement \"your task\" or /implement --prompt your task without quotes"
@@ -660,17 +679,31 @@ Use the pre-loaded context. DO NOT invent project structure.
     replyText + (toolResults ?: "") + reasoningSection + (saveNote ?: "") + (autoCompactNote ?: "")
   }
 
-  @ShellMethod(key = ["/plan"], value = "Create a step-by-step plan using CLI commands. Usage: /plan \"your question\" or /plan --prompt your question here")
+  /**
+   * {@code /plan}: Create a step-by-step plan using CLI commands. Usage: /plan "your question" or /plan --prompt your
+   * question here
+   *
+   * @param words {@code --prompt}: The planning prompt
+   * @param session Session id (default: {@code default})
+   * @param persona Persona mode: CODER, ARCHITECT, REVIEWER (default: {@code ARCHITECT})
+   * @param model Override model
+   * @param temperature Override craft temperature
+   * @param reviewTemperature Override review temperature
+   * @param maxTokens Override max tokens
+   * @param systemPrompt Additional system prompt
+   * @param showReasoning {@code --show-reasoning}, {@code --with-thinking}: Show reasoning process (default: {@code
+   *   false})
+   */
   String plan(
-    @ShellOption(value = "--prompt", arity = -1, help = "The planning prompt") String[] words,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = "ARCHITECT", help = "Persona mode: CODER, ARCHITECT, REVIEWER") PersonaMode persona,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override craft temperature") Double temperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt") String systemPrompt,
-    @ShellOption(value = ["--show-reasoning", "--with-thinking"], defaultValue = "false", help = "Show reasoning process") boolean showReasoning
+    String[] words,
+    String session,
+    PersonaMode persona,
+    String model,
+    Double temperature,
+    Double reviewTemperature,
+    Integer maxTokens,
+    String systemPrompt,
+    boolean showReasoning
   ) {
     if (words == null || words.length == 0) {
       return "Error: prompt is required.\nUsage: /plan \"your question\" or /plan --prompt your question without quotes"
@@ -745,28 +778,43 @@ Type a command or your next question to proceed.
 """.trim()
   }
 
-  @ShellMethod(key = ["/review"], value = "Ask the assistant to review code.")
+  /**
+   * {@code /review}: Ask the assistant to review code.
+   *
+   * @param code Code to review; optional when providing paths or staged diff (default: empty)
+   * @param prompt Review context or request
+   * @param session Session id (default: {@code default})
+   * @param model Override model
+   * @param reviewTemperature Override review temperature
+   * @param maxTokens Override max tokens
+   * @param systemPrompt Additional system prompt guidance
+   * @param paths File paths to include in the review context
+   * @param staged Include staged git diff (default: {@code false})
+   * @param minSeverity Minimum severity to display/log: LOW, MEDIUM, HIGH (default: {@code LOW})
+   * @param noColor Disable ANSI colors in output (default: {@code false})
+   * @param logReview Persist review summary to log file (default: {@code true})
+   * @param security Focus on security risks in the review (default: {@code false})
+   * @param sast Run optional SAST scan before review (default: {@code false})
+   * @param withThinking {@code --with-thinking}, {@code --reasoning}: Show reasoning process (default: {@code false})
+   * @param pr GitHub PR number to review
+   */
   String review(
-    @ShellOption(defaultValue = "", help = "Code to review; optional when providing paths or staged diff") String code,
-    @ShellOption(help = "Review context or request") String prompt,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override review temperature") Double reviewTemperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Additional system prompt guidance") String systemPrompt,
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      arity = -1,
-      help = "File paths to include in the review context"
-    ) List<String> paths,
-    @ShellOption(defaultValue = "false", help = "Include staged git diff") boolean staged,
-    @ShellOption(defaultValue = "LOW", help = "Minimum severity to display/log: LOW, MEDIUM, HIGH") ReviewSeverity minSeverity,
-    @ShellOption(defaultValue = "false", help = "Disable ANSI colors in output") boolean noColor,
-    @ShellOption(defaultValue = "true", help = "Persist review summary to log file") boolean logReview,
-    @ShellOption(defaultValue = "false", help = "Focus on security risks in the review") boolean security,
-    @ShellOption(defaultValue = "false", help = "Run optional SAST scan before review") boolean sast,
-    @ShellOption(value = ["--with-thinking", "--reasoning"], defaultValue = "false", help = "Show reasoning process") boolean withThinking,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "GitHub PR number to review") Integer pr
+    String code,
+    String prompt,
+    String session,
+    String model,
+    Double reviewTemperature,
+    Integer maxTokens,
+    String systemPrompt,
+    List<String> paths,
+    boolean staged,
+    ReviewSeverity minSeverity,
+    boolean noColor,
+    boolean logReview,
+    boolean security,
+    boolean sast,
+    boolean withThinking,
+    Integer pr
   ) {
     requireNonBlank(prompt, "prompt")
     // Track file paths for context resolution
@@ -915,14 +963,23 @@ Type a command or your next question to proceed.
     output
   }
 
-  @ShellMethod(key = ["/reviewlog"], value = "Show recent reviews from the log with filters.")
+  /**
+   * {@code /reviewlog}: Show recent reviews from the log with filters.
+   *
+   * @param minSeverity Minimum severity to show (default: {@code LOW})
+   * @param pathFilter Path substring filter
+   * @param limit Maximum entries to show (default: {@code 5})
+   * @param page Page number (1-based) (default: {@code 1})
+   * @param since Show entries since ISO timestamp, e.g. 2025-02-12T10:00:00Z
+   * @param noColor Disable ANSI colors (default: {@code false})
+   */
   String reviewLog(
-    @ShellOption(defaultValue = "LOW", help = "Minimum severity to show") ReviewSeverity minSeverity,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Path substring filter") String pathFilter,
-    @ShellOption(defaultValue = "5", help = "Maximum entries to show") int limit,
-    @ShellOption(defaultValue = "1", help = "Page number (1-based)") int page,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Show entries since ISO timestamp, e.g. 2025-02-12T10:00:00Z") String since,
-    @ShellOption(defaultValue = "false", help = "Disable ANSI colors") boolean noColor
+    ReviewSeverity minSeverity,
+    String pathFilter,
+    int limit,
+    int page,
+    String since,
+    boolean noColor
   ) {
     if (!Files.exists(reviewLogPath)) {
       return "No reviews logged yet."
@@ -953,15 +1010,25 @@ Type a command or your next question to proceed.
     }.join("\n\n---\n\n")
   }
 
-  @ShellMethod(key = ["/search"], value = "Run web search through the agent tool.")
+  /**
+   * {@code /search}: Run web search through the agent tool.
+   *
+   * @param query Query to search
+   * @param limit Number of results to show (default: {@code 5})
+   * @param session Session id for caching and configuration (default: {@code default})
+   * @param provider Search provider (default: {@code duckduckgo})
+   * @param timeoutMillis Timeout in milliseconds (default: {@code 15000})
+   * @param headless Run browser in headless mode (default: {@code true})
+   * @param enableWebSearch Override web search enablement (true/false)
+   */
   String search(
-    @ShellOption(help = "Query to search") String query,
-    @ShellOption(defaultValue = "5", help = "Number of results to show") int limit,
-    @ShellOption(defaultValue = "default", help = "Session id for caching and configuration") String session,
-    @ShellOption(defaultValue = "duckduckgo", help = "Search provider") String provider,
-    @ShellOption(defaultValue = "15000", help = "Timeout in milliseconds") long timeoutMillis,
-    @ShellOption(defaultValue = "true", help = "Run browser in headless mode") boolean headless,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override web search enablement (true/false)") Boolean enableWebSearch
+    String query,
+    int limit,
+    String session,
+    String provider,
+    long timeoutMillis,
+    boolean headless,
+    Boolean enableWebSearch
   ) {
     requireNonBlank(query, "query")
     requireMin(limit, 1, "limit")
@@ -1017,19 +1084,27 @@ Type a command or your next question to proceed.
     formatSection("Web Search", "Results: ${results.size()}\n${body}")
   }
 
-  @ShellMethod(
-    key = ["/codesearch"],
-    value = "Search repository files with ripgrep and build context."
-  )
+  /**
+   * {@code /codesearch}: Search repository files with ripgrep and build context.
+   *
+   * @param query Pattern to search for
+   * @param paths Paths or globs to search
+   * @param context Context lines around matches (default: {@code 2})
+   * @param limit Maximum matches to return (default: {@code 20})
+   * @param pack Pack results into a single context blob (default: {@code false})
+   * @param maxChars Max chars when packing (default: {@code 8000})
+   * @param maxTokens Max tokens when packing (0 uses default) (default: {@code 0})
+   * @param caseInsensitive {@code -i}, {@code --case-insensitive}: Case-insensitive search (default: {@code false})
+   */
   String codeSearch(
-    @ShellOption(help = "Pattern to search for") String query,
-    @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "Paths or globs to search") List<String> paths,
-    @ShellOption(defaultValue = "2", help = "Context lines around matches") int context,
-    @ShellOption(defaultValue = "20", help = "Maximum matches to return") int limit,
-    @ShellOption(defaultValue = "false", help = "Pack results into a single context blob") boolean pack,
-    @ShellOption(defaultValue = "8000", help = "Max chars when packing") int maxChars,
-    @ShellOption(defaultValue = "0", help = "Max tokens when packing (0 uses default)") int maxTokens,
-    @ShellOption(value = ["-i", "--case-insensitive"], defaultValue = "false", help = "Case-insensitive search") boolean caseInsensitive
+    String query,
+    List<String> paths,
+    int context,
+    int limit,
+    boolean pack,
+    int maxChars,
+    int maxTokens,
+    boolean caseInsensitive
   ) {
     requireNonBlank(query, "query")
     requireMin(context, 0, "context")
@@ -1064,12 +1139,19 @@ Try:
     formatSection("Code Search", "${queryInfo}\nMatches: ${hits.size()}\n\n${body}")
   }
 
-  @ShellMethod(key = ["/edit"], value = "Open default editor to draft a prompt, optionally send to assistant.")
+  /**
+   * {@code /edit}: Open default editor to draft a prompt, optionally send to assistant.
+   *
+   * @param seed Seed text to prefill in editor (default: empty)
+   * @param send Send the edited text to /chat when done (default: {@code false})
+   * @param session Session id (default: {@code default})
+   * @param persona Persona mode when sending (default: {@code CODER})
+   */
   String edit(
-    @ShellOption(defaultValue = "", help = "Seed text to prefill in editor") String seed,
-    @ShellOption(defaultValue = "false", help = "Send the edited text to /chat when done") boolean send,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = "CODER", help = "Persona mode when sending") PersonaMode persona
+    String seed,
+    boolean send,
+    String session,
+    PersonaMode persona
   ) {
     String content = editorLauncher.edit(seed)
     if (!send) {
@@ -1078,16 +1160,21 @@ Try:
     chat([content] as String[], session, persona, null, null, null, null, null, false, false)
   }
 
-  @ShellMethod(key = ["/paste"], value = "Enter paste mode; end input with a line containing only /end.")
+  /**
+   * {@code /paste}: Enter paste mode; end input with a line containing only /end.
+   *
+   * @param content Prefilled content; if omitted, read from stdin
+   * @param endMarker Line that terminates paste mode (default: {@code /end})
+   * @param send Send pasted content to /chat (default: {@code false})
+   * @param session Session id (default: {@code default})
+   * @param persona Persona for sending (default: {@code CODER})
+   */
   String paste(
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      help = "Prefilled content; if omitted, read from stdin"
-    ) String content,
-    @ShellOption(defaultValue = "/end", help = "Line that terminates paste mode") String endMarker,
-    @ShellOption(defaultValue = "false", help = "Send pasted content to /chat") boolean send,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = "CODER", help = "Persona for sending") PersonaMode persona
+    String content,
+    String endMarker,
+    boolean send,
+    String session,
+    PersonaMode persona
   ) {
     String body = content
     if (body == null) {
@@ -1099,19 +1186,30 @@ Try:
     chat([body] as String[], session, persona, null, null, null, null, null, false, false)
   }
 
-  @ShellMethod(key = ["/status"], value = "Show git status for the current repository.")
+  /**
+   * {@code /status}: Show git status for the current repository.
+   *
+   * @param shortFormat Use short porcelain output (default: {@code false})
+   */
   String gitStatus(
-    @ShellOption(defaultValue = "false", help = "Use short porcelain output") boolean shortFormat
+    boolean shortFormat
   ) {
     formatGitResult("Status", gitTool.status(shortFormat))
   }
 
-  @ShellMethod(key = ["/diff"], value = "Show git diff with optional staging and path filters.")
+  /**
+   * {@code /diff}: Show git diff with optional staging and path filters.
+   *
+   * @param staged Use staged diff (--cached) (default: {@code false})
+   * @param context Number of context lines (default: {@code 3})
+   * @param paths Paths to include
+   * @param stat Show stats instead of full patch (default: {@code false})
+   */
   String gitDiff(
-    @ShellOption(defaultValue = "false", help = "Use staged diff (--cached)") boolean staged,
-    @ShellOption(defaultValue = "3", help = "Number of context lines") int context,
-    @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "Paths to include") List<String> paths,
-    @ShellOption(defaultValue = "false", help = "Show stats instead of full patch") boolean stat
+    boolean staged,
+    int context,
+    List<String> paths,
+    boolean stat
   ) {
     requireMin(context, 0, "context")
     // Track file paths for context resolution
@@ -1122,19 +1220,21 @@ Try:
     formatGitResult("Diff", result)
   }
 
-  @ShellMethod(
-    key = ["/gitapply", "/git-apply"],
-    value = "Apply a patch using git apply (optionally to index) with confirmation."
-  )
+  /**
+   * {@code /gitapply, /git-apply}: Apply a patch using git apply (optionally to index) with confirmation.
+   *
+   * @param patch Patch text; ignored when patch-file is provided
+   * @param patchFile Patch file relative to project root
+   * @param cached Apply to index (--cached) (default: {@code false})
+   * @param check Run git apply --check before writing (default: {@code true})
+   * @param confirm Ask for confirmation before applying (default: {@code true})
+   */
   String gitApply(
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      help = "Patch text; ignored when patch-file is provided"
-    ) String patch,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Patch file relative to project root") String patchFile,
-    @ShellOption(defaultValue = "false", help = "Apply to index (--cached)") boolean cached,
-    @ShellOption(defaultValue = "true", help = "Run git apply --check before writing") boolean check,
-    @ShellOption(defaultValue = "true", help = "Ask for confirmation before applying") boolean confirm
+    String patch,
+    String patchFile,
+    boolean cached,
+    boolean check,
+    boolean confirm
   ) {
     String body = resolvePatchBody(patch, patchFile)
     GitTool.GitResult preview = null
@@ -1165,12 +1265,19 @@ Try:
     formatGitResult("Git apply", applied)
   }
 
-  @ShellMethod(key = ["/stage"], value = "Stage files or specific hunks with confirmation.")
+  /**
+   * {@code /stage}: Stage files or specific hunks with confirmation.
+   *
+   * @param paths File paths to stage
+   * @param file File to stage hunks from
+   * @param hunks Comma-separated hunk numbers to stage
+   * @param confirm Ask for confirmation before staging (default: {@code true})
+   */
   String stage(
-    @ShellOption(defaultValue = ShellOption.NULL, arity = -1, help = "File paths to stage") List<String> paths,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "File to stage hunks from") String file,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Comma-separated hunk numbers to stage") String hunks,
-    @ShellOption(defaultValue = "true", help = "Ask for confirmation before staging") boolean confirm
+    List<String> paths,
+    String file,
+    String hunks,
+    boolean confirm
   ) {
     // Track file paths for context resolution
     if (paths != null && !paths.isEmpty()) {
@@ -1207,18 +1314,25 @@ Try:
     formatGitResult("Stage", result)
   }
 
-  @ShellMethod(
-    key = ["/commit-suggest"],
-    value = "Draft an imperative commit message from staged changes."
-  )
+  /**
+   * {@code /commit-suggest}: Draft an imperative commit message from staged changes.
+   *
+   * @param session Session id for options (default: {@code default})
+   * @param model Override model
+   * @param temperature Override temperature
+   * @param maxTokens Override max tokens
+   * @param hint Optional guidance for the commit message
+   * @param secretScan Scan staged diff for secrets (default: {@code true})
+   * @param allowSecrets Allow commit suggestion even if secrets are detected (default: {@code false})
+   */
   String commitSuggest(
-    @ShellOption(defaultValue = "default", help = "Session id for options") String session,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override model") String model,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override temperature") Double temperature,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Override max tokens") Integer maxTokens,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Optional guidance for the commit message") String hint,
-    @ShellOption(defaultValue = "true", help = "Scan staged diff for secrets") boolean secretScan,
-    @ShellOption(defaultValue = "false", help = "Allow commit suggestion even if secrets are detected") boolean allowSecrets
+    String session,
+    String model,
+    Double temperature,
+    Integer maxTokens,
+    String hint,
+    boolean secretScan,
+    boolean allowSecrets
   ) {
     if (!gitTool.isGitRepo()) {
       return "Not a git repository; cannot suggest a commit message."
@@ -1255,10 +1369,15 @@ Try:
     message?.trim() ?: "No commit message generated."
   }
 
-  @ShellMethod(key = ["/git-push"], value = "Push the current branch with confirmation.")
+  /**
+   * {@code /git-push}: Push the current branch with confirmation.
+   *
+   * @param force Use --force-with-lease (default: {@code false})
+   * @param confirm Ask for confirmation before pushing (default: {@code true})
+   */
   String gitPush(
-    @ShellOption(defaultValue = "false", help = "Use --force-with-lease") boolean force,
-    @ShellOption(defaultValue = "true", help = "Ask for confirmation before pushing") boolean confirm
+    boolean force,
+    boolean confirm
   ) {
     if (!gitTool.isGitRepo()) {
       return "Not a git repository."
@@ -1276,14 +1395,17 @@ Try:
     formatGitResult("Push", result)
   }
 
-  @ShellMethod(
-    key = ["/model"],
-    value = "List available Ollama models and switch the active session model."
-  )
+  /**
+   * {@code /model}: List available Ollama models and switch the active session model.
+   *
+   * @param set Model name to set for the session
+   * @param session Session id (default: {@code default})
+   * @param list List available models (default: {@code false})
+   */
   String model(
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Model name to set for the session") String set,
-    @ShellOption(defaultValue = "default", help = "Session id") String session,
-    @ShellOption(defaultValue = "false", help = "List available models") boolean list
+    String set,
+    String session,
+    boolean list
   ) {
     ModelRegistry.Health health = modelRegistry.checkHealth()
     List<String> available = health.reachable ? modelRegistry.listModels() : List.of()
@@ -1316,10 +1438,9 @@ Try:
     builder.toString().stripTrailing()
   }
 
-  @ShellMethod(
-    key = ["/health"],
-    value = "Check connectivity to Ollama base URL."
-  )
+  /**
+   * {@code /health}: Check connectivity to Ollama base URL.
+   */
   String health() {
     ModelRegistry.Health health = modelRegistry.checkHealth()
     if (health.reachable) {
@@ -1331,16 +1452,21 @@ Try:
   private static final String DEFAULT_BENCHMARK_PROMPT =
     "Write a one-paragraph explanation of how binary search works, then show a short example in Groovy."
 
-  @ShellMethod(
-    key = ["/benchmark"],
-    value = "Measure raw Ollama inference speed (tokens/sec) for a model."
-  )
+  /**
+   * {@code /benchmark}: Measure raw Ollama inference speed (tokens/sec) for a model.
+   *
+   * @param model Model to benchmark (default: active session model)
+   * @param prompt Prompt text to send
+   * @param promptFile Read the prompt from a file instead of --prompt
+   * @param maxTokens Max tokens to generate (default: {@code 200})
+   * @param session Session id (default: {@code default})
+   */
   String benchmark(
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Model to benchmark (default: active session model)") String model,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Prompt text to send") String prompt,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Read the prompt from a file instead of --prompt") String promptFile,
-    @ShellOption(defaultValue = "200", help = "Max tokens to generate") int maxTokens,
-    @ShellOption(defaultValue = "default", help = "Session id") String session
+    String model,
+    String prompt,
+    String promptFile,
+    int maxTokens,
+    String session
   ) {
     if (maxTokens <= 0) {
       return "Max tokens must be positive."
@@ -1395,13 +1521,15 @@ Try:
     String.format(Locale.ROOT, "%.2fs", nanos / 1_000_000_000d)
   }
 
-  @ShellMethod(
-    key = ["/!", "/sh"],
-    value = "Execute a shell command directly with streaming output."
-  )
+  /**
+   * {@code /!, /sh}: Execute a shell command directly with streaming output.
+   *
+   * @param command Command to execute (runs via bash -lc)
+   * @param session Session id for history logging (default: {@code default})
+   */
   String shellCommand(
-    @ShellOption(help = "Command to execute (runs via bash -lc)") String command,
-    @ShellOption(defaultValue = DEFAULT_SESSION, help = "Session id for history logging") String session
+    String command,
+    String session
   ) {
     // Intentionally no confirmation prompt to mirror a direct shell mode; rely on CommandPolicy for guardrails.
     // Streams output live to the console (REPL); returns a concise summary.
@@ -1541,17 +1669,23 @@ Try:
     }
   }
 
-  @ShellMethod(
-    key = ["/run"],
-    value = "Execute a project command with timeout, truncation, and logging."
-  )
+  /**
+   * {@code /run}: Execute a project command with timeout, truncation, and logging.
+   *
+   * @param command Command to execute (runs via bash -lc)
+   * @param timeoutMillis Timeout in milliseconds (default: {@code 60000})
+   * @param maxOutputChars Maximum output characters to display (default: {@code 8000})
+   * @param session Session id for history logging (default: {@code default})
+   * @param confirm Ask for confirmation before running (default: {@code true})
+   * @param agentRequested Set when the request originates from the agent (default: {@code false})
+   */
   String runCommand(
-    @ShellOption(help = "Command to execute (runs via bash -lc)") String command,
-    @ShellOption(defaultValue = "60000", help = "Timeout in milliseconds") long timeoutMillis,
-    @ShellOption(defaultValue = "8000", help = "Maximum output characters to display") int maxOutputChars,
-    @ShellOption(defaultValue = "default", help = "Session id for history logging") String session,
-    @ShellOption(defaultValue = "true", help = "Ask for confirmation before running") boolean confirm,
-    @ShellOption(defaultValue = "false", help = "Set when the request originates from the agent") boolean agentRequested
+    String command,
+    long timeoutMillis,
+    int maxOutputChars,
+    String session,
+    boolean confirm,
+    boolean agentRequested
   ) {
     String trimmed = requireNonBlank(command, "command").trim()
     CommandPolicy.Decision decision = commandPolicy.evaluate(trimmed)
@@ -1581,18 +1715,19 @@ Try:
     formatRunResult(trimmed, result, timeoutMillis, maxOutputChars)
   }
 
-  @ShellMethod(
-    key = ["/apply"],
-    value = "Apply a unified diff patch with optional dry-run, confirmation, and backups."
-  )
+  /**
+   * {@code /apply}: Apply a unified diff patch with optional dry-run, confirmation, and backups.
+   *
+   * @param patch Unified diff patch text; ignored when patch-file is provided
+   * @param patchFile Patch file relative to project root
+   * @param dryRun Preview changes without writing them (default: {@code true})
+   * @param confirm Ask for confirmation before writing changes (default: {@code true})
+   */
   String applyPatch(
-    @ShellOption(
-      defaultValue = ShellOption.NULL,
-      help = "Unified diff patch text; ignored when patch-file is provided"
-    ) String patch,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Patch file relative to project root") String patchFile,
-    @ShellOption(defaultValue = "true", help = "Preview changes without writing them") boolean dryRun,
-    @ShellOption(defaultValue = "true", help = "Ask for confirmation before writing changes") boolean confirm
+    String patch,
+    String patchFile,
+    boolean dryRun,
+    boolean confirm
   ) {
     String body = resolvePatchBody(patch, patchFile)
     String title = dryRun ? "Edit Preview" : "Edit Result"
@@ -1628,16 +1763,21 @@ Try:
     formatSection(title, formatPatchResult(result))
   }
 
-  @ShellMethod(
-    key = ["/applyBlocks"],
-    value = "Apply Search-and-Replace blocks to a file (<<<<SEARCH ... ==== ... >>>>)."
-  )
+  /**
+   * {@code /applyBlocks}: Apply Search-and-Replace blocks to a file ({@code <<<<SEARCH ... ==== ... >>>>}).
+   *
+   * @param filePath Target file path relative to project root
+   * @param blocks Blocks text; ignored when blocks-file is set
+   * @param blocksFile File containing blocks
+   * @param dryRun Preview changes without writing (default: {@code true})
+   * @param confirm Ask for confirmation before writing changes (default: {@code true})
+   */
   String applyBlocks(
-    @ShellOption(help = "Target file path relative to project root") String filePath,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Blocks text; ignored when blocks-file is set") String blocks,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "File containing blocks") String blocksFile,
-    @ShellOption(defaultValue = "true", help = "Preview changes without writing") boolean dryRun,
-    @ShellOption(defaultValue = "true", help = "Ask for confirmation before writing changes") boolean confirm
+    String filePath,
+    String blocks,
+    String blocksFile,
+    boolean dryRun,
+    boolean confirm
   ) {
     requireNonBlank(filePath, "filePath")
     String body = resolvePatchBody(blocks, blocksFile)
@@ -1674,13 +1814,15 @@ Try:
     formatSection(title, formatSearchReplaceResult(result))
   }
 
-  @ShellMethod(
-    key = ["/revert"],
-    value = "Restore a file using the most recent patch backup."
-  )
+  /**
+   * {@code /revert}: Restore a file using the most recent patch backup.
+   *
+   * @param filePath File path relative to project root
+   * @param dryRun Preview the restore without writing (default: {@code false})
+   */
   String revert(
-    @ShellOption(help = "File path relative to project root") String filePath,
-    @ShellOption(defaultValue = "false", help = "Preview the restore without writing") boolean dryRun
+    String filePath,
+    boolean dryRun
   ) {
     revert(filePath, dryRun, true)
   }
@@ -1698,16 +1840,21 @@ Try:
     formatSection("Edit Result", output)
   }
 
-  @ShellMethod(
-    key = ["/context"],
-    value = "Show a snippet for targeted edits by line range or symbol."
-  )
+  /**
+   * {@code /context}: Show a snippet for targeted edits by line range or symbol.
+   *
+   * @param filePath File path relative to project root
+   * @param start Start line (1-based) when using ranges
+   * @param end End line (1-based) when using ranges
+   * @param symbol Symbol to locate instead of line numbers
+   * @param padding Padding lines around the selection (default: {@code 2})
+   */
   String context(
-    @ShellOption(help = "File path relative to project root") String filePath,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Start line (1-based) when using ranges") Integer start,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "End line (1-based) when using ranges") Integer end,
-    @ShellOption(defaultValue = ShellOption.NULL, help = "Symbol to locate instead of line numbers") String symbol,
-    @ShellOption(defaultValue = "2", help = "Padding lines around the selection") int padding
+    String filePath,
+    Integer start,
+    Integer end,
+    String symbol,
+    int padding
   ) {
     requireNonBlank(filePath, "filePath")
     requireMin(padding, 0, "padding")
@@ -1723,14 +1870,17 @@ Try:
     "Context ${ctx.filePath}:${ctx.startLine}-${ctx.endLine} of ${ctx.totalLines}\n${ctx.snippet}"
   }
 
-  @ShellMethod(
-    key = ["/tree"],
-    value = "Show repository tree (respects .gitignore when available)."
-  )
+  /**
+   * {@code /tree}: Show repository tree (respects .gitignore when available).
+   *
+   * @param depth Max depth (-1 for unlimited) (default: {@code 4})
+   * @param dirsOnly Show directories only (default: {@code false})
+   * @param maxEntries Maximum entries to render (0 for unlimited) (default: {@code 2000})
+   */
   String tree(
-    @ShellOption(defaultValue = "4", help = "Max depth (-1 for unlimited)") int depth,
-    @ShellOption(defaultValue = "false", help = "Show directories only") boolean dirsOnly,
-    @ShellOption(defaultValue = "2000", help = "Maximum entries to render (0 for unlimited)") int maxEntries
+    int depth,
+    boolean dirsOnly,
+    int maxEntries
   ) {
     requireMin(depth, -1, "depth")
     requireMin(maxEntries, 0, "maxEntries")

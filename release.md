@@ -52,6 +52,8 @@
   returns. Routed `/revert` only previews the restore.
 
 **Configuration**
+- Removed the unused `embabel-agent-starter-shell` dependency and Spring Shell. The embedded web
+  server remains disabled by default through an explicit `spring.main.web-application-type=none`.
 - `assistant.llm.timeout-millis` raised from `600000` to `720000` (12 minutes).
 - Review context budgets raised: `assistant.llm.review-context-budget` from `30000` to `100000` and
   `assistant.llm.review-pr-context-budget` from `80000` to `250000` characters.

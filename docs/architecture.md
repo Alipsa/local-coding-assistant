@@ -121,7 +121,6 @@ AssistantMessage reply = ai
 #### Maven Dependencies
 From `pom.xml`:
 - `embabel-agent-starter` (0.3.1) - Core agent framework
-- `embabel-agent-starter-shell` (0.3.1) - Shell integration support
 - `embabel-agent-starter-ollama` (0.3.1) - Ollama LLM integration
 - `embabel-agent-test` (0.3.1, test scope) - Testing utilities
 

@@ -75,12 +75,7 @@
       <artifactId>embabel-agent-starter</artifactId>
     </dependency>
 
-    <dependency>
-      <groupId>com.embabel.agent</groupId>
-      <artifactId>embabel-agent-starter-shell</artifactId>
-    </dependency>
-
-    <!-- Direct dependencies of the custom JLine REPL; independent of Spring Shell. -->
+    <!-- Direct dependencies of the custom JLine REPL. -->
     <dependency>
       <groupId>org.jline</groupId>
       <artifactId>jline-reader</artifactId>
