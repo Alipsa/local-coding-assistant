@@ -405,7 +405,7 @@ User: "create a metod in StatsCalculator to calculate fibonacci" (natural langua
 - `src/main/groovy/se/alipsa/lca/intent/IntentCommandRouter.groovy`
 - `src/main/groovy/se/alipsa/lca/intent/IntentRouterParser.groovy`
 
-**Configuration**: `src/main/resources/application.properties:42-44`
+**Configuration**: `src/main/resources/application.properties`
 ```properties
 assistant.intent.enabled=true
 assistant.intent.model=${embabel.models.llms.cheapest}
@@ -442,7 +442,7 @@ User: /review --paths src/main/groovy --security
   │                 │
   │                 └─→ ai.withLlm(LlmOptions
   │                       .withModel("qwen3.8-192k:latest")
-  │                       .withTemperature(0.35))  // Lower for determinism
+  │                       .withTemperature(0.1))  // Lower for determinism
   │                     .withPromptContributor(SECURITY_REVIEWER)
   │                     .generateText(reviewPrompt)
   │                       │
@@ -493,13 +493,13 @@ Different tasks require different levels of creativity vs. determinism:
 | Task Type                   | Temperature | Rationale                                               |
 |-----------------------------|-------------|---------------------------------------------------------|
 | **Code Generation (Craft)** | 0.7         | Higher creativity for varied, innovative solutions      |
-| **Code Review**             | 0.35        | More deterministic for consistent, reliable analysis    |
+| **Code Review**             | 0.1         | More deterministic for consistent, reliable analysis    |
 | **Intent Routing**          | 0.1         | Low variance for reliable command classification        |
 
-**Configuration**: `src/main/resources/application.properties:26-27`
+**Configuration**: `src/main/resources/application.properties`
 ```properties
 assistant.llm.temperature.craft=0.7
-assistant.llm.temperature.review=0.35
+assistant.llm.temperature.review=0.1
 ```
 
 ### Ollama Connection Settings
@@ -773,7 +773,7 @@ Prevents destructive or unauthorized shell commands.
 
 ### Local-Only Mode
 
-**Configuration**: `src/main/resources/application.properties:8`
+**Configuration**: `src/main/resources/application.properties`
 ```properties
 assistant.local-only=true
 ```
@@ -882,7 +882,7 @@ assistant.api.oidc.issuer=https://your-issuer.com
 
 **Temperatures**:
 - Craft (0.7): Creative code generation
-- Review (0.35): Consistent analysis
+- Review (0.1): Consistent analysis
 - Intent (0.1): Low-variance classification
 
 **Rationale**:
