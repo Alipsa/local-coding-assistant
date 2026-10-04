@@ -155,10 +155,12 @@ Replace the Spring Shell block (the "Disable Spring Shell completely" comment,
 contains only `org.springframework.shell.boot.*` classes) with:
 
 ```properties
-# No embedded web server by default. The REST API (docs/rest.md) is opt-in; server-only:
-#   lca --spring.main.web-application-type=servlet --lca.repl.enabled=false
+# No embedded web server by default.
 spring.main.web-application-type=none
 ```
+
+Add a REST enablement comment and example command only after the REST smoke test in Verification
+step 6 passes, under the same condition as the REST documentation in step 6 below.
 
 Check first that `spring.autoconfigure.exclude` has no non-Spring Shell entries. As of `b97009f` it
 has none. No other properties file references `spring.shell.*` (checked with `grep`).
@@ -252,6 +254,9 @@ environment.
    - Stop the server afterwards.
 
 ## Risks and notes
+
+- The deferred production REST smoke test and enablement documentation are tracked in
+  [issue #58](https://github.com/Alipsa/local-coding-assistant/issues/58).
 
 - **The REST API has never run on the current stack** (Spring Boot 4.1, Jackson 3), because the
   starter has blocked the web server since it was added. If the smoke test in Verification step 6
