@@ -6,9 +6,9 @@ The goal is to deliver a CLI experience with editing, review, search, and git-aw
 Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
 
 ## Technology Stack
-- **Language**: Groovy 5.0.3
-- **Framework**: Spring Boot 3.5.7
-- **Agent Runtime**: Embabel 0.3.0+
+- **Language**: Groovy 5.1.3
+- **Framework**: Spring Boot 4.1.x
+- **Agent Runtime**: Embabel 1.5.x
 - **LLM Backend**: Ollama (local models only, no cloud)
 - **Default Model**: `qwen3.6:35b-a3b`
 - **JVM**: Java 21
