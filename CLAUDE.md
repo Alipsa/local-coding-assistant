@@ -7,7 +7,7 @@ This is the Local Coding Assistant (LCA) project - a local-first AI coding assis
 **ALWAYS read and follow the AGENTS.md file in the project root before making any code changes.**
 
 The AGENTS.md file contains essential project-specific rules including:
-- Programming language and version (Groovy 5.0.3)
+- Programming language and version (Groovy 5.1.3)
 - Code style guidelines (2-space indentation, 120 char line length)
 - Required annotations (@CompileStatic)
 - Testing framework (Spock 2.4)

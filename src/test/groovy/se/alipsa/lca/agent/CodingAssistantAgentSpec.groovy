@@ -268,7 +268,7 @@ class CodingAssistantAgentSpec extends Specification {
     // Tool.Companion is ambiguous to Groovy's dynamic dispatch (it collides with the nested
     // Tool$Companion class of the same simple name), so fetch the singleton via reflection instead.
     def companion = Tool.getDeclaredField("Companion").get(null)
-    List<Tool> tools = companion.safelyFromInstance(agent, new com.fasterxml.jackson.databind.ObjectMapper())
+    List<Tool> tools = companion.safelyFromInstance(agent, new tools.jackson.databind.ObjectMapper())
     Set<String> toolNames = tools.collect { it.definition.name }.toSet()
 
     then:

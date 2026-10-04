@@ -12,7 +12,7 @@
 
 # Local Coding Assistant
 
-Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and Spring Shell exposes the commands.
+Local-first coding assistant that runs on your machine and talks only to Ollama-served models. The goal is to deliver a CLI experience with editing, review, search, and git-aware tools—similar to ChatGPT Codex, Gemini CLI, and Claude Code — without any cloud dependency. Embabel provides the agent runtime, Spring Boot hosts it, and a custom JLine-based REPL exposes the commands.
 
 It requires at least 20 GB of free RAM to run comfortably.
 
@@ -151,9 +151,11 @@ assistant.intent.confidence-threshold=0.8
 
 ## Running from source
 1. Install Java 21 and maven 3.9.9 or later
-2. Pull a code-capable model. `./models.sh` will install the appropriate models.
+2. Start Ollama and pull the models with `./models.sh`, including `nomic-embed-text:latest`.
+   Embabel validates embedding model roles at startup, so this model is required even when
+   memory is disabled. This requirement also applies to earlier Embabel versions.
 3. Start the interactive shell: `./run.sh`. The script builds the jar with Maven and launches it
-   with Spring Shell and Embabel agents loaded.
+   with the JLine REPL and Embabel agents loaded.
 
 ## Desktop GUI (lcaGui)
 A Swing-based desktop UI is available as an alternative to the interactive shell — see

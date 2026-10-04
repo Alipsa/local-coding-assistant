@@ -25,6 +25,8 @@ Tip: Commands can be run with or without the leading `/`.
 
 ## Create a new project from scratch
 You can build a tiny Groovy project in minutes and use the assistant for guidance.
+Install the [lca launcher](../README.md#launcher-script-lca) on your `PATH` first; it starts
+the assistant with the current project directory as its workspace.
 
 ### Option A: Copy the sample project
 1. Copy the sample:
@@ -32,15 +34,16 @@ You can build a tiny Groovy project in minutes and use the assistant for guidanc
 2. Update `../my-sample-project/pom.xml` groupId/artifactId as needed.
 3. Start the assistant from the new project root:
    `cd ../my-sample-project`
-   `../local-coding-assistant/scripts/shell.sh`
+   `lca`
 
 ### Option B: Create the project manually
 1. Create the folder structure:
    `mkdir -p my-project/src/main/groovy/com/example`
    `mkdir -p my-project/src/test/groovy/com/example`
+   `cd my-project`
 2. Add an `AGENTS.md` with project rules, for example:
    ```
-   - Use Groovy 5.0.3 and @CompileStatic when possible.
+   - Use Groovy 5.1.3 and @CompileStatic when possible.
    - Use 2-space indentation and 120-character max line length.
    - Write Spock 2.4 tests for new functionality.
    ```
@@ -49,7 +52,7 @@ You can build a tiny Groovy project in minutes and use the assistant for guidanc
 5. Run tests:
    `mvn test`
 6. Start the assistant from the project root:
-   `../local-coding-assistant/scripts/shell.sh`
+   `lca`
 
 The assistant automatically picks up `AGENTS.md` and includes it in system prompts.
 

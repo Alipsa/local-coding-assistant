@@ -69,10 +69,19 @@ All properties are under the `lca.memory.*` prefix.
 
 ## Setup
 
-Requires the `nomic-embed-text` embedding model to be pulled locally:
+Ollama must be running and the `nomic-embed-text` embedding model
+must be pulled locally before starting the CLI, batch mode or GUI:
 
 ```
 ollama pull nomic-embed-text:latest
 ```
 
-`models.sh` does this automatically as part of the standard local model setup.
+`lca` (including `lca gui`/`lcaGui`) and `models.sh` pull this model automatically
+as part of the standard local model setup.
+
+Embabel validates the configured embedding model roles when the application starts.
+With the default configuration, a missing model prevents startup even when
+`lca.memory.enabled=false`; that switch disables memory operations only.
+
+This startup requirement also applies to earlier Embabel versions; the launchers now
+install the required model as part of setup.

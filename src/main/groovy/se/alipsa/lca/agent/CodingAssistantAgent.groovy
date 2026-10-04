@@ -14,10 +14,10 @@ import com.embabel.agent.prompt.persona.RoleGoalBackstory
 import com.embabel.agent.prompt.persona.RoleGoalBackstorySpec
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.core.thinking.ThinkingResponse
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import com.embabel.common.core.types.Timestamped
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import tools.jackson.databind.annotation.JsonDeserialize
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.springframework.beans.factory.annotation.Value

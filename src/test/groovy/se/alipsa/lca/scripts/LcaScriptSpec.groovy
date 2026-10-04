@@ -85,7 +85,7 @@ class LcaScriptSpec extends Specification {
   }
 
   @Unroll
-  def "run ensures required models before starting the programme (#scriptName)"() {
+  def "#arguments ensures required models (#scriptName)"() {
     given:
     assumeScriptAvailable(scriptName)
     Path scriptPath = projectRoot().resolve("src/main/bin/${scriptName}")
@@ -105,7 +105,7 @@ class LcaScriptSpec extends Specification {
     when:
     def result = runScript(
       scriptPath,
-      [],
+      arguments,
       [
         HOME: homeDir.toString(),
         PATH: binDir.toString() + File.pathSeparator + System.getenv("PATH"),
@@ -120,27 +120,33 @@ class LcaScriptSpec extends Specification {
     log.contains("pull qwen3.8:27b")
     log.contains("pull gpt-oss:20b")
     log.contains("pull nomic-embed-text:latest")
-    log.contains("create qwen3.8-192k")
-    log.contains("create gpt-oss-64k")
-    log.contains("create qwen3.8-review")
-    Files.exists(javaLog)
-    def javaEnv = Files.readString(javaLog)
-    javaEnv.contains("LCA_CHAT_MODEL=qwen3.8-192k:latest")
-    javaEnv.contains("LCA_FALLBACK_MODEL=gpt-oss-64k:latest")
-    javaEnv.contains("LCA_EMBEDDING_MODEL=nomic-embed-text:latest")
-    javaEnv.contains("LCA_REVIEW_MODEL=qwen3.8-review:latest")
-    javaEnv.contains("LCA_DEFAULT_CONTEXT_WINDOW=131072")
-    // num_batch/num_gpu are performance tuning for the qwen3.8-based models (chat +
-    // review), not the gpt-oss fallback.
-    modelfileSectionFor(log, "qwen3.8-192k").contains("PARAMETER num_batch 2048")
-    modelfileSectionFor(log, "qwen3.8-192k").contains("PARAMETER num_gpu 99")
-    modelfileSectionFor(log, "qwen3.8-review").contains("PARAMETER num_batch 2048")
-    modelfileSectionFor(log, "qwen3.8-review").contains("PARAMETER num_gpu 99")
-    !modelfileSectionFor(log, "gpt-oss-64k").contains("PARAMETER num_batch")
-    !modelfileSectionFor(log, "gpt-oss-64k").contains("PARAMETER num_gpu")
+    if (arguments != ['update']) {
+      assert log.contains("create qwen3.8-192k")
+      assert log.contains("create gpt-oss-64k")
+      assert log.contains("create qwen3.8-review")
+      assert Files.exists(javaLog)
+      def javaEnv = Files.readString(javaLog)
+      assert javaEnv.contains("LCA_CHAT_MODEL=qwen3.8-192k:latest")
+      assert javaEnv.contains("LCA_FALLBACK_MODEL=gpt-oss-64k:latest")
+      assert javaEnv.contains("LCA_EMBEDDING_MODEL=nomic-embed-text:latest")
+      assert javaEnv.contains("LCA_REVIEW_MODEL=qwen3.8-review:latest")
+      assert javaEnv.contains("LCA_DEFAULT_CONTEXT_WINDOW=131072")
+      // num_batch/num_gpu are performance tuning for the qwen3.8-based models (chat +
+      // review), not the gpt-oss fallback.
+      assert modelfileSectionFor(log, "qwen3.8-192k").contains("PARAMETER num_batch 2048")
+      assert modelfileSectionFor(log, "qwen3.8-192k").contains("PARAMETER num_gpu 99")
+      assert modelfileSectionFor(log, "qwen3.8-review").contains("PARAMETER num_batch 2048")
+      assert modelfileSectionFor(log, "qwen3.8-review").contains("PARAMETER num_gpu 99")
+      assert !modelfileSectionFor(log, "gpt-oss-64k").contains("PARAMETER num_batch")
+      assert !modelfileSectionFor(log, "gpt-oss-64k").contains("PARAMETER num_gpu")
+    }
 
     where:
-    scriptName << scriptNames()
+    scriptName | arguments
+    'lca'      | []
+    'lca'      | ['gui']
+    'lcaGui'   | []
+    'lca'      | ['update']
   }
 
   def "run rebuilds a custom model whose base model changed, even though it already exists"() {

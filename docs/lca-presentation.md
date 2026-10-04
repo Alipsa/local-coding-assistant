@@ -85,9 +85,9 @@ A **local-first coding assistant** that provides:
 ## Technology Stack
 
 ### Core Framework
-- **Java 21** + **Groovy 5.0.3**
-- **Spring Boot 3.5.7**
-- **Embabel 0.3.1** (Agent Framework)
+- **Java 21** + **Groovy 5.1.3**
+- **Spring Boot 4.1.1**
+- **Embabel 1.5.2** (Agent Framework)
 - **JLine 3.x** (Custom REPL)
 
 ### AI & Models
