@@ -317,12 +317,12 @@ detect_model_backend() {
   if python3 -c "
 import json, sys
 try:
-    with open('$model_dir/config.json') as f:
+    with open(sys.argv[1]) as f:
         cfg = json.load(f)
 except Exception:
     sys.exit(1)
 sys.exit(0 if 'vision_config' in cfg else 1)
-" 2>/dev/null; then
+" "$model_dir/config.json" 2>/dev/null; then
     echo "mlx_vlm"
   else
     echo "mlx_lm"

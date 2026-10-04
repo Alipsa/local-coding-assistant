@@ -243,6 +243,9 @@ class IntentCommandMapper {
   private static String buildGenericCommand(String name, Map<String, Object> args) {
     StringBuilder builder = new StringBuilder(name)
     appendRemainingOptions(builder, args, Set.of())
+    if (name == '/revert') {
+      builder.append(' --dry-run true')
+    }
     builder.toString()
   }
 

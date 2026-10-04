@@ -305,6 +305,45 @@ class LcaScriptSpec extends Specification {
     modelfileSectionFor(Files.readString(ollamaLog), "qwen3.8-review").contains("PARAMETER num_gpu 99")
   }
 
+  def "failed models.sh rebuild preserves the existing model and state and retries"() {
+    given:
+    Path homeDir = tempDir.resolve('home-failed-rebuild')
+    Path binDir = tempDir.resolve('bin-failed-rebuild')
+    Files.createDirectories(binDir)
+    Path ollamaLog = tempDir.resolve('failed-rebuild.log')
+    Path ollamaState = tempDir.resolve('failed-rebuild-state.txt')
+    Files.writeString(ollamaState, 'qwen3.8:27b\tsame-base-id\nqwen3.8-192k:latest\texisting-custom-id\n')
+    Path modelStateDir = homeDir.resolve('.lca/model_state')
+    Files.createDirectories(modelStateDir)
+    Path signature = modelStateDir.resolve('qwen3.8-192k.id')
+    Files.writeString(signature, 'old-signature')
+    writeStubOllama(binDir, ollamaState)
+    Map<String, String> env = [
+      HOME: homeDir.toString(), PATH: binDir.toString() + File.pathSeparator + System.getenv('PATH'),
+      LCA_OLLAMA_LOG: ollamaLog.toString(), LCA_TEST_CREATE_FAILURE: '1'
+    ]
+
+    when:
+    def failed = runScript(projectRoot().resolve('models.sh'), [], env)
+
+    then:
+    failed.exitCode != 0
+    failed.output.contains('could not create qwen3.8-192k')
+    !failed.output.contains('created successfully')
+    Files.readString(signature) == 'old-signature'
+    Files.readString(ollamaState).contains('qwen3.8-192k:latest\texisting-custom-id')
+    !Files.readString(ollamaLog).contains('rm qwen3.8-192k')
+
+    when:
+    env.remove('LCA_TEST_CREATE_FAILURE')
+    def retried = runScript(projectRoot().resolve('models.sh'), [], env)
+
+    then:
+    retried.exitCode == 0
+    Files.readString(signature).startsWith('same-base-id|196608|')
+    Files.readString(ollamaLog).readLines().count { it.contains('create qwen3.8-192k ') } == 2
+  }
+
   private static String modelfileSectionFor(String log, String modelName) {
     String startMarker = "--- modelfile:${modelName} ---"
     String endMarker = "--- end modelfile:${modelName} ---"
@@ -425,6 +464,9 @@ case "\$command" in
         cat "\$modelfile_path" >> "\$LCA_OLLAMA_LOG"
         echo "--- end modelfile:\$name ---" >> "\$LCA_OLLAMA_LOG"
       fi
+    fi
+    if [ "\${LCA_TEST_CREATE_FAILURE:-0}" = "1" ]; then
+      exit 1
     fi
     printf '%s:latest\\tid-%s-%s\\n' "\$name" "\$\$" "\$RANDOM" >> "\$STATE_FILE"
     ;;

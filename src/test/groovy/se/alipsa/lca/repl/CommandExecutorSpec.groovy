@@ -44,8 +44,8 @@ class CommandExecutorSpec extends Specification {
     executor.executeRouted(command)
 
     then:
-    // Revert defaults to a real restore, with confirmation required.
-    1 * shellCommands.revert('src/Foo.groovy', false, true) >> 'reverted'
+    // Routed reverts always preview, since revert has no interactive confirmation dialog.
+    1 * shellCommands.revert('src/Foo.groovy', true, true) >> 'reverted'
   }
 
   def "routed commands retain safe defaults for force preview checks and secrets"() {
@@ -60,6 +60,38 @@ class CommandExecutorSpec extends Specification {
     1 * shellCommands.applyPatch('', 'x', true, true) >> 'applied'
     1 * shellCommands.gitApply(null, 'x', false, true, true) >> 'checked'
     1 * shellCommands.commitSuggest('default', null, null, null, null, true, false) >> 'suggested'
+  }
+
+  @Unroll
+  def "invalid confirmation #value falls back to confirmation required"() {
+    when:
+    executor.execute('/run --command "ls" --confirm ' + value)
+
+    then:
+    1 * shellCommands.runCommand('ls', 60000L, 8000, 'default', true, false) >> 'ran'
+
+    where:
+    value << ['tru', 'garbage', '2']
+  }
+
+  @Unroll
+  def "explicit false confirmation #value remains supported"() {
+    when:
+    executor.execute('/run --command "ls" --confirm ' + value)
+
+    then:
+    1 * shellCommands.runCommand('ls', 60000L, 8000, 'default', false, false) >> 'ran'
+
+    where:
+    value << ['false', 'no', '0']
+  }
+
+  def "routed revert previews even when flags are injected through values"() {
+    when:
+    executor.executeRouted('/revert --file-path "src/Foo.groovy" --dry--run false --confirm- false')
+
+    then:
+    1 * shellCommands.revert('src/Foo.groovy', true, true) >> 'preview'
   }
 
   def "execute matches a slash command whose argument text spans multiple lines"() {

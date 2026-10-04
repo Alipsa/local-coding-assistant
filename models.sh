@@ -133,7 +133,6 @@ createCustomModel() {
 
     if [ "$custom_exists" = "yes" ]; then
       echo "Rebuilding $custom_name (base model, context, or parameters changed; or --force)..."
-      ollama rm "$custom_name"
     else
       echo "$custom_name not found. Creating..."
     fi
@@ -156,7 +155,11 @@ createCustomModel() {
     } > "$modelfile"
 
     # Create the custom model
-    ollama create "$custom_name" -f "$modelfile"
+    if ! ollama create "$custom_name" -f "$modelfile"; then
+      rm -f "$modelfile"
+      echo "Error: could not create $custom_name; existing model and state retained." >&2
+      exit 1
+    fi
 
     # Clean up
     rm "$modelfile"

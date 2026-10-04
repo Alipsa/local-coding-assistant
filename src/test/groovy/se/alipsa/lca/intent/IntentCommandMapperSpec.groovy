@@ -35,7 +35,7 @@ class IntentCommandMapperSpec extends Specification {
       0.9d, 'revert')
 
     expect:
-    new IntentCommandMapper(null).map('Revert file', result) == ['/revert --file-path "src/Foo.groovy"']
+    new IntentCommandMapper(null).map('Revert file', result) == ['/revert --file-path "src/Foo.groovy" --dry-run true']
   }
 
 

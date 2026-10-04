@@ -85,6 +85,9 @@ class CommandExecutor {
       ['confirm', 'dryRun', 'check', 'force', 'allowSecrets', 'secretScan'].each { String key ->
         parsed.remove(key)
       }
+      if (command.equalsIgnoreCase('revert')) {
+        parsed.dryRun = true
+      }
     }
 
     switch (command.toLowerCase()) {
@@ -619,7 +622,9 @@ class CommandExecutor {
     if (value == null) return null
     if (value instanceof Boolean) return (Boolean) value
     String str = value.toString().toLowerCase()
-    return str == "true" || str == "yes" || str == "1"
+    if (str in ['true', 'yes', '1']) return true
+    if (str in ['false', 'no', '0']) return false
+    return null
   }
 
   private Integer parseInt(Object value) {

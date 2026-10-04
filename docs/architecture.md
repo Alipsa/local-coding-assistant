@@ -139,18 +139,19 @@ LCA exclusively uses Ollama for all AI capabilities, ensuring complete privacy a
 
 | Model             | Purpose                          | Temperature                 | Configuration                  |
 |-------------------|----------------------------------|-----------------------------|--------------------------------|
-| `qwen3.6:35b-a3b` | Primary code generation & review | 0.7 (craft) / 0.35 (review) | `embabel.models.default-llm`   |
-| `gpt-oss:20b`     | Fallback/cheaper model           | 0.35                        | `embabel.models.llms.cheapest` |
+| `qwen3.8-192k:latest` | Primary code generation | 0.7 (craft) / 0.1 (review) | `embabel.models.default-llm`   |
+| `qwen3.8-review:latest` | Code review | 0.1 | `assistant.llm.review-model` |
+| `gpt-oss-64k:latest`     | Fallback/cheaper model           | 0.35                        | `embabel.models.llms.cheapest` |
 | `tinyllama`       | Intent routing (NLU)             | 0.0                         | `assistant.intent.model`       |
 
 #### Integration Architecture
 
-**Configuration**: `src/main/resources/application.properties:2`
+**Model configuration**: `src/main/bin/lca` (canonical recipes); application properties consume `LCA_*` exports.
 ```properties
 spring.ai.ollama.base-url=http://localhost:11434
-embabel.models.default-llm=qwen3.6:35b-a3b
-embabel.models.llms.best=qwen3.6:35b-a3b
-embabel.models.llms.cheapest=gpt-oss:20b
+embabel.models.default-llm=${LCA_CHAT_MODEL:qwen3.8-192k:latest}
+embabel.models.llms.best=${embabel.models.default-llm}
+embabel.models.llms.cheapest=${LCA_FALLBACK_MODEL:gpt-oss-64k:latest}
 ```
 
 **Model Discovery**:
@@ -178,8 +179,8 @@ Response streamed/returned as JSON
 From `ModelRegistry.resolveModel()`:
 1. User-specified model (via `--model` flag)
 2. Session-configured model
-3. Default model (`qwen3.6:35b-a3b`)
-4. Fallback model (`gpt-oss:20b`)
+3. Default model (`qwen3.8-192k:latest`)
+4. Fallback model (`gpt-oss-64k:latest`)
 5. Any available model from `modelRegistry.listModels()`
 
 ---
@@ -321,7 +322,7 @@ User: /chat --prompt "explain this function"
   │     │     └─→ HTTP GET http://localhost:11434/api/tags
   │     │
   │     ├─→ resolveModel(model)
-  │     │     └─→ ModelRegistry: qwen3.6:35b-a3b or fallback
+  │     │     └─→ ModelRegistry: qwen3.8-192k:latest or fallback
   │     │
   │     ├─→ sessionState.update(model, temperature)
   │     │
@@ -340,7 +341,7 @@ User: /chat --prompt "explain this function"
   │                             │
   │                             └─→ http://localhost:11434/api/generate
   │                                   {
-  │                                     "model": "qwen3.6:35b-a3b",
+  │                                     "model": "qwen3.8-192k:latest",
   │                                     "prompt": "[combined prompt]",
   │                                     "temperature": 0.7
   │                                   }
@@ -439,7 +440,7 @@ User: /review --paths src/main/groovy --security
   │                 │     - Expected format (Findings + Tests)
   │                 │
   │                 └─→ ai.withLlm(LlmOptions
-  │                       .withModel("qwen3.6:35b-a3b")
+  │                       .withModel("qwen3.8-192k:latest")
   │                       .withTemperature(0.35))  // Lower for determinism
   │                     .withPromptContributor(SECURITY_REVIEWER)
   │                     .generateText(reviewPrompt)
@@ -473,14 +474,15 @@ User: /review --paths src/main/groovy --security
 
 ### Model Configuration
 
-**Primary Models**: `src/main/resources/application.properties:12-17`
+**Primary Models**: `src/main/bin/lca` defines names and recipes shared with `models.sh`.
+The launcher exports model values consumed by `src/main/resources/application.properties`.
 ```properties
-embabel.models.default-llm=qwen3.6:35b-a3b
-embabel.models.llms.best=qwen3.6:35b-a3b
-embabel.models.llms.cheapest=gpt-oss:20b
+embabel.models.default-llm=${LCA_CHAT_MODEL:qwen3.8-192k:latest}
+embabel.models.llms.best=${embabel.models.default-llm}
+embabel.models.llms.cheapest=${LCA_FALLBACK_MODEL:gpt-oss-64k:latest}
 
-assistant.llm.model=${embabel.models.default-llm:qwen3.6:35b-a3b}
-assistant.llm.fallback-model=${embabel.models.llms.cheapest:gpt-oss:20b}
+assistant.llm.model=${embabel.models.default-llm:qwen3.8-192k:latest}
+assistant.llm.fallback-model=${embabel.models.llms.cheapest:gpt-oss-64k:latest}
 ```
 
 ### Temperature Strategy
@@ -922,11 +924,9 @@ assistant.api.oidc.issuer=https://your-issuer.com
 ### Prerequisites
 1. **Java 21+**: `java -version`
 2. **Ollama**: Install from [ollama.ai](https://ollama.ai)
-3. **Models**: Pull required models:
+3. **Models**: Start Ollama, then install the base and custom models:
    ```bash
-   ollama pull qwen3.6:35b-a3b
-   ollama pull gpt-oss:20b
-   ollama pull tinyllama
+   ./models.sh
    ```
 
 ### Building
@@ -946,10 +946,12 @@ java -jar target/local-coding-assistant-1.1.1.jar \
 ```
 
 ### Configuration
-Edit `src/main/resources/application.properties` or provide environment variables:
+Edit model names, contexts and recipes in `src/main/bin/lca`, then run `lca update` or `./models.sh`.
+For source/IDE runs, supply matching model environment variables. Configure the Ollama endpoint
+in `src/main/resources/application.properties` or via the environment:
 ```bash
 export SPRING_AI_OLLAMA_BASE_URL=http://localhost:11434
-export EMBABEL_MODELS_DEFAULT_LLM=qwen3.6:35b-a3b
+export LCA_CHAT_MODEL=qwen3.8-192k:latest
 ```
 
 ---

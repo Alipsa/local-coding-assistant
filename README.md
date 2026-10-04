@@ -23,7 +23,7 @@ It requires at least 20 GB of free RAM to run comfortably.
 - Embabel agents for code crafting, review, planning and git operations with safety guardrails.
 - Spring Boot entry point with Embabel agents enabled
   (`src/main/java/se/alipsa/lca/LocalCodingAssistantApplication.java`).
-- Ollama-first configuration using `qwen3.6:35b-a3b` (see `src/main/resources/application.properties`).
+- Ollama-first configuration using `qwen3.8-192k:latest`, built from `qwen3.8:27b` (see `src/main/bin/lca`).
 - Helper script for launching the shell (`lca`) and installing the models locally.
 - Documentation stub for Ollama setup (`docs/llm-docs.md`).
 
@@ -58,8 +58,11 @@ See [Quickstart](docs/quickstart.md) for more details.
 Use the step-by-step walkthrough in `docs/tutorial.md`, including batch mode examples in `docs/examples/`.
 
 ## Configuration
-- Update `spring.ai.ollama.base-url` and `embabel.models.default-llm` in
-  `src/main/resources/application.properties` to point at your Ollama host and preferred model.
+- Change model names, contexts and recipes in `src/main/bin/lca`, the canonical model configuration
+  shared with `models.sh`. Re-run `lca update` or `./models.sh` to build the configured models.
+- Set `spring.ai.ollama.base-url` in `src/main/resources/application.properties` for your Ollama host.
+  The launcher exports `LCA_CHAT_MODEL`, `LCA_FALLBACK_MODEL`, `LCA_REVIEW_MODEL` and `LCA_EMBEDDING_MODEL`;
+  source runs can set these environment variables explicitly (properties contain the default fallbacks).
 - Tune agent behavior via:
   - `assistant.llm.model`, `assistant.llm.temperature.craft`, `assistant.llm.temperature.review`
   - `assistant.llm.max-tokens`, `assistant.system-prompt`
@@ -133,6 +136,8 @@ assistant.intent.confidence-threshold=0.8
 - `/git-push`: Push with confirmation. Options: `--force`.
 - `/model`: List or set models. Options: `--list`, `--set`, `--session`.
 - `/health`: Check Ollama connectivity.
+- `/benchmark`: Measure raw Ollama tokens per second. Options: `--model`, `--prompt`,
+  `--prompt-file`, `--max-tokens` (default `200`), `--session`.
 - `/!`: Execute a shell command directly (alias: `/sh`). Output streams live and a summary is added to
   the session context.
 - `/run`: Execute a command with timeout and truncation. Options: `--timeout-millis`, `--max-output-chars`,

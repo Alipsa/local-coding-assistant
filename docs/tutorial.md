@@ -5,12 +5,13 @@ for the Local Coding Assistant.
 
 ## Prerequisites
 - Java 21 installed and available on your PATH.
-- Ollama running locally with `qwen3.6:35b-a3b` pulled (run `./models.sh` if needed).
+- Ollama running locally with the Qwen3.8 models installed via `./models.sh`.
+  Model names and recipes are configured in `src/main/bin/lca`.
 - This repository cloned locally.
 
 ## Basic usage
 1. Start the shell:
-   `./scripts/shell.sh`
+   `./run.sh`
 2. Verify the model and connectivity:
    `/health`
    `/model --list`
