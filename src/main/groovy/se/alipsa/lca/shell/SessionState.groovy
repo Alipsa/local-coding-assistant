@@ -48,7 +48,7 @@ class SessionState {
   SessionState(
     @Value('${assistant.llm.model}') String defaultModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double defaultCraftTemperature,
-    @Value('${assistant.llm.temperature.review:0.35}') double defaultReviewTemperature,
+    @Value('${assistant.llm.temperature.review:0.1}') double defaultReviewTemperature,
     @Value('${assistant.llm.max-tokens:0}') Integer defaultMaxTokens,
     @Value('${assistant.system-prompt:}') String defaultSystemPrompt,
     @Value('${assistant.web-search.enabled:true}') boolean defaultWebSearchEnabled,

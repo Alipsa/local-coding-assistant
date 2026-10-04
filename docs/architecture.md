@@ -141,7 +141,7 @@ LCA exclusively uses Ollama for all AI capabilities, ensuring complete privacy a
 |-------------------|----------------------------------|-----------------------------|--------------------------------|
 | `qwen3.8-192k:latest` | Primary code generation | 0.7 (craft) / 0.1 (review) | `embabel.models.default-llm`   |
 | `qwen3.8-review:latest` | Code review | 0.1 | `assistant.llm.review-model` |
-| `gpt-oss-64k:latest`     | Fallback/cheaper model           | 0.35                        | `embabel.models.llms.cheapest` |
+| `gpt-oss-64k:latest`     | Fallback/cheaper model           | per task                        | `embabel.models.llms.cheapest` |
 | `gpt-oss-64k:latest` | Intent routing (NLU)             | 0.1                         | `assistant.intent.model`       |
 
 #### Integration Architecture
@@ -441,7 +441,7 @@ User: /review --paths src/main/groovy --security
   │                 │     - Expected format (Findings + Tests)
   │                 │
   │                 └─→ ai.withLlm(LlmOptions
-  │                       .withModel("qwen3.8-192k:latest")
+  │                       .withModel("qwen3.8-review:latest")
   │                       .withTemperature(0.1))  // Lower for determinism
   │                     .withPromptContributor(SECURITY_REVIEWER)
   │                     .generateText(reviewPrompt)

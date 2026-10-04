@@ -179,7 +179,7 @@ ${reviewer.getRole()}, ${getTimestamp().atZone(ZoneId.systemDefault())
     @Value('${reviewWordCount:150}') int reviewWordCount,
     @Value('${assistant.llm.model}') String llmModel,
     @Value('${assistant.llm.temperature.craft:0.7}') double craftTemperature,
-    @Value('${assistant.llm.temperature.review:0.35}') double reviewTemperature,
+    @Value('${assistant.llm.temperature.review:0.1}') double reviewTemperature,
     @Value('${assistant.web-search.enabled:true}') boolean webSearchEnabledDefault,
     @Value('${assistant.llm.timeout-millis:300000}') long timeoutMillis,
     FileEditingTool fileEditingAgent,
