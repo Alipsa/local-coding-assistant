@@ -257,11 +257,10 @@ environment.
 
 - The deferred production REST smoke test and enablement documentation are tracked in
   [issue #58](https://github.com/Alipsa/local-coding-assistant/issues/58).
-
 - **The REST API has never run on the current stack** (Spring Boot 4.1, Jackson 3), because the
   starter has blocked the web server since it was added. If the smoke test in Verification step 6
   fails, the removal can still go ahead: the default (`none`) matches today's behaviour. In that case
-  record the failure as a separate issue and leave out the REST documentation in step 6.
+  record the failure in #58 and leave out the REST documentation in step 6.
 - **Spring Boot 4.1 ignores exclusions of classes not on the classpath.** This is from Spring Boot's
   `AutoConfigurationImportSelector` behaviour and wasn't tested here. It means leaving the old exclude
   list in place would not break start-up, but step 4 removes it anyway.
