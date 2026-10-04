@@ -1,4 +1,4 @@
-# Plan: move LCA's own code off Jackson 2
+# Plan: migrate LCA's own code from Jackson 2 to Jackson 3
 
 ## Summary
 
@@ -7,25 +7,22 @@ Jackson 2 cannot be removed from the classpath entirely. Embabel's `embabel-comm
 `jackson-annotations`, `jackson-dataformat-yaml` and `jackson-datatype-jdk8` (2.x) at compile scope.
 
 LCA's own code can still stop using Jackson 2, which lets us drop the direct Jackson 2 dependencies.
-The work splits two ways:
+All five classes move to **Jackson 3** (`tools.jackson.*`). Jackson 3 can't be avoided anyway:
 
-- **`groovy-json`** (already a direct dependency, used by `IntentRouterParser`, `ModelRegistry`,
-  `SastTool`, `GitTool` and `IntentRoutingDebugFormatter`) for simple `Map` read/write in
-  `McpCommands` and `McpConfigLoader`.
-- **Jackson 3** (`tools.jackson.*`) for `ToolCallParser` and the two memory stores. Jackson 3 can't
-  be avoided anyway:
-  - Embabel 1.5.2 uses it throughout, including for structured output (`JacksonOutputConverter`).
-  - `CodingAssistantAgent` already imports `tools.jackson.databind.ObjectMapper` and
-    `@JsonDeserialize`.
+- Embabel 1.5.2 uses it throughout, including for structured output (`JacksonOutputConverter`).
+- `CodingAssistantAgent` already imports `tools.jackson.databind.ObjectMapper` and
+  `@JsonDeserialize`.
 
+`groovy-json` (already a direct dependency) was considered and rejected, even for the simple `Map`
+parsing in `McpCommands` and `McpConfigLoader`; see [Why not `groovy-json`](#why-not-groovy-json).
 `groovy-xml` is not on the classpath and is not relevant.
 
 ## Current Jackson 2 usage and target
 
 | File | Jackson 2 API used | Target |
 |---|---|---|
-| `src/main/groovy/se/alipsa/lca/shell/McpCommands.groovy` | `ObjectMapper` | `groovy-json` |
-| `src/main/groovy/se/alipsa/lca/mcp/McpConfigLoader.groovy` | `ObjectMapper` | `groovy-json` |
+| `src/main/groovy/se/alipsa/lca/shell/McpCommands.groovy` | `ObjectMapper` | Jackson 3, trailing tokens tolerated |
+| `src/main/groovy/se/alipsa/lca/mcp/McpConfigLoader.groovy` | `ObjectMapper` | Jackson 3, trailing tokens tolerated |
 | `src/main/groovy/se/alipsa/lca/tools/ToolCallParser.groovy` | `ObjectMapper`, `JsonParser.Feature` (lenient parsing) | Jackson 3 |
 | `src/main/groovy/se/alipsa/lca/memory/MemoryMetadataStore.groovy` | `ObjectMapper`, `MapType`, `JavaTimeModule` | Jackson 3 |
 | `src/main/groovy/se/alipsa/lca/memory/SimpleCosineMemoryIndex.groovy` | `ObjectMapper`, `TypeReference` | Jackson 3 |
@@ -34,14 +31,16 @@ The work splits two ways:
 `StepAction` imports `com.fasterxml.jackson.annotation.JsonCreator`. That stays as it is: Jackson 3
 still uses `jackson-annotations` 2.x.
 
-## Why the split
+## Why not `groovy-json`
 
-### `groovy-json` results (Groovy 5.1.3)
+### `groovy-json` results (Groovy 5.1.3, compared with Jackson 2.21.5)
 
 | Case | Result |
 |---|---|
-| `/mcp call` arguments and MCP config files → `Map` | ✅ works |
-| Trailing text after the JSON (`{"a":1} extra`, a stray trailing `}`) | ✅ ignored by the default parser, as Jackson 2 did, so there is no behaviour change |
+| `/mcp call` arguments and MCP config files → `Map` | ✅ works for ordinary input |
+| Trailing text after the JSON (`{"a":1} extra`, a stray trailing `}`) | ✅ ignored, as Jackson 2 did |
+| **Integers beyond `Long`** | ❌ silently overflow with every parser type that returns a number: `9223372036854775808` → `-9223372036854775808`, `18446744073709551616` → `0`, `-9223372036854775809` → `9223372036854775807`. `CHARACTER_SOURCE` returns `null` instead. Jackson 2 and 3 keep them as `BigInteger`, so an MCP server would receive a changed value. |
+| **Trailing comma in an object** (`{"a":1,}`) | ❌ accepted by every parser type; Jackson 2 and 3 reject it, so this would loosen MCP validation. (A trailing comma in an array is still rejected.) |
 | `LAX` parser on `{this is not json at all!!!}` | ❌ returns `[:]` instead of throwing (details below) |
 | `LAX` parser on unquoted values (`{e: yes}`) | ❌ accepted as the string `"yes"` |
 | Decimal numbers | ⚠️ parsed as `BigDecimal`; Jackson parses them as `Double` |
@@ -68,7 +67,8 @@ applies to every write, not just startup.
 | `StepAction` `@JsonCreator` fallback under Jackson 3 (`ADD_FILE` → `CREATE`) | ✅ |
 | **Corrupt JSON file** | ⚠️ throws `UnexpectedEndOfInputException`, which is **not** an `IOException` |
 | **Write failure** | ⚠️ throws `JacksonIOException`, or `DatabindException` when a getter throws; neither is an `IOException` |
-| **Trailing text after the JSON** | ⚠️ rejected (`FAIL_ON_TRAILING_TOKENS` is on by default, see the [Jackson 3 migration guide](https://github.com/FasterXML/jackson/blob/main/jackson3/MIGRATING_TO_JACKSON_3.md)); only `ToolCallParser` needs Jackson 2's tolerance back |
+| **Trailing text after the JSON** | ⚠️ rejected (`FAIL_ON_TRAILING_TOKENS` is on by default, see the [Jackson 3 migration guide](https://github.com/FasterXML/jackson/blob/main/jackson3/MIGRATING_TO_JACKSON_3.md)); `ToolCallParser` and both MCP classes disable it to keep Jackson 2's behaviour |
+| Mapper with `FAIL_ON_TRAILING_TOKENS` disabled, on MCP-style input | ✅ same as Jackson 2 on every case tested: integers beyond `Long` → `BigInteger`, decimals → `Double`, `{"a":1,}` and `{"a":[1,2,],}` rejected, `{"a":1} extra` tolerated, an empty file or array root throws (a `RuntimeException`, so the existing `catch (Exception)` still applies), UTF-8 config with a trailing `}` loads |
 
 ### Main risk
 
@@ -110,26 +110,31 @@ ordinary round-trip tests only exercise the new mapper.
   (3.1.5). Today it only reaches LCA indirectly through `jackson-module-kotlin`.
 - Update the comment above the dependency.
 
-### 2. `McpCommands` → `groovy-json`
+### 2. `McpCommands` → Jackson 3
 
-- Replace the `ObjectMapper` field with `new JsonSlurper().parseText(jsonPart)`, using the default
-  parser (not `LAX`).
-- The class is `@CompileStatic`, so cast the result explicitly. A JSON array or scalar root then
-  fails the cast inside the existing `catch (Exception)` and still returns "Invalid JSON arguments".
-- Trailing text stays tolerated, as with Jackson 2.
-- Decimal arguments become `BigDecimal` instead of `Double`. They are passed to
-  `McpToolRegistry.callTool` and serialised by the MCP SDK, so they should still reach the server as
-  JSON numbers. This is unverified; step 8 adds a test.
+Build the mapper so it tolerates trailing tokens, as Jackson 2 did:
 
-### 3. `McpConfigLoader` → `groovy-json`
+```groovy
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 
-- Reading: `new JsonSlurper().parse(path.toFile(), 'UTF-8')`, cast to `Map<String, Object>`. Name the
-  charset explicitly; Jackson detected the encoding automatically. The existing `catch (Exception)`
-  still skips unreadable files, including empty files and a non-object root.
-- Writing (`writeConsolidatedConfig`): `JsonOutput.prettyPrint(JsonOutput.toJson(output))` written
-  with `Files.writeString`.
-  - This method is called only from tests, not from production code.
-  - Its existing assertions only use `contains`, so the different indentation does not matter.
+// Jackson 2 ignored text after the JSON arguments; keep that so /mcp call behaves as before.
+private final ObjectMapper objectMapper = JsonMapper.builder()
+  .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+  .build()
+```
+
+The existing `catch (Exception)` already covers Jackson 3's unchecked exceptions.
+
+### 3. `McpConfigLoader` → Jackson 3
+
+- Use the same mapper configuration as `McpCommands`, so a config file with trailing content still
+  loads, as it did with Jackson 2.
+- Keep `writerWithDefaultPrettyPrinter()` for `writeConsolidatedConfig()`. That method is only called
+  from tests.
+- The existing `catch (Exception)` covers read failures. The two MCP classes could share one
+  `JsonMapper` factory, but two lines in each class are fine.
 
 ### 4. `ToolCallParser` → Jackson 3
 
@@ -198,20 +203,21 @@ Jackson 3.
   are equal, nanoseconds included. Do the same for vectors with a plain Jackson 2 `ObjectMapper`. This
   keeps the check inside `./mvnw test` rather than relying on a one-off script.
 
-**MCP parsing (`groovy-json`):**
+**MCP parsing (Jackson 3, trailing tokens tolerated).** These tests pin down today's Jackson 2
+behaviour, so any later parser change (e.g. to `groovy-json`) would fail them:
 
 - `McpCommandsSpec`:
-  - `/mcp call srv_tool {"a":1} extra` still calls `registry.callTool('srv', 'tool', [a: 1])`
-    (unchanged behaviour).
-  - `/mcp call srv_tool [1,2]` and `/mcp call srv_tool {bad` return "Invalid JSON arguments" with
+  - `/mcp call srv_tool {"a":1} extra` still calls `registry.callTool('srv', 'tool', [a: 1])`.
+  - Integers beyond `Long` reach `callTool` unchanged, as `BigInteger`:
+    `{"big":9223372036854775808,"neg":-9223372036854775809,"huge":18446744073709551616}`.
+  - `{"a":1,}`, `[1,2]` and `{bad` each return "Invalid JSON arguments" with
     `0 * registry.callTool(_, _, _)`.
 - `McpConfigLoaderSpec`:
-  - A config file with a trailing `}` still loads its servers (unchanged behaviour).
-  - An empty file or a file whose root is an array is skipped with no exception, and servers from the
-    other config files still load.
-  - Non-ASCII content in `env` values round-trips.
-- MCP arguments: a decimal argument (`{"t":0.5}`) reaches the MCP server as a JSON number. Test this
-  at the `McpToolRegistry` or SDK serialisation level, or confirm by hand against a test server.
+  - A config file with a trailing `}` still loads its servers.
+  - A config file with a trailing comma (`{"mcpServers":{"a":{"command":"x"},}}`), an empty file
+    and a file whose root is an array are each skipped with no exception. Servers from the other
+    config files still load.
+  - Non-ASCII content in `env` values loads unchanged.
 
 **`ToolCallParser` (Jackson 3):**
 
@@ -224,7 +230,9 @@ Jackson 3.
 
 - `release.md` (1.3.0): memory metadata timestamps are now written as ISO-8601 strings. Existing
   files still load, and older LCA versions can read the new files.
-- No MCP behaviour changes, so there are no MCP release-note bullets.
+- No MCP release-note bullets. With `FAIL_ON_TRAILING_TOKENS` disabled, MCP parsing matched
+  Jackson 2 on every case tested (see the Jackson 3 results table), and the step 8 tests lock that
+  in.
 - Leave `docs/superpowers/plans/2026-06-09-mcp-support.md` alone. It is a historical plan that still
   shows the Jackson 2 code.
 
@@ -245,7 +253,3 @@ such imports as "used undeclared"; it can be run by hand or added to CI.
 
 - Jackson 3 sorts properties alphabetically by default, so the field order in saved memory JSON
   changes.
-- `writeConsolidatedConfig()` output indentation changes from Jackson's pretty printer to
-  `JsonOutput.prettyPrint`.
-- `JsonOutput` escapes non-ASCII characters in the consolidated config (e.g. `Å` becomes `Å`).
-  It is still valid JSON and round-trips exactly (verified).
