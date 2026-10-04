@@ -1,9 +1,8 @@
 package com.example
 
-import groovy.transform.CompileStatic
 import spock.lang.Specification
 
-@CompileStatic
+// Not @CompileStatic: Spock rewrites feature methods at compile time, which static compilation rejects.
 class GreeterSpec extends Specification {
 
   def "greet returns default when name is blank"() {

@@ -43,7 +43,7 @@ the assistant with the current project directory as its workspace.
    `cd my-project`
 2. Add an `AGENTS.md` with project rules, for example:
    ```
-   - Use Groovy 5.0.3 and @CompileStatic when possible.
+   - Use Groovy 5.1.3 and @CompileStatic when possible.
    - Use 2-space indentation and 120-character max line length.
    - Write Spock 2.4 tests for new functionality.
    ```
