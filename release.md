@@ -1,8 +1,27 @@
 # Release Notes for the local-coding-assistant
 
 ## Version 1.3.0 (unreleased)
-
+**Highlights**
 - Upgraded to Embabel 1.5.2 and Spring Boot 4.1.1.
+- Switched the default local models from Qwen3.6 to Qwen3.8.
+- Added `/benchmark` to measure raw Ollama inference speed.
+- Commands chosen by natural-language routing can no longer turn off confirmations or other safeguards.
+
+**Models & setup**
+- New default models, replacing `qwen3.6:35b-a3b`, `qwen3.6-128k` and `qwen3.6-review`:
+  - `qwen3.8-192k` for chat and code generation (192K context, built from `qwen3.8:27b`).
+  - `qwen3.8-review` for reviews (128K context, built from `qwen3.8:27b`).
+  - `gpt-oss-64k` as the fallback model (64K context, built from `gpt-oss:20b`), unchanged.
+- The first launch after upgrading downloads `qwen3.8:27b` and builds the new custom models. The old
+  Qwen3.6 models are not removed; delete them with `ollama rm` if you no longer need them.
+- The Qwen3.8 custom models set `num_batch 2048` and `num_gpu 99` for full GPU offload.
+- Model names, context sizes and recipes now live in one place, `src/main/bin/lca`. `models.sh` reads
+  them from there, and the launcher passes them to the application as `LCA_CHAT_MODEL`,
+  `LCA_FALLBACK_MODEL`, `LCA_REVIEW_MODEL`, `LCA_EMBEDDING_MODEL` and `LCA_DEFAULT_CONTEXT_WINDOW`.
+  Runs that bypass the launcher (`./run.sh`, IDE) use the fallback values in `application.properties`.
+- Custom models are now rebuilt when their base model, context size or parameters change, not only when
+  the base model changes. Existing custom models are therefore rebuilt once after upgrading.
+  `models.sh --force` rebuilds them unconditionally, and a failed rebuild keeps the existing model.
 - Ollama must be running with `nomic-embed-text:latest` pulled before starting the CLI,
   batch mode or GUI. This existing startup requirement is now documented explicitly,
   including when memory is disabled.
@@ -10,6 +29,38 @@
   should download the updated `lca` launcher and re-run `lca` (or `lca gui`), or run
   `ollama pull nomic-embed-text:latest` manually before starting the upgraded application.
 - Updated the ranking model property to `embabel.agent.platform.ranking.llm`.
+
+**Commands & REPL**
+- Added `/benchmark`, which reports prompt-evaluation and generation tokens per second for a model.
+  Options: `--model`, `--prompt`, `--prompt-file`, `--max-tokens` (default `200`) and `--session`.
+- Recognised slash commands typed in the REPL now run directly instead of going through intent routing,
+  which could misinterpret them.
+- `/model`, `/context`, `/version`, `/stage`, `/revert`, `/commit-suggest`, `/applyBlocks` and `/git-push`
+  now work when typed in the REPL; previously they reported "Unknown command". `/git-apply` also works
+  now; it was previously cut short to `/git`.
+- Explicit `false` and `0` values are now honoured instead of being reset to the default, for example
+  `/run --confirm false`, `/review --log-review false`, `/search --headless false` and
+  `/context --padding 0`.
+
+**Safety**
+- Commands produced by natural-language routing, in both the REPL and the GUI, can no longer turn off
+  confirmation, previews, `--check` or secret scanning, or force a push, whatever the routing model
+  returns. Routed `/revert` only previews the restore.
+
+**Configuration**
+- `assistant.llm.timeout-millis` raised from `600000` to `720000` (12 minutes).
+- Review context budgets raised: `assistant.llm.review-context-budget` from `30000` to `100000` and
+  `assistant.llm.review-pr-context-budget` from `80000` to `250000` characters.
+- New `assistant.llm.benchmark-timeout-millis` (default `180000`) for `/benchmark`.
+
+**Demo (`demo/openCodeMlx`)**
+- The default MLX model is now `mlx-community/Qwen3.8-27B-4bit` (previously
+  `mlx-community/Qwen3-Coder-30B-A3B-Instruct-8bit`). Vision-language models are detected from their
+  `config.json` and served with `mlx_vlm.server`; text-only models still use `mlx_lm.server`.
+- `--trust-remote-code` is only passed to `mlx_vlm.server` when `MLX_VLM_TRUST_REMOTE_CODE=1` is set.
+- New optional settings: `MLX_DRAFT_MODEL` (speculative decoding, off by default),
+  `MLX_DOWNLOAD_INTERFACE` (bind model downloads to a network interface) and `MLX_VLM_MAX_KV_SIZE`.
+- The `demo/test_*.sh` scripts now run as part of `./mvnw test`.
 
 ## Version 1.2.0, 2026-01-16
 **Highlights**
