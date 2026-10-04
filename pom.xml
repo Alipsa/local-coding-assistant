@@ -147,14 +147,16 @@
       <version>${jsoup.version}</version>
     </dependency>
 
-    <!-- Local JSON parsing and memory persistence use Jackson 2; Boot manages both Jackson BOMs. -->
+    <!-- Local JSON parsing and memory persistence use Jackson 3, managed by Boot. -->
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
+      <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.datatype</groupId>
       <artifactId>jackson-datatype-jsr310</artifactId>
+      <!-- Read new memory files with the legacy mapper in downgrade-compatibility tests. -->
+      <scope>test</scope>
     </dependency>
 
     <!-- Swing GUI (lcaGui): FlatLaf look-and-feel and flexmark Markdown -> HTML rendering -->

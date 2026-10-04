@@ -316,4 +316,36 @@ class McpConfigLoaderSpec extends Specification {
     "clean-name"    | "clean-name"
     null            | "unknown"
   }
+
+  def "loads trailing content and non-ASCII environment values"() {
+    given:
+    Path config = tempDir.resolve('trailing.json')
+    Files.writeString(config, '{"mcpServers":{"srv":{"command":"x","env":{"TEXT":"Å東京"}}}}}')
+
+    when:
+    def servers = new McpConfigLoader([config.toString()], tempDir.toString()).loadServers()
+
+    then:
+    servers.srv.command == 'x'
+    servers.srv.env.TEXT == 'Å東京'
+  }
+
+  def "invalid config is skipped while other servers still load"() {
+    given:
+    Path invalid = tempDir.resolve('invalid.json')
+    Path valid = tempDir.resolve('valid.json')
+    Files.writeString(invalid, json)
+    Files.writeString(valid, '{"mcpServers":{"good":{"command":"x"}}}')
+
+    when:
+    def servers = new McpConfigLoader([invalid.toString(), valid.toString()], tempDir.toString()).loadServers()
+
+    then:
+    noExceptionThrown()
+    servers.keySet() == ['good'] as Set
+
+    where:
+    json << ['{"mcpServers":{"a":{"command":"x"},}}', '', '[1,2]']
+  }
+
 }

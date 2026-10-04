@@ -1,7 +1,9 @@
 package se.alipsa.lca.tools
 
-import com.fasterxml.jackson.core.JsonParser as JacksonJsonParser
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.core.json.JsonReadFeature
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
@@ -51,10 +53,11 @@ class ToolCallParser {
     /mcp_read_resource\s*\(\s*["']([^"']+)["']\s*\)/
   )
 
-  private static final ObjectMapper lenientMapper = new ObjectMapper()
-    .configure(JacksonJsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true)
-    .configure(JacksonJsonParser.Feature.ALLOW_SINGLE_QUOTES, true)
-    .configure(JacksonJsonParser.Feature.ALLOW_TRAILING_COMMA, true)
+  private static final ObjectMapper lenientMapper = JsonMapper.builder()
+    .enable(JsonReadFeature.ALLOW_UNQUOTED_PROPERTY_NAMES, JsonReadFeature.ALLOW_SINGLE_QUOTES,
+      JsonReadFeature.ALLOW_TRAILING_COMMA)
+    .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+    .build()
 
   @Canonical
   @CompileStatic

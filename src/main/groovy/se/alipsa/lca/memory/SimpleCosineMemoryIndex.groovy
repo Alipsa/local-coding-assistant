@@ -3,8 +3,9 @@ package se.alipsa.lca.memory
 import com.embabel.common.ai.model.EmbeddingService
 import com.embabel.common.ai.model.ModelProvider
 import com.embabel.common.ai.model.ModelSelectionCriteria
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.core.JacksonException
+import tools.jackson.core.type.TypeReference
+import tools.jackson.databind.ObjectMapper
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -101,7 +102,7 @@ class SimpleCosineMemoryIndex implements MemoryIndex {
     try {
       Map<String, float[]> loaded = objectMapper.readValue(vectorFile.toFile(), new TypeReference<Map<String, float[]>>() {})
       vectors.putAll(loaded)
-    } catch (IOException e) {
+    } catch (IOException | JacksonException e) {
       log.warn("Failed to load memory vectors from {}: {}", vectorFile, e.message)
     }
   }
@@ -112,7 +113,7 @@ class SimpleCosineMemoryIndex implements MemoryIndex {
       objectMapper.writeValue(tempFile.toFile(), vectors)
       Files.move(tempFile, vectorFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
       true
-    } catch (IOException e) {
+    } catch (IOException | JacksonException e) {
       log.warn("Failed to persist memory vectors to {}: {}", vectorFile, e.message)
       false
     }

@@ -1,8 +1,8 @@
 package se.alipsa.lca.memory
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.type.MapType
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.type.MapType
+import tools.jackson.core.JacksonException
 import groovy.transform.CompileStatic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -31,7 +31,7 @@ class MemoryMetadataStore {
   private static final Logger log = LoggerFactory.getLogger(MemoryMetadataStore)
 
   private final Path metadataFile
-  private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule())
+  private final ObjectMapper objectMapper = new ObjectMapper()
   private final Map<String, MemoryEntry> entries = new ConcurrentHashMap<>()
 
   MemoryMetadataStore(MemorySettings settings) {
@@ -86,7 +86,7 @@ class MemoryMetadataStore {
       MapType mapType = objectMapper.typeFactory.constructMapType(Map, String, MemoryEntry)
       Map<String, MemoryEntry> loaded = objectMapper.readValue(metadataFile.toFile(), mapType)
       entries.putAll(loaded)
-    } catch (IOException e) {
+    } catch (IOException | JacksonException e) {
       log.warn("Failed to load memory metadata from {}: {}", metadataFile, e.message)
     }
   }
@@ -97,7 +97,7 @@ class MemoryMetadataStore {
       objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), entries)
       Files.move(tempFile, metadataFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
       true
-    } catch (IOException e) {
+    } catch (IOException | JacksonException e) {
       log.warn("Failed to persist memory metadata to {}: {}", metadataFile, e.message)
       false
     }

@@ -1,0 +1,18 @@
+{
+  "zero" : {
+    "id" : "zero",
+    "content" : "project memory",
+    "createdAt" : 1791108930.000000000,
+    "lastAccessedAt" : 1791108930.123456789,
+    "sourceSessionId" : "session",
+    "projectId" : "project"
+  },
+  "nano" : {
+    "id" : "nano",
+    "content" : "legacy memory",
+    "createdAt" : 1791108930.123456789,
+    "lastAccessedAt" : 1791108930.000000000,
+    "sourceSessionId" : "session",
+    "projectId" : null
+  }
+}

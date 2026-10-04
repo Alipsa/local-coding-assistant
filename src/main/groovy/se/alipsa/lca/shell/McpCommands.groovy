@@ -1,6 +1,8 @@
 package se.alipsa.lca.shell
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import io.modelcontextprotocol.spec.McpSchema
@@ -19,7 +21,10 @@ class McpCommands {
 
   private final McpToolRegistry registry
   private final McpSessionState sessionState
-  private final ObjectMapper objectMapper = new ObjectMapper()
+  // Preserve Jackson 2 tolerance for trailing text after the JSON arguments.
+  private final ObjectMapper objectMapper = JsonMapper.builder()
+    .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+    .build()
 
   McpCommands(McpToolRegistry registry, McpSessionState sessionState) {
     this.registry = registry
