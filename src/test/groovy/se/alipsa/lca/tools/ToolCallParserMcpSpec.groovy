@@ -264,4 +264,15 @@ mcp_good2_tool2({"other": "data"})'''
     result.mcpCalls[0].serverName == 'looker-admin'
     result.mcpCalls[0].toolName == 'get_dashboard'
   }
+
+  def "tolerates trailing text inside matched MCP arguments"() {
+    when:
+    def result = parser.parseAllToolCalls('mcp_s_t({"a":1} x })')
+
+    then:
+    result.mcpCalls.size() == 1
+    result.mcpCalls[0].arguments == [a: 1]
+    result.errors.isEmpty()
+  }
+
 }

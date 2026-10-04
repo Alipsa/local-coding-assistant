@@ -1,6 +1,6 @@
 package se.alipsa.lca.team
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import spock.lang.Specification
 import spock.lang.Unroll
 

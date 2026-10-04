@@ -234,4 +234,39 @@ class McpCommandsSpec extends Specification {
     then:
     result.contains("(none configured)")
   }
+
+  def "call tolerates trailing text"() {
+    when:
+    String result = mcpCommands.execute('call', 'srv_tool {"a":1} extra', 'default')
+
+    then:
+    1 * registry.callTool('srv', 'tool', [a: 1]) >>
+      new McpSchema.CallToolResult([new McpSchema.TextContent('ok')], false, null, null)
+    result == 'ok'
+  }
+
+  def "call preserves integers beyond Long"() {
+    when:
+    String result = mcpCommands.execute('call',
+      'srv_tool {"big":9223372036854775808,"neg":-9223372036854775809,"huge":18446744073709551616}', 'default')
+
+    then:
+    1 * registry.callTool('srv', 'tool', [big: new BigInteger('9223372036854775808'),
+      neg: new BigInteger('-9223372036854775809'), huge: new BigInteger('18446744073709551616')]) >>
+      new McpSchema.CallToolResult([new McpSchema.TextContent('ok')], false, null, null)
+    result == 'ok'
+  }
+
+  def "invalid call JSON never reaches the server"() {
+    when:
+    String result = mcpCommands.execute('call', 'srv_tool ' + json, 'default')
+
+    then:
+    result.contains('Invalid JSON arguments')
+    0 * registry.callTool(_, _, _)
+
+    where:
+    json << ['{"a":1,}', '[1,2]', '{bad']
+  }
+
 }

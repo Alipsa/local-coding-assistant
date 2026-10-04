@@ -3,6 +3,10 @@
 ## Version 1.3.0 (unreleased)
 **Highlights**
 - Upgraded to Embabel 1.5.2 and Spring Boot 4.1.1.
+- Added [long-term memory](docs/memory.md) to remember and recall relevant facts across sessions,
+  with project and global scopes. Facts and embedding vectors are stored locally in
+  `~/.lca/memory-index/` using Jackson 3, which also handles application JSON parsing.
+  Disable recall and remembering with `lca.memory.enabled=false`.
 - Switched the default local models from Qwen3.6 to Qwen3.8.
 - Added `/benchmark` to measure raw Ollama inference speed.
 - Commands chosen by natural-language routing can no longer turn off confirmations or other safeguards.

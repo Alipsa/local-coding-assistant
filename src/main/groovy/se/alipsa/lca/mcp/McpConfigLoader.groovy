@@ -1,6 +1,8 @@
 package se.alipsa.lca.mcp
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 import groovy.transform.Canonical
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
@@ -38,7 +40,10 @@ class McpConfigLoader {
   McpConfigLoader(List<String> configPaths, String outputDir) {
     this.configPaths = configPaths
     this.outputDir = outputDir
-    this.objectMapper = new ObjectMapper()
+    // Preserve Jackson 2 tolerance for trailing content in existing config files.
+    this.objectMapper = JsonMapper.builder()
+      .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+      .build()
   }
 
   /**
