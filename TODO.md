@@ -1,5 +1,14 @@
 # TODO
 
+## add support for oMLX
+
+## migrate to yml for configuration
+- look in ~/.config/lca/lca.yml for overrides
+- fall back to application.properties only if lca.yml does not set the property
+- add model.engine.name (ollama or omlx)
+- change spring.ai.ollama.base-url to model.engine.base-url
+- allow models to be switched in runtime (and to be persisted) via a /model command
+
 ## Add a way to access command history in the lcaGui.
 e.g. shift+up/down to scroll through previous commands, or a dedicated "history" panel.
 
