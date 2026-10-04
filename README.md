@@ -148,7 +148,7 @@ assistant.intent.confidence-threshold=0.8
 1. Install Java 21 and maven 3.9.9 or later
 2. Start Ollama and pull the models with `./models.sh`, including `nomic-embed-text:latest`.
    Embabel validates embedding model roles at startup, so this model is required even when
-   memory is disabled.
+   memory is disabled. This requirement also applies to earlier Embabel versions.
 3. Start the interactive shell: `./run.sh`. The script builds the jar with Maven and launches it
    with Spring Shell and Embabel agents loaded.
 

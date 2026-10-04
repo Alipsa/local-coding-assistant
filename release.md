@@ -4,7 +4,7 @@
 
 - Upgraded to Embabel 1.5.2 and Spring Boot 4.1.1.
 - Ollama must be running with `nomic-embed-text:latest` pulled before starting the CLI,
-  batch mode or GUI. Embabel now validates configured embedding model roles at startup,
+  batch mode or GUI. This existing startup requirement is now documented explicitly,
   including when memory is disabled.
 - The `lca` and `lcaGui` launchers now install the required embedding model. Existing users
   should download the updated `lca` launcher and re-run `lca` (or `lca gui`), or run
