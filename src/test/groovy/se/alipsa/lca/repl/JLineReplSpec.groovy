@@ -67,13 +67,15 @@ class JLineReplSpec extends Specification {
 
   def "single-line input still routes through the intent classifier as before"() {
     given:
-    def plan = new IntentRoutingPlan(commands: [], confidence: 1.0d, explanation: null)
+    def plan = new IntentRoutingPlan(commands: ['/run --command "x" --confirm false'], confidence: 1.0d, explanation: null)
 
     when:
     repl.handleInput("what does this project do")
 
     then:
     1 * intentRouter.routeDetails("what does this project do") >> new IntentRoutingOutcome(plan: plan, result: null)
+    1 * commandExecutor.executeRouted('/run --command "x" --confirm false') >> 'ran'
+    0 * commandExecutor.execute(_)
   }
 
   def "a bang-prefixed line runs as a shell command, bypassing intent routing"() {

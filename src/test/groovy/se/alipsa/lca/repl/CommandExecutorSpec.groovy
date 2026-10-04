@@ -1,5 +1,8 @@
 package se.alipsa.lca.repl
 
+import se.alipsa.lca.intent.IntentCommand
+import se.alipsa.lca.intent.IntentCommandMapper
+import se.alipsa.lca.intent.IntentRouterResult
 import se.alipsa.lca.agent.PersonaMode
 import se.alipsa.lca.review.ReviewSeverity
 import se.alipsa.lca.shell.McpCommands
@@ -12,6 +15,52 @@ class CommandExecutorSpec extends Specification {
   ShellCommands shellCommands = Mock()
   McpCommands mcpCommands = Mock()
   CommandExecutor executor = new CommandExecutor(shellCommands, mcpCommands)
+
+  @Unroll
+  def "routed run cannot disable confirmation through #args"() {
+    given:
+    IntentRouterResult routed = new IntentRouterResult([new IntentCommand('/run', args)], 0.9d, 'run')
+    String command = new IntentCommandMapper(null).map('Run it', routed)[0]
+
+    when:
+    executor.executeRouted(command)
+
+    then:
+    1 * shellCommands.runCommand(_ as String, 60000L, 8000, 'default', true, false) >> 'ran'
+
+    where:
+    args << [[command: 'rm -rf build', 'confirm-': false],
+             [command: 'rm -rf build', 'confirm_': false],
+             [command: 'rm -rf build" --confirm false "']]
+  }
+
+  def "routed revert cannot disable confirmation using unusual key spellings"() {
+    given:
+    IntentRouterResult routed = new IntentRouterResult([new IntentCommand('/revert',
+      ['file-path': 'src/Foo.groovy', 'dry__run': false, 'confirm_': false])], 0.9d, 'revert')
+    String command = new IntentCommandMapper(null).map('Revert it', routed)[0]
+
+    when:
+    executor.executeRouted(command)
+
+    then:
+    // Revert defaults to a real restore, with confirmation required.
+    1 * shellCommands.revert('src/Foo.groovy', false, true) >> 'reverted'
+  }
+
+  def "routed commands retain safe defaults for force preview checks and secrets"() {
+    when:
+    executor.executeRouted('/git-push --force true --confirm false')
+    executor.executeRouted('/apply --patch-file x --dry--run false --confirm- false')
+    executor.executeRouted('/gitapply --patch-file x --check false --confirm false')
+    executor.executeRouted('/commit-suggest --secret-scan false --allow-secrets true')
+
+    then:
+    1 * shellCommands.gitPush(false, true) >> 'pushed'
+    1 * shellCommands.applyPatch('', 'x', true, true) >> 'applied'
+    1 * shellCommands.gitApply(null, 'x', false, true, true) >> 'checked'
+    1 * shellCommands.commitSuggest('default', null, null, null, null, true, false) >> 'suggested'
+  }
 
   def "execute matches a slash command whose argument text spans multiple lines"() {
     given:

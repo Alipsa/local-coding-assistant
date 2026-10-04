@@ -53,6 +53,15 @@ class CommandExecutor {
    * Parses the command and arguments, then calls the appropriate ShellCommands method.
    */
   String execute(String commandLine) {
+    execute(commandLine, false)
+  }
+
+  /** Execute model-routed commands with safety overrides removed after parsing. */
+  String executeRouted(String commandLine) {
+    execute(commandLine, true)
+  }
+
+  private String execute(String commandLine, boolean routed) {
     if (commandLine == null || commandLine.trim().isEmpty()) {
       return null
     }
@@ -70,64 +79,72 @@ class CommandExecutor {
 
     log.debug("Executing command: /{} with args: {}", command, args)
 
+    Map<String, Object> parsed = parseArgs(args)
+    if (routed) {
+      // Apply this after normalisation and parsing, including flags injected through quoted values.
+      ['confirm', 'dryRun', 'check', 'force', 'allowSecrets', 'secretScan'].each { String key ->
+        parsed.remove(key)
+      }
+    }
+
     switch (command.toLowerCase()) {
       case "chat":
-        return executeChat(args)
+        return executeChat(parsed)
       case "plan":
-        return executePlan(args)
+        return executePlan(parsed)
       case "implement":
-        return executeImplement(args)
+        return executeImplement(parsed)
       case "review":
-        return executeReview(args)
+        return executeReview(parsed)
       case "search":
-        return executeSearch(args)
+        return executeSearch(parsed)
       case "run":
-        return executeRun(args)
+        return executeRun(parsed)
       case "edit":
-        return executeEdit(args)
+        return executeEdit(parsed)
       case "paste":
-        return executePaste(args)
+        return executePaste(parsed)
       case "gitapply":
       case "git-apply":
-        return executeGitApply(args)
+        return executeGitApply(parsed)
       case "git-push":
-        return executeGitPush(args)
+        return executeGitPush(parsed)
       case "apply":
-        return executeApply(args)
+        return executeApply(parsed)
       case "status":
-        return executeStatus(args)
+        return executeStatus(parsed)
       case "diff":
-        return executeDiff(args)
+        return executeDiff(parsed)
       case "tree":
-        return executeTree(args)
+        return executeTree(parsed)
       case "codesearch":
-        return executeCodeSearch(args)
+        return executeCodeSearch(parsed)
       case "mcp":
-        return executeMcp(args)
+        return executeMcp(parsed)
       case "reviewlog":
-        return executeReviewLog(args)
+        return executeReviewLog(parsed)
       case "compact":
-        return executeCompact(args)
+        return executeCompact(parsed)
       case "help":
         return shellCommands.help()
       case "health":
         return shellCommands.health()
       case "benchmark":
-        return executeBenchmark(args)
+        return executeBenchmark(parsed)
       case "model":
-        return executeModel(args)
+        return executeModel(parsed)
       case "context":
-        return executeContext(args)
+        return executeContext(parsed)
       case "version":
         return shellCommands.version()
       case "stage":
-        return executeStage(args)
+        return executeStage(parsed)
       case "revert":
-        return executeRevert(args)
+        return executeRevert(parsed)
       case "commit-suggest":
-        return executeCommitSuggest(args)
+        return executeCommitSuggest(parsed)
       case "applyblocks":
-        return executeApplyBlocks(args)
+        return executeApplyBlocks(parsed)
       case "exit":
       case "quit":
         // Trigger system exit
@@ -162,8 +179,7 @@ class CommandExecutor {
     shellCommands.paste(content, "/end", send, session, persona)
   }
 
-  private String executeChat(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeChat(Map<String, Object> parsed) {
     shellCommands.chat(
       extractWords(parsed) as String[],
       parsed.session as String ?: "default",
@@ -178,8 +194,7 @@ class CommandExecutor {
     )
   }
 
-  private String executePlan(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executePlan(Map<String, Object> parsed) {
     shellCommands.plan(
       extractWords(parsed) as String[],
       parsed.session as String ?: "default",
@@ -193,8 +208,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeImplement(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeImplement(Map<String, Object> parsed) {
     shellCommands.implement(
       extractWords(parsed) as String[],
       parsed.session as String ?: "default",
@@ -208,8 +222,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeReview(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeReview(Map<String, Object> parsed) {
     // Parse paths from remaining words or paths flag
     List<String> paths = null
     if (parsed.paths) {
@@ -238,8 +251,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeSearch(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeSearch(Map<String, Object> parsed) {
     String query = extractPromptValue(parsed)
     shellCommands.search(
       query,
@@ -252,8 +264,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeRun(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeRun(Map<String, Object> parsed) {
     String command = parsed.command as String ?: parsed.cmd as String ?: extractPromptValue(parsed)
     shellCommands.runCommand(
       command,
@@ -265,15 +276,13 @@ class CommandExecutor {
     )
   }
 
-  private String executeStatus(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeStatus(Map<String, Object> parsed) {
     shellCommands.gitStatus(
       parseBoolean(parsed.shortFormat) ?: false
     )
   }
 
-  private String executeEdit(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeEdit(Map<String, Object> parsed) {
     shellCommands.edit(
       parsed.seed as String,
       parseBoolean(parsed.send) ?: false,
@@ -282,8 +291,7 @@ class CommandExecutor {
     )
   }
 
-  private String executePaste(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executePaste(Map<String, Object> parsed) {
     shellCommands.paste(
       parsed.content as String,
       parsed.endMarker as String ?: "/end",
@@ -293,8 +301,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeGitApply(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeGitApply(Map<String, Object> parsed) {
     String patch = parsed.patch as String
     String patchFile = parsed.patchFile as String
     shellCommands.gitApply(
@@ -306,8 +313,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeApply(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeApply(Map<String, Object> parsed) {
     String patch = parsed.patch as String ?: extractPromptValue(parsed)
     String patchFile = parsed.patchFile as String
     shellCommands.applyPatch(
@@ -318,8 +324,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeDiff(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeDiff(Map<String, Object> parsed) {
     // Parse paths from remaining words
     List<String> paths = (parsed.words as List<String>) ?: []
     shellCommands.gitDiff(
@@ -330,8 +335,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeTree(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeTree(Map<String, Object> parsed) {
     shellCommands.tree(
       parseInt(parsed.depth) ?: 3,
       parseBoolean(parsed.files) ?: false,
@@ -339,8 +343,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeCodeSearch(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeCodeSearch(Map<String, Object> parsed) {
     String query = parsed.query as String ?: extractPromptValue(parsed)
     List<String> paths = null
     if (parsed.paths) {
@@ -366,8 +369,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeReviewLog(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeReviewLog(Map<String, Object> parsed) {
     shellCommands.reviewLog(
       parseSeverity(parsed.minSeverity, ReviewSeverity.LOW),
       parsed.pathFilter as String,
@@ -378,16 +380,14 @@ class CommandExecutor {
     )
   }
 
-  private String executeGitPush(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeGitPush(Map<String, Object> parsed) {
     shellCommands.gitPush(
       parseBoolean(parsed.force) ?: false,
       parseBooleanFlag(parsed.confirm, true)
     )
   }
 
-  private String executeBenchmark(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeBenchmark(Map<String, Object> parsed) {
     // Not "parseInt(...) ?: 200": Groovy truthiness treats 0 as falsy, so an explicit
     // "--max-tokens 0" would otherwise silently become 200 instead of being rejected.
     Integer maxTokens = parsed.maxTokens != null ? parseInt(parsed.maxTokens) : null
@@ -400,8 +400,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeModel(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeModel(Map<String, Object> parsed) {
     shellCommands.model(
       parsed.set as String,
       parsed.session as String ?: "default",
@@ -409,8 +408,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeContext(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeContext(Map<String, Object> parsed) {
     String filePath = parsed.filePath as String ?: firstWord(parsed)
     // Not "parseInt(...) ?: 2": ShellCommands.context accepts --padding 0 (requireMin(padding,
     // 0, ...)), but Groovy's ?: treats a parsed 0 as absent, same trap fixed for /benchmark's
@@ -425,8 +423,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeStage(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeStage(Map<String, Object> parsed) {
     List<String> paths = null
     if (parsed.paths) {
       paths = (parsed.paths as String).split(',').toList()
@@ -441,8 +438,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeRevert(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeRevert(Map<String, Object> parsed) {
     String filePath = parsed.filePath as String ?: firstWord(parsed)
     shellCommands.revert(
       filePath,
@@ -451,8 +447,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeCommitSuggest(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeCommitSuggest(Map<String, Object> parsed) {
     shellCommands.commitSuggest(
       parsed.session as String ?: "default",
       parsed.model as String,
@@ -464,8 +459,7 @@ class CommandExecutor {
     )
   }
 
-  private String executeApplyBlocks(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeApplyBlocks(Map<String, Object> parsed) {
     String filePath = parsed.filePath as String ?: firstWord(parsed)
     shellCommands.applyBlocks(
       filePath,
@@ -476,13 +470,11 @@ class CommandExecutor {
     )
   }
 
-  private String executeCompact(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeCompact(Map<String, Object> parsed) {
     shellCommands.compact(parsed.session as String ?: "default")
   }
 
-  private String executeMcp(String args) {
-    Map<String, Object> parsed = parseArgs(args)
+  private String executeMcp(Map<String, Object> parsed) {
     List<String> words = parsed.words as List<String>
     String subcommand = words?.isEmpty() ? "status" : words[0]
     String subArgs = words?.size() > 1 ? words.subList(1, words.size()).join(" ") : ""

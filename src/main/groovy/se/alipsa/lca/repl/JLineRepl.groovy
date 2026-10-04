@@ -225,7 +225,7 @@ class JLineRepl {
 
       // Execute each command
       for (String command : plan.commands) {
-        String result = commandExecutor.execute(command)
+        String result = commandExecutor.executeRouted(command)
         if (result != null && !result.trim().isEmpty()) {
           terminal.writer().println(result)
         }
